@@ -21,7 +21,8 @@ TELEGRAM_BOT_TOKEN='your_telegram_bot_api_token'
 
 You can create a bot on Telegram and get its API token by following the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot). You can also get an OpenAI API key by creating an account on their [website](https://platform.openai.com/signup/).
 
-You can alo use the following environment variables:
+You can also use the following not required environment variables:
+
 ```
 TELEGRAM_BOT_INSTRUCTIONS='Your bot instructions'
 ```
