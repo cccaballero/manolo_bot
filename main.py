@@ -56,7 +56,7 @@ bot = telebot.TeleBot(token=bot_token)
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def echo_all(message):
     chat_id = message.chat.id
-    if len(allowed_chat_ids) and chat_id not in allowed_chat_ids:
+    if len(allowed_chat_ids) and str(chat_id) not in allowed_chat_ids:
         return
     user = message.from_user.username
     is_reply = True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
