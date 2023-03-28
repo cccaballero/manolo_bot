@@ -76,8 +76,8 @@ def echo_all(message):
             messages=[system_instructions] + chats[chat_id]['messages']
         )
         response = completion.choices[0].message
-        if 'NO_ANSWER' not in response.content:
-            response_content = response.get("content")
+        response_content = response.get("content")
+        if 'NO_ANSWER' not in response_content:
             replace = f'@{bot_username}: '
             if response_content.startswith(replace):
                 response_content = response_content[len(replace):]
