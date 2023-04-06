@@ -67,14 +67,20 @@ def echo_all(message):
 
     chats[chat_id]['messages'].append({"role": "user", "content": f'@{user}: {f"@{bot_username} " if is_reply else ""}{message.text}'})
     if len(chats[chat_id]['messages']) > 5:
-        chats[chat_id]['messages'].pop(0)
+        chats[chat_id]['messages'] = chats[chat_id]['messages'][-5:]
 
     if f"@{bot_username}" in message.text or bot_name in message.text or is_reply:
 
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[system_instructions] + chats[chat_id]['messages']
-        )
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[system_instructions] + chats[chat_id]['messages']
+            )
+        except Exception as e:
+            print(e)
+            # clean chat context if there is an error for avoid looping on context based error
+            chats[chat_id]['messages'] = []
+            return
         response = completion.choices[0].message
         response_content = response.get("content")
         if 'NO_ANSWER' not in response_content:
