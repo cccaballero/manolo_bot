@@ -53,6 +53,15 @@ messages = []
 bot = telebot.TeleBot(token=bot_token)
 
 
+def _fallback_telegram_call(message, response_content):
+    try:
+        bot.reply_to(message, response_content)
+    except Exception as e:
+        print(e)
+        return False
+    return True
+
+
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def echo_all(message):
     chat_id = message.chat.id
@@ -91,7 +100,8 @@ def echo_all(message):
                 bot.reply_to(message, response_content, parse_mode='markdown')
             except Exception as e:
                 print(e)
-                return
+                if not _fallback_telegram_call(message, response_content):
+                    return
         chats[chat_id]['messages'].append({"role": "assistant", "content": response_content})
 
 
