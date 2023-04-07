@@ -87,7 +87,7 @@ def echo_all(message):
             replace = f'@{bot_username}: '
             if response_content.startswith(replace):
                 response_content = response_content[len(replace):]
-            bot.reply_to(message, response_content)
+            bot.reply_to(message, response_content, parse_mode='markdown')
         chats[chat_id]['messages'].append({"role": "assistant", "content": response_content})
 
 
