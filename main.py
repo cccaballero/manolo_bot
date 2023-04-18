@@ -75,7 +75,7 @@ def echo_all(message):
         }
 
     chats[chat_id]['messages'].append({"role": "user", "content": f'@{user}: {f"@{bot_username} " if is_reply else ""}{message.text}'})
-    if len(chats[chat_id]['messages']) > 5:
+    if len(chats[chat_id]['messages']) > 10:
         chats[chat_id]['messages'] = chats[chat_id]['messages'][-5:]
 
     if f"@{bot_username}" in message.text or bot_name in message.text or is_reply:
@@ -105,6 +105,6 @@ def echo_all(message):
         chats[chat_id]['messages'].append({"role": "assistant", "content": response_content})
 
 
-bot.polling()
+bot.infinity_polling(timeout=10, long_polling_timeout=5)
 
 
