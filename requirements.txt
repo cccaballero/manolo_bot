@@ -1,3 +1,11 @@
-openai==0.27.2
-telebot==0.0.5
-.env
+langchain
+langchain-google-genai
+langchain-openai
+langchain-community
+beautifulsoup4
+fake_useragent
+pillow
+pytelegrambotapi
+requests
+python-dotenv
+fake-useragent
