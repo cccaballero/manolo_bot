@@ -235,7 +235,7 @@ def answer_image_message(text, image):
     )
 
     image_llm = ChatGoogleGenerativeAI(
-        model="gemini-pro-vision",
+        model="gemini-1.5-flash",
         safety_settings={
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
