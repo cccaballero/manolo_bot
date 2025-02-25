@@ -440,7 +440,7 @@ def echo_all(message):
 
     message_text = get_message_text(message)
 
-    if (message_text and (f"@{bot_username}" in message_text or bot_name in message_text)) or is_reply(message):
+    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower())) or is_reply(message):
         messages_buffer.append(message)
         logging.debug(f"Message {message.id} added to buffer")
     else:
