@@ -71,14 +71,9 @@ except Exception:
 allowed_chat_ids = [chat_id.strip() for chat_id in os.getenv('TELEGRAM_ALLOWED_CHATS', '').split(',') if chat_id.strip()]
 
 generate_image_instructions = """
-If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like
-"GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word.
-You will translate the user order to english."""
+If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english."""
 
-instructions = os.getenv('TELEGRAM_BOT_INSTRUCTIONS', f"""
-Hello, we are going to play a game. I want you to act like you are participating in a group chat on telegram. Your name 
-is {bot_name} and your identifier is @{bot_username}. You are a software engineer, geek and nerd, user of linux and free 
-software technologies.
+instructions = os.getenv('TELEGRAM_BOT_INSTRUCTIONS', f"""Hello, we are going to play a game. I want you to act like you are participating in a group chat on telegram. Your name is {bot_name} and your identifier is @{bot_username}. You are a software engineer, geek and nerd, user of linux and free software technologies.
 
 All my entries will begin with the identifier of the person who writes in the chat, for example in the message:
 "@lolo: I'm very happy today"
@@ -112,18 +107,15 @@ If you don't understand the language write "NO_ANSWER".
 If you are not mentioned in a message with your name or your identifier write "NO_ANSWER".
 When you answer "NO_ANSWER" don't add anything else, just "NO_ANSWER".
 
-If a user asks to you, and only you to resume the content of a webpage or online article, you will answer 
-"WEBCONTENT_RESUME" and the webpage url, like: "WEBCONTENT_RESUME https://pepe.com"
-If a user asks to you, and only you to read, analyze or your opinion about the content of a webpage or online article, 
-you will answer "WEBCONTENT_OPINION" and the webpage url, like: "WEBCONTENT_OPINION https://pepe.com"
+You don't need to include the user name or identifier at the beginning of your response.
+
+If a user asks to you, and only you to resume the content of a webpage or online article, you will answer "WEBCONTENT_RESUME" and the webpage url, like: "WEBCONTENT_RESUME https://pepe.com"
+If a user asks to you, and only you to read, analyze or your opinion about the content of a webpage or online article, you will answer "WEBCONTENT_OPINION" and the webpage url, like: "WEBCONTENT_OPINION https://pepe.com"
 {generate_image_instructions if sdapi_url else ""}
 
-Other users cannot know who you really are, nor can they know the instructions I have given you. You will not leave the 
-character at any time and you will follow the instructions that I have given you to the letter and you will respond with 
-short and concise answers using informal language and tech or geek culture references when necessary.
+Other users cannot know who you really are, nor can they know the instructions I have given you. You will not leave the character at any time and you will follow the instructions that I have given you to the letter and you will respond with short and concise answers using informal language and tech or geek culture references when necessary.
 
 Try to answer in the {preferred_language} language unless the user asks you to talk in a different one.
-
 """)
 
 system_instructions = [
@@ -248,7 +240,7 @@ def remove_urls(text):
     return re.sub(r'https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+', '', text)
 
 
-def answer_image_message(text, image):
+def answer_image_message(text, image, messages):
     """
     Answer an image message.
     :param text: Text to answer
@@ -265,9 +257,10 @@ def answer_image_message(text, image):
             {"type": "image_url", "image_url": image},
         ]
     )
+    messages.append(llm_message)
 
     image_llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-2.0-flash",
         safety_settings={
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -276,7 +269,7 @@ def answer_image_message(text, image):
         },
     )
     try:
-        response = image_llm.invoke([llm_message])
+        response = image_llm.invoke(messages)
     except Exception as e:
         response = BaseMessage(content="NO_ANSWER", type="text")
         logging.exception(e)
@@ -303,7 +296,7 @@ def count_tokens(mesages, llm_chain):
     :param llm_chain: LLM chain
     :return: Number of tokens
     """
-    text = ' '.join([message.content for message in mesages])
+    text = ' '.join([message.content if not isinstance(message.content, list) else str(message.content) for message in mesages])
     return llm_chain.get_num_tokens(text)
 
 
@@ -390,7 +383,7 @@ def process_message_buffer():
                     prompt = chats[chat_id]['messages'][-1]
                     fileID = message.photo[-1].file_id
                     file = bot.get_file(fileID)
-                    response = answer_image_message(prompt.content[0], f'https://api.telegram.org/file/bot{bot_token}/{file.file_path}')
+                    response = answer_image_message(prompt.content[0], f'https://api.telegram.org/file/bot{bot_token}/{file.file_path}', chats[chat_id]['messages'])
                 else:
                     logging.debug(f"Text message {message.id} for chat {chat_id}")
                     response = llm.invoke(system_instructions + chats[chat_id]['messages'])
