@@ -203,13 +203,22 @@ def fallback_telegram_call(message, response_content):
     return True
 
 
+def is_bot_reply(message):
+    """
+    Check if the message is a reply to a bot message.
+    :param message: Telegram message
+    :return: True if the message is a reply, False otherwise
+    """
+    return True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
+
+
 def is_reply(message):
     """
     Check if the message is a reply.
     :param message: Telegram message
     :return: True if the message is a reply, False otherwise
     """
-    return True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
+    return True if message.reply_to_message else False
 
 
 def is_image(message):
@@ -387,7 +396,15 @@ def process_message_buffer():
 
             message_text = get_message_text(message)
             logging.debug(f"Message text: {message_text}")
-            message_parts = f'@{get_message_from(message)}: {f"@{bot_username} " if is_reply(message) else ""}{message_text}'
+
+            # build message for llm context
+            message_parts = f'@{get_message_from(message)}: '
+            if is_bot_reply(message):
+                message_parts += f"@{bot_username} "
+            elif is_reply(message):
+                message_parts += f'\n"@{get_message_from(message.reply_to_message)} said: {message.reply_to_message.text}"\n\n'
+            message_parts += message_text
+
             chats[chat_id]['messages'].append(HumanMessage(content=message_parts))
 
             # clean chat context if it is too long
@@ -458,7 +475,7 @@ def echo_all(message):
 
     message_text = get_message_text(message)
 
-    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower())) or is_reply(message):
+    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower())) or is_bot_reply(message):
         messages_buffer.append(message)
         logging.debug(f"Message {message.id} added to buffer")
     else:
