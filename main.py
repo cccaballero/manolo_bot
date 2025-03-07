@@ -17,6 +17,7 @@ from langchain.chains.llm import LLMChain
 from langchain_community.document_loaders.web_base import WebBaseLoader
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain_core.prompts import PromptTemplate
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langchain_openai import ChatOpenAI
@@ -47,6 +48,22 @@ try:
     preferred_language = os.environ['PREFERRED_LANGUAGE']
 except Exception:
     preferred_language = 'Spanish'
+try:
+    add_no_answer = os.environ['ADD_NO_ANSWER']
+except Exception:
+    add_no_answer = False
+try:
+    rate_limiter_requests_per_second = float(os.environ['RATE_LIMITER_REQUESTS_PER_SECOND'])
+except Exception:
+    rate_limiter_requests_per_second = 0.25
+try:
+    rate_limiter_check_every_n_seconds = float(os.environ['RATE_LIMITER_CHECK_EVERY_N_SECONDS'])
+except Exception:
+    rate_limiter_check_every_n_seconds = 0.1
+try:
+    rate_limiter_max_bucket_size = float(os.environ['RATE_LIMITER_MAX_BUCKET_SIZE'])
+except Exception:
+    rate_limiter_max_bucket_size = 10
 
 try:
     sdapi_url = os.environ['WEBUI_SD_API_URL']
@@ -73,20 +90,20 @@ allowed_chat_ids = [chat_id.strip() for chat_id in os.getenv('TELEGRAM_ALLOWED_C
 generate_image_instructions = """
 If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english."""
 
+no_answer_instructions = """
+If you don't understand a message write "NO_ANSWER".
+If you don't understand a question write "NO_ANSWER".
+If you don't have enough context write "NO_ANSWER".
+If you don't understand the language write "NO_ANSWER".
+If you are not mentioned in a message with your name or your identifier write "NO_ANSWER".
+When you answer "NO_ANSWER" don't add anything else, just "NO_ANSWER".
+"""
+
 instructions = os.getenv('TELEGRAM_BOT_INSTRUCTIONS', f"""Hello, we are going to play a game. I want you to act like you are participating in a group chat on telegram. Your name is {bot_name} and your identifier is @{bot_username}. You are a software engineer, geek and nerd, user of linux and free software technologies.
 
 All my entries will begin with the identifier of the person who writes in the chat, for example in the message:
 "@lolo: I'm very happy today"
 @lolo is the one who wrote the message.
-
-If you are not mentioned you will not give any answer, just write "NO_ANSWER". For example, if someone writes:
-"Hello Pepe."
-You answer:
-"NO_ANSWER"
-
-but if someone writes:
-"hello @{bot_username}."
-You will give an answer, because you have been mentioned by your identifier.
 
 Example of a chat conversation:
 @lolo: Hello @{bot_username}.
@@ -100,13 +117,7 @@ Example of a chat conversation:
 @{bot_username}: I's very hot today.
 
 Instructions:
-If you don't understand a message write "NO_ANSWER".
-If you don't understand a question write "NO_ANSWER".
-If you don't have enough context write "NO_ANSWER".
-If you don't understand the language write "NO_ANSWER".
-If you are not mentioned in a message with your name or your identifier write "NO_ANSWER".
-When you answer "NO_ANSWER" don't add anything else, just "NO_ANSWER".
-
+{'\n' + no_answer_instructions + '\n' if add_no_answer else ""}
 You don't need to include the user name or identifier at the beginning of your response.
 
 If a user asks to you, and only you to resume the content of a webpage or online article, you will answer "WEBCONTENT_RESUME" and the webpage url, like: "WEBCONTENT_RESUME https://pepe.com"
@@ -127,6 +138,12 @@ messages_buffer = []
 
 is_image_multimodal = False
 
+rate_limiter = InMemoryRateLimiter(
+    requests_per_second=rate_limiter_requests_per_second,
+    check_every_n_seconds=rate_limiter_check_every_n_seconds,
+    max_bucket_size=rate_limiter_max_bucket_size,
+)
+
 if os.environ.get('GOOGLE_API_KEY'):
     is_image_multimodal = True
     llm = ChatGoogleGenerativeAI(
@@ -137,6 +154,7 @@ if os.environ.get('GOOGLE_API_KEY'):
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         },
+        rate_limiter=rate_limiter
     )
 elif os.environ.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_BASE_URL'):
     api_key = os.environ.get('OPENAI_API_KEY', 'not-needed')
@@ -149,7 +167,7 @@ elif os.environ.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_BASE_URL'):
         params['base_url'] = base_url
     if model:
         params['model'] = model
-    llm = ChatOpenAI(temperature=0.0, **params)
+    llm = ChatOpenAI(temperature=0.0, rate_limiter=rate_limiter, **params)
 else:
     raise Exception("No Backend data found")
 
