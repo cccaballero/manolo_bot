@@ -1,5 +1,6 @@
 langchain
 langchain-google-genai
+google-generativeai
 langchain-openai
 langchain-community
 langchain-core
