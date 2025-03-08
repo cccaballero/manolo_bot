@@ -403,7 +403,10 @@ def process_message_buffer():
                 message_parts += f"@{bot_username} "
             elif is_reply(message):
                 message_parts += f'\n"@{get_message_from(message.reply_to_message)} said: {message.reply_to_message.text}"\n\n'
-            message_parts += message_text
+            if message_text:
+                message_parts += message_text
+            else:
+                logging.debug(f"No message text for message {message.id}")
 
             chats[chat_id]['messages'].append(HumanMessage(content=message_parts))
 
