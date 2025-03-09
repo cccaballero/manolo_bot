@@ -453,13 +453,13 @@ def process_message_buffer():
                 logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
                 response_content = answer_webcontent(message_text, response_content)
                 # TODO: find a way to graciously handle failed web content requests
-                response_content = response if response_content else '😐'
+                response_content = response_content if response_content else '😐'
                 reply_to_telegram_message(message, response_content)
             elif 'WEBCONTENT_OPINION' in response_content:
                 logging.debug(f"WEBCONTENT_OPINION response, generating web content opinion for chat {chat_id}")
                 response_content = answer_webcontent(message_text, response_content)
                 # TODO: find a way to graciously handle failed web content requests
-                response_content = response if response_content else '😐'
+                response_content = response_content if response_content else '😐'
                 reply_to_telegram_message(message, response_content)
             elif 'NO_ANSWER' not in response_content:
                 logging.debug(f"Sending response for chat {chat_id}")
