@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 import telebot
+import telebot.formatting
 from dotenv import load_dotenv
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
@@ -373,6 +374,9 @@ def reply_to_telegram_message(message, response_content):
     """
     chat_id = message.chat.id
     try:
+        usernames = re.findall(r"(?<!\S)@[a-zA-Z0-9._-]+", response_content)
+        for username in usernames:
+            response_content = response_content.replace(username, telebot.formatting.escape_markdown(username))
         bot.reply_to(message, response_content, parse_mode='markdown')
         logging.debug(f"Sent response for chat {chat_id}")
     except Exception as e:
