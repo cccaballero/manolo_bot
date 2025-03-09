@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
+from requests.exceptions import ConnectionError
 
 from langchain_openai import ChatOpenAI
 
@@ -335,22 +336,26 @@ def answer_webcontent(message_text, response_content):
     :param response_content: Response content
     :return: New response content if the call was successful, None otherwise
     """
-    url = extract_url(response_content)
-    if url:
-        logging.debug(f"Obtaining web content for {url}")
-        loader = WebBaseLoader(url)
-        docs = loader.load()
-        template = remove_urls(message_text) + '\n' + "\"{text}\""
-        prompt = PromptTemplate.from_template(template)
-        logging.debug(f"Web content prompt: {prompt}")
-        llm_chain = LLMChain(llm=llm, prompt=prompt)
-        stuff_chain = StuffDocumentsChain(llm_chain=llm_chain, document_variable_name="text")
-        response = stuff_chain.invoke(docs)
-        response_content = response["output_text"]
-        logging.debug(f"Web content response: {response_content}")
-        return response_content
-    else:
-        logging.debug(f"No URL found for web content: {message_text}")
+    try:
+        url = extract_url(response_content)
+        if url:
+            logging.debug(f"Obtaining web content for {url}")
+            loader = WebBaseLoader(url)
+            docs = loader.load()
+            template = remove_urls(message_text) + '\n' + "\"{text}\""
+            prompt = PromptTemplate.from_template(template)
+            logging.debug(f"Web content prompt: {prompt}")
+            llm_chain = LLMChain(llm=llm, prompt=prompt)
+            stuff_chain = StuffDocumentsChain(llm_chain=llm_chain, document_variable_name="text")
+            response = stuff_chain.invoke(docs)
+            response_content = response["output_text"]
+            logging.debug(f"Web content response: {response_content}")
+            return response_content
+        else:
+            logging.debug(f"No URL found for web content: {message_text}")
+    except ConnectionError as e:
+        logging.error(f"Error connecting to web content")
+        logging.exception(e)
     return None
 
 def clean_standard_message(message_text):
@@ -447,10 +452,14 @@ def process_message_buffer():
             elif "WEBCONTENT_RESUME" in response_content:
                 logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
                 response_content = answer_webcontent(message_text, response_content)
+                # TODO: find a way to graciously handle failed web content requests
+                response_content = response if response_content else '😐'
                 reply_to_telegram_message(message, response_content)
             elif 'WEBCONTENT_OPINION' in response_content:
                 logging.debug(f"WEBCONTENT_OPINION response, generating web content opinion for chat {chat_id}")
                 response_content = answer_webcontent(message_text, response_content)
+                # TODO: find a way to graciously handle failed web content requests
+                response_content = response if response_content else '😐'
                 reply_to_telegram_message(message, response_content)
             elif 'NO_ANSWER' not in response_content:
                 logging.debug(f"Sending response for chat {chat_id}")
