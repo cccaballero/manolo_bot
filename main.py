@@ -381,7 +381,7 @@ def reply_to_telegram_message(message, response_content):
     """
     chat_id = message.chat.id
     try:
-        usernames = re.findall(r"(?<!\S)@[a-zA-Z0-9._-]+", response_content)
+        usernames = re.findall(r"(?<!\S)@\w+", response_content)
         for username in usernames:
             response_content = response_content.replace(username, telebot.formatting.escape_markdown(username))
         bot.reply_to(message, response_content, parse_mode='markdown')
