@@ -318,6 +318,7 @@ def generate_image(prompt):
         return response['images'][0]
     return None
 
+
 def count_tokens(mesages, llm_chain):
     """
     Count the number of tokens in the messages.
@@ -358,6 +359,7 @@ def answer_webcontent(message_text, response_content):
         logging.exception(e)
     return None
 
+
 def clean_standard_message(message_text):
     """
     Clean a standard message.
@@ -388,6 +390,7 @@ def reply_to_telegram_message(message, response_content):
         logging.exception(e)
         if not fallback_telegram_call(message, response_content):
             logging.error(f"Failed to send response for chat {chat_id}")
+
 
 def process_message_buffer():
     """
@@ -475,6 +478,21 @@ def process_message_buffer():
             sleep(0.1)
 
 
+@bot.message_handler(commands=['flushcontext'])
+def flush_context_command(message):
+    logging.debug(f"Received flushcontext command from user {message.from_user.id} in chat {message.chat.id}")
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    if message.chat.type in ['group', 'supergroup', 'channel'] and not user_is_admin(bot, user_id, chat_id):
+        logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
+        return
+
+    logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
+    chats[chat_id]['messages'] = []
+    logging.debug(f"Chat {chat_id} context flushed")
+
+
 @bot.message_handler(func=lambda message: True, content_types=['text', 'photo'])
 def echo_all(message):
     chat_id = message.chat.id
@@ -496,6 +514,11 @@ def echo_all(message):
         logging.debug(f"Message {message.id} added to buffer")
     else:
         logging.debug(f"Message {message.id} ignored, not added to buffer")
+
+
+def user_is_admin(bot, user_id, chat_id):
+    admins = bot.get_chat_administrators(chat_id)
+    return any(admin.user.id == user_id for admin in admins)
 
 
 buffer_processing = threading.Thread(target=process_message_buffer)
