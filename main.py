@@ -95,6 +95,8 @@ except Exception:
 
 allowed_chat_ids = [chat_id.strip() for chat_id in os.getenv('TELEGRAM_ALLOWED_CHATS', '').split(',') if chat_id.strip()]
 
+newline = "\n"
+
 generate_image_instructions = """
 If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english."""
 
@@ -125,7 +127,7 @@ Example of a chat conversation:
 @{bot_username}: I's very hot today.
 
 Instructions:
-{'\n' + no_answer_instructions + '\n' if add_no_answer else ""}
+{newline + no_answer_instructions + newline if add_no_answer else ""}
 You don't need to include the user name or identifier at the beginning of your response.
 
 If a user asks to you, and only you to resume the content of a webpage or online article, you will answer "WEBCONTENT_RESUME" and the webpage url, like: "WEBCONTENT_RESUME https://pepe.com"
