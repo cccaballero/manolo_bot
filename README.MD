@@ -15,6 +15,8 @@ You can copy and rename the provided `env.example` to `.env` and edit the file a
 
 You can create a bot on Telegram and get its API token by following the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot).
 
+For use the bot on a group you have to use the @BotFather bot to [set the Group Privacy off](https://stackoverflow.com/questions/50204633/allow-bot-to-access-telegram-group-messages/50236522#50236522). This let the bot to access all the group messages.
+
 #### Required environment variables.
 
 You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` or `OLLAMA_MODEL` for selecting the required 
