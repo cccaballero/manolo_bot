@@ -72,6 +72,10 @@ try:
     is_image_multimodal = os.getenv("ENABLE_MULTIMODAL", 'False').lower() in ('true', '1', 't')
 except Exception:
     is_image_multimodal = False
+try:
+    is_group_assistant = os.getenv("ENABLE_GROUP_ASSISTANT", 'False').lower() in ('true', '1', 't')
+except Exception:
+    is_group_assistant = False
 
 try:
     sdapi_url = os.environ['WEBUI_SD_API_URL']
@@ -518,7 +522,7 @@ def echo_all(message):
 
     message_text = get_message_text(message)
 
-    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower())) or is_bot_reply(message):
+    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower()) or (is_group_assistant and not is_reply(message) and "?" in message_text)) or is_bot_reply(message):
         messages_buffer.append(message)
         logging.debug(f"Message {message.id} added to buffer")
     else:

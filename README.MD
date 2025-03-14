@@ -57,6 +57,10 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 `ENABLE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal capabilities.
 
+#### Enable group assistant
+
+`ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will answer to group chats with a question mark. Default is False.
+
 #### Enable rate limiting
 
 `RATE_LIMITER_REQUESTS_PER_SECOND`: The number of requests per second allowed by the bot.
