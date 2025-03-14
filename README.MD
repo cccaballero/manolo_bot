@@ -17,10 +17,11 @@ You can create a bot on Telegram and get its API token by following the [officia
 
 #### Required environment variables.
 
-You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY` or `OPENAI_API_BASE_URL` for selecting the required LLM provider.
+You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` or `OLLAMA_MODEL` for selecting the required 
+LLM provider.
 The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
-<b>Note:</b> When `GOOGLE_API_KEY` option is selected the model used will be Gemini Pro and multimodal capabilities will be enabled for images.
+- <b>Note:</b> When `GOOGLE_API_KEY` option is selected the default model used will be Gemini 2.0 Flash.
 
 `TELEGRAM_BOT_NAME`: Your Telegram bot name
 
@@ -31,6 +32,10 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 #### Selecting OpenAI Model.
 
 `OPENAI_API_MODEL`: LLM to use for OpenAI or OpenAI-like API, if not provided the default model will be used.
+
+#### Selecting Google API Model.
+
+`GOOGLE_API_MODEL`: LLM to use for Google API, if not provided the default model will be used.
 
 #### Enabling image Generation with Stable Diffusion
 
@@ -45,6 +50,24 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 #### Limiting Bot interaction
 
 `TELEGRAM_ALLOWED_CHATS`: You can use a comma separated allowed chat IDs for limiting bot interaction to those chats.
+
+#### Enable multimodal capabilities
+
+`ENABLE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal capabilities.
+
+#### Enable rate limiting
+
+`RATE_LIMITER_REQUESTS_PER_SECOND`: The number of requests per second allowed by the bot.
+`RATE_LIMITER_CHECK_EVERY_N_SECONDS`: The number of seconds between rate limit checks.
+`RATE_LIMITER_MAX_BUCKET_SIZE`: The maximum bucket size for rate limiting.
+
+#### Set preferred language
+
+`PREFERRED_LANGUAGE`: The preferred language for the bot. (English, Spanish, etc.)
+
+#### Set context max tokens
+
+`CONTEXT_MAX_TOKENS`: The maximum number of tokens allowed for the bot's context.
 
 ### Running the Bot 
  
