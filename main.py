@@ -211,6 +211,11 @@ def fallback_telegram_call(message, response_content):
     return True
 
 
+def user_is_admin(bot, user_id, chat_id):
+    admins = bot.get_chat_administrators(chat_id)
+    return any(admin.user.id == user_id for admin in admins)
+
+
 def is_bot_reply(message):
     """
     Check if the message is a reply to a bot message.
@@ -514,11 +519,6 @@ def echo_all(message):
         logging.debug(f"Message {message.id} added to buffer")
     else:
         logging.debug(f"Message {message.id} ignored, not added to buffer")
-
-
-def user_is_admin(bot, user_id, chat_id):
-    admins = bot.get_chat_administrators(chat_id)
-    return any(admin.user.id == user_id for admin in admins)
 
 
 buffer_processing = threading.Thread(target=process_message_buffer)
