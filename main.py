@@ -21,6 +21,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
+from requests import RequestException
 from requests.exceptions import ConnectionError
 
 from langchain_openai import ChatOpenAI
@@ -289,24 +290,25 @@ def answer_image_message(text, image, messages):
     """
     logging.debug(f"Image message: {text}")
 
-    image_data = base64.b64encode(requests.get(image).content).decode("utf-8")
-
-    llm_message = HumanMessage(
-        content=[
-            {
-                "type": "text",
-                "text": text,
-            },
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
-        ]
-    )
-    messages.append(llm_message)
-
     try:
+        image_data = base64.b64encode(requests.get(image).content).decode("utf-8")
+        llm_message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": text,
+                },
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
+            ]
+        )
+        messages.append(llm_message)
         response = llm.invoke(messages)
-    except Exception as e:
-        response = BaseMessage(content="NO_ANSWER", type="text")
+    except (RequestException, Exception) as e:
+        if isinstance(e, RequestException):
+            logging.error(f"Failed to get image: {image}")
         logging.exception(e)
+        response = BaseMessage(content="NO_ANSWER", type="text")
+
     logging.debug(f"Image message response: {response}")
     return response
 
