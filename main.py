@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from requests.exceptions import ConnectionError
 
 from langchain_openai import ChatOpenAI
@@ -28,8 +29,8 @@ load_dotenv()
 
 logging.basicConfig(level="DEBUG")
 
-if not os.environ.get('GOOGLE_API_KEY') and not os.environ.get('OPENAI_API_KEY') and not os.environ.get('OPENAI_API_BASE_URL'):
-    raise Exception('The environment variables "GOOGLE_API_KEY" or "OPENAI_API_BASE_URL" or "OPENAI_API_BASE" does not exist.')
+if not os.environ.get('GOOGLE_API_KEY') and not os.environ.get('OPENAI_API_KEY') and not os.environ.get('OPENAI_API_BASE_URL') and not os.environ.get('OLLAMA_MODEL'):
+    raise Exception('The environment variables "GOOGLE_API_KEY" or "OPENAI_API_BASE_URL" or "OPENAI_API_BASE" or "OLLAMA_MODEL" does not exist.')
 try:
     bot_name = os.environ['TELEGRAM_BOT_NAME']
 except KeyError:
@@ -66,6 +67,10 @@ try:
     rate_limiter_max_bucket_size = float(os.environ['RATE_LIMITER_MAX_BUCKET_SIZE'])
 except Exception:
     rate_limiter_max_bucket_size = 10
+try:
+    is_image_multimodal = os.getenv("ENABLE_MULTIMODAL", 'False').lower() in ('true', '1', 't')
+except Exception:
+    is_image_multimodal = False
 
 try:
     sdapi_url = os.environ['WEBUI_SD_API_URL']
@@ -138,18 +143,19 @@ system_instructions = [
 chats = {}
 messages_buffer = []
 
-is_image_multimodal = False
-
 rate_limiter = InMemoryRateLimiter(
     requests_per_second=rate_limiter_requests_per_second,
     check_every_n_seconds=rate_limiter_check_every_n_seconds,
     max_bucket_size=rate_limiter_max_bucket_size,
 )
 
-if os.environ.get('GOOGLE_API_KEY'):
-    is_image_multimodal = True
+if os.environ.get('OLLAMA_MODEL'):
+    llm = ChatOllama(
+        model=os.environ.get('OLLAMA_MODEL')
+    )
+elif os.environ.get('GOOGLE_API_KEY'):
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model=os.environ.get('GOOGLE_API_MODEL', 'gemini-2.0-flash'),
         safety_settings={
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -277,28 +283,22 @@ def answer_image_message(text, image, messages):
     :return: Response
     """
     logging.debug(f"Image message: {text}")
+
+    image_data = base64.b64encode(requests.get(image).content).decode("utf-8")
+
     llm_message = HumanMessage(
         content=[
             {
                 "type": "text",
                 "text": text,
             },
-            {"type": "image_url", "image_url": image},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
         ]
     )
     messages.append(llm_message)
 
-    image_llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        safety_settings={
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        },
-    )
     try:
-        response = image_llm.invoke(messages)
+        response = llm.invoke(messages)
     except Exception as e:
         response = BaseMessage(content="NO_ANSWER", type="text")
         logging.exception(e)

@@ -1,5 +1,6 @@
 langchain
 langchain-google-genai
+langchain-ollama
 google-generativeai
 langchain-openai
 langchain-community
@@ -11,3 +12,4 @@ pytelegrambotapi
 requests
 python-dotenv
 fake-useragent
+transformers
