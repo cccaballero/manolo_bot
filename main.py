@@ -72,6 +72,10 @@ try:
     is_image_multimodal = os.getenv("ENABLE_MULTIMODAL", 'False').lower() in ('true', '1', 't')
 except Exception:
     is_image_multimodal = False
+try:
+    is_group_assistant = os.getenv("ENABLE_GROUP_ASSISTANT", 'False').lower() in ('true', '1', 't')
+except Exception:
+    is_group_assistant = False
 
 try:
     sdapi_url = os.environ['WEBUI_SD_API_URL']
@@ -94,6 +98,8 @@ except Exception:
     logging.warning('Could not load WEBUI_SD_API_PARAMS. Defaults for SDXL Turbo model will be used.')
 
 allowed_chat_ids = [chat_id.strip() for chat_id in os.getenv('TELEGRAM_ALLOWED_CHATS', '').split(',') if chat_id.strip()]
+
+newline = "\n"
 
 generate_image_instructions = """
 If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english."""
@@ -125,7 +131,7 @@ Example of a chat conversation:
 @{bot_username}: I's very hot today.
 
 Instructions:
-{'\n' + no_answer_instructions + '\n' if add_no_answer else ""}
+{newline + no_answer_instructions + newline if add_no_answer else ""}
 You don't need to include the user name or identifier at the beginning of your response.
 
 If a user asks to you, and only you to resume the content of a webpage or online article, you will answer "WEBCONTENT_RESUME" and the webpage url, like: "WEBCONTENT_RESUME https://pepe.com"
@@ -516,7 +522,7 @@ def echo_all(message):
 
     message_text = get_message_text(message)
 
-    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower())) or is_bot_reply(message):
+    if (message_text and (f"@{bot_username}" in message_text or bot_name.lower() in message_text.lower()) or (is_group_assistant and not is_reply(message) and "?" in message_text)) or is_bot_reply(message):
         messages_buffer.append(message)
         logging.debug(f"Message {message.id} added to buffer")
     else:
