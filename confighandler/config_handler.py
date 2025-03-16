@@ -4,7 +4,15 @@ import os
 
 
 class BaseField:
-    def __init__(self, name: str, required: bool = False, default: str = None, error: str = None, lazy: bool = True, warning: str = None):
+    def __init__(
+        self,
+        name: str,
+        required: bool = False,
+        default: str = None,
+        error: str = None,
+        lazy: bool = True,
+        warning: str = None,
+    ):
         self.name = name
         self.required = required
         self.default = default
@@ -34,7 +42,6 @@ class StringField(BaseField):
 
 
 class BooleanField(BaseField):
-
     def __init__(self, name, default: bool = False, **kwargs):
         super().__init__(name, **kwargs)
         self.default = default
@@ -44,7 +51,7 @@ class BooleanField(BaseField):
             return self._config_value
         env_value = os.getenv(self.name, None)
         if env_value:
-            self._config_value = env_value.lower() in ('true', '1', 't')
+            self._config_value = env_value.lower() in ("true", "1", "t")
         else:
             self._config_value = self.default
         return self._config_value
@@ -81,10 +88,10 @@ class FloatField(BaseField):
 
 
 class JsonField(BaseField):
-
     def __init__(self, name, default: dict = None, **kwargs):
         super().__init__(name, **kwargs)
         self.default = default
+
     def get_env_variable(self):
         if not self.lazy and self._config_value is not None:
             return self._config_value
@@ -103,18 +110,19 @@ class JsonField(BaseField):
                 logging.warning(self.warning)
         return self._config_value
 
-class StringListField(BaseField):
 
+class StringListField(BaseField):
     def __init__(self, name, default: list[str] = None, **kwargs):
         super().__init__(name, **kwargs)
         self.default = default
+
     def get_env_variable(self):
         if not self.lazy and self._config_value is not None:
             return self._config_value
         try:
             env_value = os.getenv(self.name, None)
             if env_value:
-                self._config_value = [element.strip() for element in env_value.split(',') if element.strip()]
+                self._config_value = [element.strip() for element in env_value.split(",") if element.strip()]
             else:
                 self._config_value = self.default
         except Exception:
@@ -122,8 +130,7 @@ class StringListField(BaseField):
         return self._config_value
 
 
-class BaseConfig(object):
-
+class BaseConfig:
     def __init__(self, lazy=False):
         self.lazy = lazy
         if not self.lazy:
