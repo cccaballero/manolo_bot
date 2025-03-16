@@ -1,0 +1,37 @@
+[project]
+name = "manolo-bot"
+version = "0.1.0"
+description = "Telegram Chat Bot using LLM"
+readme = "README.MD"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.13.3",
+    "google-generativeai>=0.8.4",
+    "langchain>=0.3.20",
+    "langchain-community>=0.3.19",
+    "langchain-core>=0.3.45",
+    "langchain-google-genai>=2.0.10",
+    "langchain-ollama>=0.2.3",
+    "langchain-openai>=0.3.8",
+    "pillow>=11.1.0",
+    "pytelegrambotapi>=4.26.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "transformers>=4.49.0",
+]
+
+[tool.uv]
+dev-dependencies = ["pre-commit>=4.1.0", "ruff>=0.11.0"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "I"]
+ignore = []
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 120
