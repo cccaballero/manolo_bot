@@ -2,7 +2,8 @@
 name = "manolo-bot"
 version = "0.1.0"
 description = "Telegram Chat Bot using LLM"
-readme = "README.MD"
+authors = [{ name = "Carlos Cesar Caballero Díaz", email = "tbd@example.com" }]
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.13.3",
