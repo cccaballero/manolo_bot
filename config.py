@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from confighandler import (
     BaseConfig,
     BooleanField,
@@ -44,3 +46,8 @@ class Config(BaseConfig):
     )
     allowed_chat_ids = StringListField("TELEGRAM_ALLOWED_CHATS")
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
+
+
+@lru_cache
+def get_config():
+    return Config()
