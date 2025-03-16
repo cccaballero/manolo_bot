@@ -2,9 +2,11 @@ import logging
 import re
 
 import telebot
+from telebot import TeleBot
+from telebot.types import Message
 
 
-def fallback_telegram_call(bot, message, response_content):
+def fallback_telegram_call(bot: TeleBot, message: Message, response_content: str) -> bool:
     """
     Call the Telegram API without using Markdown formatting.
     :param bot: Telegram telegram_bot instance
@@ -20,7 +22,7 @@ def fallback_telegram_call(bot, message, response_content):
     return True
 
 
-def user_is_admin(bot, user_id, chat_id):
+def user_is_admin(bot: TeleBot, user_id: int, chat_id: int) -> bool:
     """
     Check if the user is an admin of the chat.
     :param bot: Telegram telegram_bot instance
@@ -32,7 +34,7 @@ def user_is_admin(bot, user_id, chat_id):
     return any(admin.user.id == user_id for admin in admins)
 
 
-def is_bot_reply(bot_username, message):
+def is_bot_reply(bot_username: str, message: Message) -> bool:
     """
     Check if the message is a reply to a telegram_bot message.
     :param message: Telegram message
@@ -42,7 +44,7 @@ def is_bot_reply(bot_username, message):
     return True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
 
 
-def is_reply(message):
+def is_reply(message: Message) -> bool:
     """
     Check if the message is a reply.
     :param message: Telegram message
@@ -51,7 +53,7 @@ def is_reply(message):
     return True if message.reply_to_message else False
 
 
-def is_image(message):
+def is_image(message: Message) -> bool:
     """
     Check if the message is an image.
     :param message: Telegram message
@@ -60,7 +62,7 @@ def is_image(message):
     return message.content_type == "photo"
 
 
-def get_message_text(message):
+def get_message_text(message: Message) -> str:
     """
     Get the text of the message.
     :param message: Telegram message
@@ -69,7 +71,7 @@ def get_message_text(message):
     return message.caption if is_image(message) else message.text
 
 
-def get_message_from(message):
+def get_message_from(message: Message) -> str:
     """
     Get the sender of the message.
     :param message: Telegram message
@@ -78,7 +80,7 @@ def get_message_from(message):
     return message.from_user.username
 
 
-def reply_to_telegram_message(bot, message, response_content):
+def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: str) -> None:
     """
     Reply to a message.
     :param bot: Telegram telegram_bot instance
@@ -99,7 +101,7 @@ def reply_to_telegram_message(bot, message, response_content):
             logging.error(f"Failed to send response for chat {chat_id}")
 
 
-def clean_standard_message(bot_username, message_text):
+def clean_standard_message(bot_username: str, message_text: str) -> str:
     """
     Clean a standard message.
     :param bot_username: Telegram telegram_bot username

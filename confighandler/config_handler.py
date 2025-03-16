@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import Any
 
 
 class BaseField:
@@ -22,13 +23,13 @@ class BaseField:
 
         self._config_value = None
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         self._config_value = os.getenv(self.name, self.default)
         return self._config_value
 
-    def __call__(self):
+    def __call__(self) -> str:
         env_value = self.get_env_variable()
         if self.required and env_value is None:
             raise Exception(self.error)
@@ -46,7 +47,7 @@ class BooleanField(BaseField):
         super().__init__(name, **kwargs)
         self.default = default
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         env_value = os.getenv(self.name, None)
@@ -62,7 +63,7 @@ class IntegerField(BaseField):
         super().__init__(name, **kwargs)
         self.default = default
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         try:
@@ -77,7 +78,7 @@ class FloatField(BaseField):
         super().__init__(name, **kwargs)
         self.default = default
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         try:
@@ -92,7 +93,7 @@ class JsonField(BaseField):
         super().__init__(name, **kwargs)
         self.default = default
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         try:
@@ -116,7 +117,7 @@ class StringListField(BaseField):
         super().__init__(name, **kwargs)
         self.default = default
 
-    def get_env_variable(self):
+    def get_env_variable(self) -> str:
         if not self.lazy and self._config_value is not None:
             return self._config_value
         try:
@@ -141,7 +142,7 @@ class BaseConfig:
             if isinstance(field, BaseField):
                 field()
 
-    def __getattribute__(self, item):
+    def __getattribute__(self, item: Any) -> Any:
         if isinstance(object.__getattribute__(self, item), BaseField):
             return object.__getattribute__(self, item)()
         return object.__getattribute__(self, item)

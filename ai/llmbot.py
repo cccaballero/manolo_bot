@@ -3,6 +3,7 @@ import logging
 import random
 import re
 from time import sleep
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -17,6 +18,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from requests import RequestException
+from telebot import TeleBot
 
 from config import Config
 from telegram.utils import (
@@ -48,7 +50,7 @@ class LLMBot:
     def _get_chat_ollama(self):
         return ChatOllama(model=self.config.ollama_model)
 
-    def _get_chat_google_generativeai(self):
+    def _get_chat_google_generativeai(self) -> ChatGoogleGenerativeAI:
         return ChatGoogleGenerativeAI(
             model=self.config.google_api_model,
             safety_settings={
@@ -60,7 +62,7 @@ class LLMBot:
             rate_limiter=self._get_rate_limiter(),
         )
 
-    def _get_chat_openai(self):
+    def _get_chat_openai(self) -> ChatOpenAI:
         api_key = self.config.openai_api_key if self.config.openai_api_key else "not-needed"
         base_url = self.config.openai_api_base_url
         model = self.config.openai_api_model
@@ -73,7 +75,7 @@ class LLMBot:
             params["model"] = model
         return ChatOpenAI(temperature=0.0, rate_limiter=self._get_rate_limiter(), **params)
 
-    def _extract_url(self, text):
+    def _extract_url(self, text: str) -> str | None:
         """
         Extract the URL from the text.
         :param text: Text to extract the URL from
@@ -82,7 +84,7 @@ class LLMBot:
         url = re.search(r"https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+", text)
         return url.group(0) if url else None
 
-    def _remove_urls(self, text):
+    def _remove_urls(self, text: str) -> str:
         """
         Remove URLs from the text.
         :param text: Text to remove URLs from
@@ -100,7 +102,7 @@ class LLMBot:
         else:
             raise Exception("No LLM backend data found")
 
-    def call_sdapi(self, prompt):
+    def call_sdapi(self, prompt: str) -> dict[str, Any] | None:
         """
         Call the StableDiffusion API.
         :param prompt: The prompt to send to the StableDiffusion API.
@@ -113,7 +115,7 @@ class LLMBot:
                 return response.json()
         return None
 
-    def answer_image_message(self, text, image, messages):
+    def answer_image_message(self, text: str, image: str, messages: list[BaseMessage]) -> BaseMessage:
         """
         Answer an image message.
         :param text: Text to answer
@@ -145,7 +147,7 @@ class LLMBot:
         logging.debug(f"Image message response: {response}")
         return response
 
-    def generate_image(self, prompt):
+    def generate_image(self, prompt: str) -> dict[str, Any] | None:
         """
         Generate an image.
         :param prompt: Prompt to generate the image
@@ -157,7 +159,7 @@ class LLMBot:
             return response["images"][0]
         return None
 
-    def count_tokens(self, messages, llm_chain):
+    def count_tokens(self, messages: list[BaseMessage], llm_chain: LLMChain) -> int:
         """
         Count the number of tokens in the messages.
         :param messages: List of messages
@@ -169,7 +171,7 @@ class LLMBot:
         )
         return llm_chain.get_num_tokens(text)
 
-    def answer_webcontent(self, message_text, response_content):
+    def answer_webcontent(self, message_text: str, response_content: str) -> str | None:
         """
         Answer a web content message.
         :param message_text: Text to answer
@@ -199,7 +201,7 @@ class LLMBot:
             logging.exception(e)
         return None
 
-    def process_message_buffer(self, chats, bot):
+    def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
         Process the message buffer.
         """
