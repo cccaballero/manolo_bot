@@ -10,7 +10,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.14
+          python-version: 3.12
           # Setup cache
           cache: 'pip'
       - name: Display Python version
@@ -21,16 +21,18 @@ jobs:
         run: python -m ruff check
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - '3.12'
+          - '3.13'
+          - '3.14'
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: |
-            3.12
-            3.13
-            3.14
-          # Setup cache
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
