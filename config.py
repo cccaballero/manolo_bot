@@ -1,5 +1,12 @@
-from confighandler import BaseConfig, StringField, IntegerField, BooleanField, FloatField, \
-    JsonField, StringListField
+from confighandler import (
+    BaseConfig,
+    BooleanField,
+    FloatField,
+    IntegerField,
+    JsonField,
+    StringField,
+    StringListField,
+)
 
 
 class Config(BaseConfig):
@@ -20,14 +27,20 @@ class Config(BaseConfig):
     rate_limiter_max_bucket_size = IntegerField("RATE_LIMITER_MAX_BUCKET_SIZE", default=10)
     is_image_multimodal = BooleanField("ENABLE_MULTIMODAL", default=False)
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
-    sdapi_url = StringField("WEBUI_SD_API_URL", warning="WEBUI_SD_API_URL environment variable not set. Image generation disabled.")
+    sdapi_url = StringField(
+        "WEBUI_SD_API_URL", warning="WEBUI_SD_API_URL environment variable not set. Image generation disabled."
+    )
     default_sdapi_params = {
-        'steps': 1,
-        'cfg_scale': 1,
-        'width': 512,
-        'height': 512,
-        'timestep_spacing': 'trailing',
+        "steps": 1,
+        "cfg_scale": 1,
+        "width": 512,
+        "height": 512,
+        "timestep_spacing": "trailing",
     }
-    sdapi_params = JsonField("WEBUI_SD_API_PARAMS", default=default_sdapi_params, warning="Could not load WEBUI_SD_API_PARAMS. Defaults for SDXL Turbo model will be used.")
+    sdapi_params = JsonField(
+        "WEBUI_SD_API_PARAMS",
+        default=default_sdapi_params,
+        warning="Could not load WEBUI_SD_API_PARAMS. Defaults for SDXL Turbo model will be used.",
+    )
     allowed_chat_ids = StringListField("TELEGRAM_ALLOWED_CHATS")
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")

@@ -3,12 +3,19 @@ import unittest.mock
 
 import telebot
 
-from telegram.utils import is_bot_reply, fallback_telegram_call, user_is_admin, is_image, get_message_text, \
-    get_message_from, reply_to_telegram_message, clean_standard_message
+from telegram.utils import (
+    clean_standard_message,
+    fallback_telegram_call,
+    get_message_from,
+    get_message_text,
+    is_bot_reply,
+    is_image,
+    reply_to_telegram_message,
+    user_is_admin,
+)
 
 
 class TestTelegramUtils(unittest.TestCase):
-
     def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
         # Arrange
         mock_bot = unittest.mock.Mock()
@@ -46,7 +53,7 @@ class TestTelegramUtils(unittest.TestCase):
         mock_admin = unittest.mock.Mock()
         mock_admin.user.id = user_id
 
-        # Configure the mock bot to return a list with our admin
+        # Configure the mock telegram_bot to return a list with our admin
         mock_bot.get_chat_administrators.return_value = [mock_admin]
 
         # Act
@@ -62,7 +69,7 @@ class TestTelegramUtils(unittest.TestCase):
         user_id = 12345
         chat_id = 67890
 
-        # Configure the mock bot to return an empty list
+        # Configure the mock telegram_bot to return an empty list
         mock_bot.get_chat_administrators.return_value = []
 
         # Act
@@ -82,7 +89,7 @@ class TestTelegramUtils(unittest.TestCase):
             chat=telebot.types.Chat(id=1, type="private"),
             content_type="text",
             options={},
-            json_string=""
+            json_string="",
         )
         message.reply_to_message = telebot.types.Message(
             message_id=2,
@@ -91,7 +98,7 @@ class TestTelegramUtils(unittest.TestCase):
             chat=telebot.types.Chat(id=1, type="private"),
             content_type="text",
             options={},
-            json_string=""
+            json_string="",
         )
 
         # Act
@@ -110,7 +117,7 @@ class TestTelegramUtils(unittest.TestCase):
             chat=telebot.types.Chat(id=1, type="private"),
             content_type="text",
             options={},
-            json_string=""
+            json_string="",
         )
         message.reply_to_message = None
 
@@ -122,7 +129,7 @@ class TestTelegramUtils(unittest.TestCase):
 
     def test_is_image__returns_true_when_content_type_is_photo(self):
         # Create a mock message with content_type 'photo'
-        mock_message = type('obj', (object,), {'content_type': 'photo'})
+        mock_message = type("obj", (object,), {"content_type": "photo"})
 
         # Act
         result = is_image(mock_message)
@@ -170,7 +177,7 @@ class TestTelegramUtils(unittest.TestCase):
             chat=telebot.types.Chat(id=1, type="private"),
             content_type="text",
             options={},
-            json_string=""
+            json_string="",
         )
 
         # Act
@@ -189,7 +196,7 @@ class TestTelegramUtils(unittest.TestCase):
             chat=telebot.types.Chat(id=1, type="private"),
             content_type="text",
             options={},
-            json_string=""
+            json_string="",
         )
 
         # Act
@@ -206,15 +213,13 @@ class TestTelegramUtils(unittest.TestCase):
         response_content = "Hello @username, this is a *markdown* message"
 
         # Mock the logging
-        with unittest.mock.patch('logging.debug') as mock_logging:
+        with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
             reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
             mock_bot.reply_to.assert_called_once_with(
-                mock_message,
-                "Hello @username, this is a *markdown* message",
-                parse_mode='markdown'
+                mock_message, "Hello @username, this is a *markdown* message", parse_mode="markdown"
             )
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
@@ -226,16 +231,12 @@ class TestTelegramUtils(unittest.TestCase):
         response_content = ""
 
         # Mock logging
-        with unittest.mock.patch('logging.debug') as mock_logging:
+        with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
             reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(
-                mock_message,
-                "",
-                parse_mode='markdown'
-            )
+            mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="markdown")
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
@@ -258,3 +259,7 @@ class TestTelegramUtils(unittest.TestCase):
         # Act & Assert
         with self.assertRaises(AttributeError):
             clean_standard_message(bot_username, message_text)
+
+
+if __name__ == "__main__":
+    unittest.main()

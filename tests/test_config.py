@@ -5,7 +5,6 @@ from config import Config
 
 
 class TestConfig(unittest.TestCase):
-
     def test_config(self):
         os.environ["GOOGLE_API_KEY"] = "1234567890"
         os.environ["GOOGLE_API_MODEL"] = "gemini-2.0-flash"
@@ -25,8 +24,9 @@ class TestConfig(unittest.TestCase):
         os.environ["ENABLE_MULTIMODAL"] = "True"
         os.environ["ENABLE_GROUP_ASSISTANT"] = "False"
         os.environ["WEBUI_SD_API_URL"] = "http://localhost:7860"
-        os.environ[
-            "WEBUI_SD_API_PARAMS"] = '{"steps": 1, "cfg_scale": 1, "width": 512, "height": 512, "timestep_spacing": "trailing"}'
+        os.environ["WEBUI_SD_API_PARAMS"] = (
+            '{"steps": 1, "cfg_scale": 1, "width": 512, "height": 512, "timestep_spacing": "trailing"}'
+        )
         os.environ["TELEGRAM_ALLOWED_CHATS"] = "1234567890,9876543210,-456456456456"
 
         config = Config()
@@ -48,9 +48,33 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.is_image_multimodal, True)
         self.assertEqual(config.is_group_assistant, False)
         self.assertEqual(config.sdapi_url, "http://localhost:7860")
-        self.assertEqual(config.sdapi_params,
-                         {"steps": 1, "cfg_scale": 1, "width": 512, "height": 512, "timestep_spacing": "trailing"})
+        self.assertEqual(
+            config.sdapi_params,
+            {"steps": 1, "cfg_scale": 1, "width": 512, "height": 512, "timestep_spacing": "trailing"},
+        )
         self.assertEqual(config.allowed_chat_ids, ["1234567890", "9876543210", "-456456456456"])
+
+        # Cleanup
+        del os.environ["GOOGLE_API_KEY"]
+        del os.environ["GOOGLE_API_MODEL"]
+        del os.environ["OPENAI_API_KEY"]
+        del os.environ["OPENAI_API_MODEL"]
+        del os.environ["OPENAI_API_BASE_URL"]
+        del os.environ["OLLAMA_MODEL"]
+        del os.environ["TELEGRAM_BOT_NAME"]
+        del os.environ["TELEGRAM_BOT_USERNAME"]
+        del os.environ["TELEGRAM_BOT_TOKEN"]
+        del os.environ["CONTEXT_MAX_TOKENS"]
+        del os.environ["PREFERRED_LANGUAGE"]
+        del os.environ["ADD_NO_ANSWER"]
+        del os.environ["RATE_LIMITER_REQUESTS_PER_SECOND"]
+        del os.environ["RATE_LIMITER_CHECK_EVERY_N_SECONDS"]
+        del os.environ["RATE_LIMITER_MAX_BUCKET_SIZE"]
+        del os.environ["ENABLE_MULTIMODAL"]
+        del os.environ["ENABLE_GROUP_ASSISTANT"]
+        del os.environ["WEBUI_SD_API_URL"]
+        del os.environ["WEBUI_SD_API_PARAMS"]
+        del os.environ["TELEGRAM_ALLOWED_CHATS"]
 
     def test_required_fields_raise_exception_when_missing(self):
         # Clear required environment variables
@@ -58,7 +82,7 @@ class TestConfig(unittest.TestCase):
             os.environ.pop(env_var, None)
 
         # Initialize config
-        config = Config()
+        config = Config(lazy=True)
 
         # Test each required field raises exception when accessed
         with self.assertRaises(Exception) as context:
@@ -81,5 +105,5 @@ class TestConfig(unittest.TestCase):
             self.fail(f"Non-required fields raised exception: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

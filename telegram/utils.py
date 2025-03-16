@@ -7,7 +7,7 @@ import telebot
 def fallback_telegram_call(bot, message, response_content):
     """
     Call the Telegram API without using Markdown formatting.
-    :param bot: Telegram bot instance
+    :param bot: Telegram telegram_bot instance
     :param message: Telegram message to reply to
     :param response_content: Response content
     :return: True if the call was successful, False otherwise
@@ -23,7 +23,7 @@ def fallback_telegram_call(bot, message, response_content):
 def user_is_admin(bot, user_id, chat_id):
     """
     Check if the user is an admin of the chat.
-    :param bot: Telegram bot instance
+    :param bot: Telegram telegram_bot instance
     :param user_id: User ID
     :param chat_id: Chat ID
     :return: True if the user is an admin, False otherwise
@@ -34,9 +34,9 @@ def user_is_admin(bot, user_id, chat_id):
 
 def is_bot_reply(bot_username, message):
     """
-    Check if the message is a reply to a bot message.
+    Check if the message is a reply to a telegram_bot message.
     :param message: Telegram message
-    :param bot_username: Telegram bot username
+    :param bot_username: Telegram telegram_bot username
     :return: True if the message is a reply, False otherwise
     """
     return True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
@@ -57,7 +57,7 @@ def is_image(message):
     :param message: Telegram message
     :return: True if the message is an image, False otherwise
     """
-    return message.content_type == 'photo'
+    return message.content_type == "photo"
 
 
 def get_message_text(message):
@@ -81,7 +81,7 @@ def get_message_from(message):
 def reply_to_telegram_message(bot, message, response_content):
     """
     Reply to a message.
-    :param bot: Telegram bot instance
+    :param bot: Telegram telegram_bot instance
     :param message: Telegram message to reply to
     :param response_content: Response content
     :return: True if the call was successful, False otherwise
@@ -91,7 +91,7 @@ def reply_to_telegram_message(bot, message, response_content):
         usernames = re.findall(r"(?<!\S)@\w+", response_content)
         for username in usernames:
             response_content = response_content.replace(username, telebot.formatting.escape_markdown(username))
-        bot.reply_to(message, response_content, parse_mode='markdown')
+        bot.reply_to(message, response_content, parse_mode="markdown")
         logging.debug(f"Sent response for chat {chat_id}")
     except Exception as e:
         logging.exception(e)
@@ -102,11 +102,11 @@ def reply_to_telegram_message(bot, message, response_content):
 def clean_standard_message(bot_username, message_text):
     """
     Clean a standard message.
-    :param bot_username: Telegram bot username
+    :param bot_username: Telegram telegram_bot username
     :param message_text: Text to clean
     :return: Cleaned text
     """
-    replace = f'@{bot_username}: '
+    replace = f"@{bot_username}: "
     if message_text.startswith(replace):
-        message_text = message_text[len(replace):]
+        message_text = message_text[len(replace) :]
     return message_text

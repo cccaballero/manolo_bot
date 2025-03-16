@@ -78,8 +78,30 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 ### Running the Bot 
  
 You can run the bot using the following command:
-```
+
+```shell
 python main.py
+```
+
+## Developers information
+
+Use `requirements-dev.txt` to install the development dependencies.
+
+### Pre-commit hooks
+
+After installing the development dependencies, For installing pre-commit scripts including ruff checks, you can run 
+the following command:
+
+```shell
+pre-commit install
+```
+
+### Running tests
+
+You can run the tests using the following command:
+
+```shell
+python -m unittest discover
 ```
 
 ## Contributing 
