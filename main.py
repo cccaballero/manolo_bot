@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ai.llmbot import LLMBot
-from config import Config
+from config import get_config
 from telegram.utils import (
     get_message_text,
     is_bot_reply,
@@ -18,7 +18,7 @@ load_dotenv()
 
 logging.basicConfig(level="DEBUG")
 
-config = Config()
+config = get_config()
 
 if (
     not config.google_api_key
