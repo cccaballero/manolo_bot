@@ -1,16 +1,19 @@
 # Telegram Chat Bot using LLM
- 
-This is an experimental Telegram chat bot that uses a configurable LLM model to generate responses. With this bot, you can have engaging and realistic conversations with an artificial intelligence model. 
- 
-## Getting Started 
- 
-### Prerequisites 
- 
-First, you need to install the required packages using pip:
-pip install -r requirements.txt
 
-### Configuration 
- 
+This is an experimental Telegram chat bot that uses a configurable LLM model to generate responses. With this bot, you can have engaging and realistic conversations with an artificial intelligence model.
+
+## Getting Started
+
+### Prerequisites
+
+First, you need to install the required packages using [uv](https://docs.astral.sh/uv/):
+
+```shell
+uv sync --no-dev
+```
+
+### Configuration
+
 You can copy and rename the provided `env.example` to `.env` and edit the file according your data
 
 You can create a bot on Telegram and get its API token by following the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot).
@@ -19,7 +22,7 @@ For use the bot on a group you have to use the @BotFather bot to [set the Group 
 
 #### Required environment variables.
 
-You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` or `OLLAMA_MODEL` for selecting the required 
+You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` or `OLLAMA_MODEL` for selecting the required
 LLM provider.
 The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
@@ -75,9 +78,14 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 `CONTEXT_MAX_TOKENS`: The maximum number of tokens allowed for the bot's context.
 
-### Running the Bot 
- 
+### Running the Bot
+
 You can run the bot using the following command:
+
+```shell
+uv run main.py
+```
+or
 
 ```shell
 python main.py
@@ -85,11 +93,11 @@ python main.py
 
 ## Developers information
 
-Use `requirements-dev.txt` to install the development dependencies.
+Use `uv sync --dev` to install the development dependencies.
 
 ### Pre-commit hooks
 
-After installing the development dependencies, For installing pre-commit scripts including ruff checks, you can run 
+After installing the development dependencies, For installing pre-commit scripts including ruff checks, you can run
 the following command:
 
 ```shell
@@ -101,13 +109,13 @@ pre-commit install
 You can run the tests using the following command:
 
 ```shell
-python -m unittest discover
+uv run python -m unittest discover
 ```
 
-## Contributing 
- 
-If you'd like to contribute to this project, feel free to submit a pull request. We're always open to new ideas or improvements to the code.  
- 
-## License 
- 
+## Contributing
+
+If you'd like to contribute to this project, feel free to submit a pull request. We're always open to new ideas or improvements to the code.
+
+## License
+
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
