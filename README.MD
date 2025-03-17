@@ -47,7 +47,11 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 #### Setting custom bot instructions
 
-`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable.
+`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable. This will override the default instructions.
+
+#### Setting extra bot instructions
+
+`TELEGRAM_BOT_INSTRUCTIONS_EXTRA`: You can define extra LLM system instructions using this variable. This will override the default or the custom instructions.
 
 #### Limiting Bot interaction
 
