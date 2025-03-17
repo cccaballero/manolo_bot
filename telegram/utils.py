@@ -2,6 +2,7 @@ import logging
 import re
 
 import telebot
+from telebot.apihelper import ApiTelegramException
 
 
 def fallback_telegram_call(bot, message, response_content):
@@ -87,16 +88,24 @@ def reply_to_telegram_message(bot, message, response_content):
     :return: True if the call was successful, False otherwise
     """
     chat_id = message.chat.id
+    use_fallback = False
     try:
         usernames = re.findall(r"(?<!\S)@\w+", response_content)
         for username in usernames:
             response_content = response_content.replace(username, telebot.formatting.escape_markdown(username))
         bot.reply_to(message, response_content, parse_mode="markdown")
         logging.debug(f"Sent response for chat {chat_id}")
+    except ApiTelegramException:
+        logging.warning(
+            f"Failed to send response for chat {chat_id} using Markdown. Attempting fallback to plain text."
+        )
+        use_fallback = True
     except Exception as e:
         logging.exception(e)
-        if not fallback_telegram_call(bot, message, response_content):
-            logging.error(f"Failed to send response for chat {chat_id}")
+        use_fallback = True
+
+    if use_fallback and not fallback_telegram_call(bot, message, response_content):
+        logging.error(f"Failed to send response for chat {chat_id}")
 
 
 def clean_standard_message(bot_username, message_text):
