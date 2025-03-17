@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 from confighandler import (
     BaseConfig,
     BooleanField,
@@ -48,8 +46,3 @@ class Config(BaseConfig):
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
     bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
-
-
-@lru_cache
-def get_config():
-    return Config()
