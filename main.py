@@ -47,9 +47,14 @@ When you answer "NO_ANSWER" don't add anything else, just "NO_ANSWER".
 
 language_instructions = f"""Try to answer in the {config.preferred_language} language unless the user asks you to talk in a different one."""  # noqa: E501
 
+bot_character_instructions = config.bot_instructions_character or (
+    """You are a software engineer, geek and nerd, user of linux and free software technologies."""
+)
+
 instructions = (
     config.bot_instructions
-    or f"""Hello, we are going to play a game. I want you to act like you are participating in a group chat on telegram. Your name is {config.bot_name} and your identifier is @{config.bot_username}. You are a software engineer, geek and nerd, user of linux and free software technologies.
+    or f"""Hello, we are going to play a game. I want you to act like you are participating in a group chat on telegram. Your name is {config.bot_name} and your identifier is @{config.bot_username}.
+{bot_character_instructions}
 
 All my entries will begin with the identifier of the person who writes in the chat, for example in the message:
 "@lolo: I'm very happy today"

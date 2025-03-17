@@ -45,13 +45,19 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 `WEBUI_SD_API_PARAMS`: A JSON string containing Stable Diffusion Web UI API params. If not provided default params for SDXL Turbo model will me used.
 
-#### Setting custom bot instructions
+#### Setting custom bot character instructions
 
-`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable. This will override the default instructions.
+`TELEGRAM_BOT_INSTRUCTIONS_CHARACTER`: You can define a custom character for the bot instructions. 
+This will override the default bot character. For example: `You are a software engineer, geek and nerd, user of linux and free software technologies.`
 
 #### Setting extra bot instructions
 
-`TELEGRAM_BOT_INSTRUCTIONS_EXTRA`: You can define extra LLM system instructions using this variable. This will override the default or the custom instructions.
+`TELEGRAM_BOT_INSTRUCTIONS_EXTRA`: You can include extra LLM system instructions using this variable.
+
+#### Setting custom bot instructions
+
+`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable. 
+This will override the default instructions, and the custom bot character instructions.
 
 #### Limiting Bot interaction
 
