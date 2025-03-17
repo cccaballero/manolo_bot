@@ -17,7 +17,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from requests import RequestException
+from requests import ConnectTimeout, RequestException
 from telebot import TeleBot
 
 from config import Config
@@ -197,6 +197,12 @@ class LLMBot:
             else:
                 logging.debug(f"No URL found for web content: {message_text}")
         except ConnectionError as e:
+            logging.error("Connection error connecting to web content")
+            logging.exception(e)
+        except ConnectTimeout as e:
+            logging.error("Timeout error connecting to web content")
+            logging.exception(e)
+        except Exception as e:
             logging.error("Error connecting to web content")
             logging.exception(e)
         return None
