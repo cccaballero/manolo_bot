@@ -45,4 +45,4 @@ class Config(BaseConfig):
     allowed_chat_ids = StringListField("TELEGRAM_ALLOWED_CHATS")
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
-    bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
+    bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA", default="")
