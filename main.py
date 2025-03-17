@@ -142,7 +142,7 @@ def echo_all(message):
 
 
 def shutdown_handler(signum, frame):
-    logging.DEBUG("Shutting down bot...")
+    logging.debug("Shutting down bot...")
     telegram_bot.stop_polling()
     sys.exit(0)
 
