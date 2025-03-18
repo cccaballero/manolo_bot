@@ -1,4 +1,6 @@
 import logging
+import signal
+import sys
 import threading
 
 import telebot.formatting
@@ -139,6 +141,15 @@ def echo_all(message):
         logging.debug(f"Message {message.id} ignored, not added to buffer")
 
 
-buffer_processing = threading.Thread(target=llm_bot.process_message_buffer, args=(chats, telegram_bot))
+def shutdown_handler(signum, frame):
+    logging.debug("Shutting down bot...")
+    telegram_bot.stop_polling()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, shutdown_handler)
+signal.signal(signal.SIGTERM, shutdown_handler)
+
+buffer_processing = threading.Thread(target=llm_bot.process_message_buffer, args=(chats, telegram_bot), daemon=True)
 buffer_processing.start()
 telegram_bot.infinity_polling(timeout=10, long_polling_timeout=5)
