@@ -1,6 +1,6 @@
 name: test-lint-check
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   lint:
