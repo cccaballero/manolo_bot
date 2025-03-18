@@ -12,11 +12,11 @@ jobs:
         with:
           python-version: 3.12
       - name: Display Python version
-        run: uv python -c "import sys; print(sys.version)"
+        run: uv run -c "import sys; print(sys.version)"
       - name: Installs Python Project
         run: uv sync
       - name: Run Ruff code analysis
-        run: uv python -m ruff check
+        run: uv run -m ruff check
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -32,8 +32,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Display Python version
-        run: uv python -c "import sys; print(sys.version)"
+        run: uv run -c "import sys; print(sys.version)"
       - name: Installs Python Project
         run: uv sync --no-dev
       - name: Run tests
-        run: uv python -m unittest discover -s ./tests
+        run: uv run -m unittest discover -s ./tests
