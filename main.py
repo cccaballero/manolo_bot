@@ -36,7 +36,7 @@ if (
 newline = "\n"
 
 generate_image_instructions = """
-If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english."""  # noqa: E501
+If a user asks to you to draw or generate an image, you will answer "GENERATE_IMAGE" and the user order as a stable diffusion prompt, like "GENERATE_IMAGE a photograph of a young woman looking at sea". "GENERATE_IMAGE" must be always the initial word. You will translate the user order to english because stable diffusion can only generate images in english."""  # noqa: E501
 
 no_answer_instructions = """
 If you don't understand a message write "NO_ANSWER".

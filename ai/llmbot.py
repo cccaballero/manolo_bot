@@ -109,10 +109,17 @@ class LLMBot:
         :return: The response from the StableDiffusion API.
         """
         if self.config.sdapi_url:
-            self.config.sdapi_params["prompt"] = prompt
-            response = requests.post(urljoin(self.config.sdapi_url, "/sdapi/v1/txt2img"), json=self.config.sdapi_params)
-            if response.status_code == 200:
-                return response.json()
+            try:
+                params = self.config.sdapi_params.copy()
+                params["prompt"] = prompt
+                if self.config.sdapi_negative_prompt:
+                    params["negative_prompt"] = self.config.sdapi_negative_prompt
+                response = requests.post(urljoin(self.config.sdapi_url, "/sdapi/v1/txt2img"), json=params)
+                if response.status_code == 200:
+                    return response.json()
+            except Exception as e:
+                logging.error("Failed to call SDAPI")
+                logging.exception(e)
         return None
 
     def answer_image_message(self, text: str, image: str, messages: list[BaseMessage]) -> BaseMessage:
@@ -147,11 +154,11 @@ class LLMBot:
         logging.debug(f"Image message response: {response}")
         return response
 
-    def generate_image(self, prompt: str) -> dict[str, Any] | None:
+    def generate_image(self, prompt: str) -> str | None:
         """
         Generate an image.
         :param prompt: Prompt to generate the image
-        :return: Image if the call was successful, None otherwise
+        :return: Image representation in base64 format if the call was successful, None otherwise
         """
         logging.debug(f"Generate image: {prompt}")
         response = self.call_sdapi(prompt)
@@ -272,7 +279,7 @@ class LLMBot:
                     image = self.generate_image(response_content[len("GENERATE_IMAGE ") :])
                     if image:
                         logging.debug(f"Sending image for chat {chat_id}")
-                        bot.send_photo(chat_id, base64.b64decode(image))
+                        bot.send_photo(chat_id, base64.b64decode(image), reply_to_message_id=message.id)
                 elif "WEBCONTENT_RESUME" in response_content:
                     logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
                     response_content = self.answer_webcontent(message_text, response_content)

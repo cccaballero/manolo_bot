@@ -42,6 +42,7 @@ class Config(BaseConfig):
         default=default_sdapi_params,
         warning="Could not load WEBUI_SD_API_PARAMS. Defaults for SDXL Turbo model will be used.",
     )
+    sdapi_negative_prompt = StringField("WEBUI_SD_API_NEGATIVE_PROMPT")
     allowed_chat_ids = StringListField("TELEGRAM_ALLOWED_CHATS")
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")

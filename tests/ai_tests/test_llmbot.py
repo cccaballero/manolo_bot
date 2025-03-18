@@ -178,6 +178,7 @@ class TestLlmBot(unittest.TestCase):
             "height": 512,
             "timestep_spacing": "trailing",
         }
+        config_mock.sdapi_negative_prompt = None
 
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = config_mock
