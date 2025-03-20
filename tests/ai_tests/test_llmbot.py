@@ -302,29 +302,29 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), HumanMessage(content="World")]
-        mock_llm_chain = unittest.mock.MagicMock()
-        mock_llm_chain.get_num_tokens.return_value = 2
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.get_num_tokens.return_value = 2
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm_chain)
+        result = llm_bot.count_tokens(messages, mock_llm)
 
         # Assert
         self.assertEqual(result, 2)
-        mock_llm_chain.get_num_tokens.assert_called_once_with("Hello World")
+        mock_llm.get_num_tokens.assert_called_once_with("Hello World")
 
     def test_count_tokens__with_list_content(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), AIMessage(content=["World", "Test"])]
-        mock_llm_chain = unittest.mock.MagicMock()
-        mock_llm_chain.get_num_tokens.return_value = 3
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.get_num_tokens.return_value = 3
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm_chain)
+        result = llm_bot.count_tokens(messages, mock_llm)
 
         # Assert
         self.assertEqual(result, 3)
-        mock_llm_chain.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
+        mock_llm.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
 
     # TODO: find a way to test this method as it is raising a pydantic validation error
     # def test_answer_webcontent__successful_url_extraction_and_processing(self):
