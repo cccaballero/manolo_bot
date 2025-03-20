@@ -203,7 +203,8 @@ class LLMBot:
                     output_parser=StrOutputParser()
                 )
                 
-                response = stuff_chain.invoke({"input_documents": docs})
+                # The key should match the document_variable_name parameter
+                response = stuff_chain.invoke({"text": docs})
                 logging.debug(f"Web content response: {response}")
                 return response
             else:
