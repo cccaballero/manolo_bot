@@ -81,6 +81,34 @@ def get_message_from(message: Message) -> str:
     return message.from_user.username
 
 
+def detect_prompt_injection(message_text: str) -> bool:
+    """
+    Detect if a message contains prompt injection attempts.
+    :param message_text: Text to check
+    :return: True if the message contains prompt injection, False otherwise
+    """
+    if not message_text:
+        return False
+        
+    injection_patterns = [
+        r"forget (?:all|your) (?:previous |earlier )?instructions",
+        r"ignore (?:all|your) (?:previous|earlier) (?:instructions|programming)",
+        r"(?:from now on|instead),? (?:you are|you're|act as|behave like)",
+        r"you are no longer",
+        r"pretend (?:to be|you are)",
+        r"stop being",
+        r"change your (character|personality|role)",
+        r"disregard (?:your|all) (?:previous|prior)",
+        r"override (?:your|all) (?:previous|prior)",
+    ]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, message_text, re.IGNORECASE):
+            logging.debug(f"Prompt injection detected: {message_text}")
+            return True
+    return False
+
+
 def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: str) -> None:
     """
     Reply to a message.

@@ -27,6 +27,11 @@ class Config(BaseConfig):
     rate_limiter_max_bucket_size = IntegerField("RATE_LIMITER_MAX_BUCKET_SIZE", default=10)
     is_image_multimodal = BooleanField("ENABLE_MULTIMODAL", default=False)
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
+    enable_character_protection = BooleanField("ENABLE_CHARACTER_PROTECTION", default=True)
+    character_protection_response = StringField(
+        "CHARACTER_PROTECTION_RESPONSE",
+        default="I'm sorry, but I'll continue being the character I was designed to be."
+    )
     sdapi_url = StringField(
         "WEBUI_SD_API_URL", warning="WEBUI_SD_API_URL environment variable not set. Image generation disabled."
     )

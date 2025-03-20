@@ -74,6 +74,12 @@ This will override the default instructions, and the custom bot character instru
 
 `ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will answer to group chats with a question mark. Default is False.
 
+#### Enable character protection
+
+`ENABLE_CHARACTER_PROTECTION`: Enable protection against prompt injection attempts that try to alter the bot's character (True, False). Default is True.
+
+`CHARACTER_PROTECTION_RESPONSE`: The response to send when a prompt injection attempt is detected. Default is "I'm sorry, but I'll continue being the character I was designed to be."
+
 #### Enable rate limiting
 
 `RATE_LIMITER_REQUESTS_PER_SECOND`: The number of requests per second allowed by the bot.
