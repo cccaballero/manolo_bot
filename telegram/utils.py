@@ -7,6 +7,16 @@ from telebot.apihelper import ApiTelegramException
 from telebot.types import Message
 
 
+def get_telegram_file_url(bot_token: str, file_path: str) -> str:
+    """
+    Get the URL for a Telegram file.
+    :param bot_token: Telegram bot token
+    :param file_path: File path from Telegram
+    :return: Full URL to access the file
+    """
+    return f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+
 def fallback_telegram_call(bot: TeleBot, message: Message, response_content: str) -> bool:
     """
     Call the Telegram API without using Markdown formatting.
