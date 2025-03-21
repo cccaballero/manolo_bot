@@ -8,10 +8,10 @@ from urllib.parse import urljoin
 
 import requests
 from google.generativeai.types import HarmBlockThreshold, HarmCategory
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain.chains.llm import LLMChain
+from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -167,17 +167,17 @@ class LLMBot:
             return response["images"][0]
         return None
 
-    def count_tokens(self, messages: list[BaseMessage], llm_chain: LLMChain) -> int:
+    def count_tokens(self, messages: list[BaseMessage], llm) -> int:
         """
         Count the number of tokens in the messages.
         :param messages: List of messages
-        :param llm_chain: LLM chain
+        :param llm: Language model
         :return: Number of tokens
         """
         text = " ".join(
             [message.content if not isinstance(message.content, list) else str(message.content) for message in messages]
         )
-        return llm_chain.get_num_tokens(text)
+        return llm.get_num_tokens(text)
 
     def answer_webcontent(self, message_text: str, response_content: str) -> str | None:
         """
@@ -195,13 +195,19 @@ class LLMBot:
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
-                # TODO: replace deprecated LLMChain with LangChain runnables
-                llm_chain = LLMChain(llm=self.llm, prompt=prompt)
-                stuff_chain = StuffDocumentsChain(llm_chain=llm_chain, document_variable_name="text")
-                response = stuff_chain.invoke(docs)
-                response_content = response["output_text"]
-                logging.debug(f"Web content response: {response_content}")
-                return response_content
+                
+                # Using LCEL approach instead of deprecated LLMChain and StuffDocumentsChain
+                stuff_chain = create_stuff_documents_chain(
+                    llm=self.llm,
+                    prompt=prompt,
+                    document_variable_name="text",
+                    output_parser=StrOutputParser()
+                )
+                
+                # The key should match the document_variable_name parameter
+                response = stuff_chain.invoke({"text": docs})
+                logging.debug(f"Web content response: {response}")
+                return response
             else:
                 logging.debug(f"No URL found for web content: {message_text}")
         except ConnectionError as e:
