@@ -25,6 +25,7 @@ from telegram.utils import (
     clean_standard_message,
     get_message_from,
     get_message_text,
+    get_telegram_file_url,
     is_bot_reply,
     is_image,
     is_reply,
@@ -214,6 +215,7 @@ class LLMBot:
             logging.exception(e)
         return None
 
+
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
         Process the message buffer.
@@ -236,8 +238,10 @@ class LLMBot:
                 if is_bot_reply(self.config.bot_username, message):
                     message_parts += f"@{self.config.bot_username} "
                 elif is_reply(message):
+                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
                     message_parts += (
-                        f'\n"@{get_message_from(message.reply_to_message)} said: {message.reply_to_message.text}"\n\n'
+                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
                     )
                 if message_text:
                     message_parts += message_text
@@ -252,6 +256,7 @@ class LLMBot:
                     logging.debug(f"Chat context cleaned for chat {chat_id}")
 
                 try:
+                    # Check if the message itself contains an image
                     if is_image(message) and self.config.is_image_multimodal:
                         logging.debug(f"Image message {message.id} for chat {chat_id}")
                         prompt = chats[chat_id]["messages"][-1]
@@ -259,7 +264,27 @@ class LLMBot:
                         file = bot.get_file(fileID)
                         response = self.answer_image_message(
                             prompt.content[0],
-                            f"https://api.telegram.org/file/bot{self.config.bot_token}/{file.file_path}",
+                            get_telegram_file_url(self.config.bot_token, file.file_path),
+                            chats[chat_id]["messages"],
+                        )
+                    # Check if the message is a reply to a message with an image
+                    elif (is_reply(message) and 
+                          message.reply_to_message and 
+                          is_image(message.reply_to_message) and 
+                          self.config.is_image_multimodal):
+                        logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
+                        prompt = chats[chat_id]["messages"][-1]
+                        fileID = message.reply_to_message.photo[-1].file_id
+                        file = bot.get_file(fileID)
+                        # Ensure we're passing a string to answer_image_message
+                        prompt_content = prompt.content
+                        if isinstance(prompt_content, str):
+                            prompt_text = prompt_content
+                        else:
+                            prompt_text = str(prompt_content)
+                        response = self.answer_image_message(
+                            prompt_text,
+                            get_telegram_file_url(self.config.bot_token, file.file_path),
                             chats[chat_id]["messages"],
                         )
                     else:
