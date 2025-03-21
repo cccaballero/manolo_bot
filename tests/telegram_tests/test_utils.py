@@ -8,6 +8,7 @@ from telegram.utils import (
     fallback_telegram_call,
     get_message_from,
     get_message_text,
+    get_telegram_file_url,
     is_bot_reply,
     is_image,
     reply_to_telegram_message,
@@ -16,6 +17,42 @@ from telegram.utils import (
 
 
 class TestTelegramUtils(unittest.TestCase):
+    def test_get_telegram_file_url__returns_correct_url_format(self):
+        # Arrange
+        bot_token = "test_token_123"
+        file_path = "photos/test_image.jpg"
+        expected_url = "https://api.telegram.org/file/bottest_token_123/photos/test_image.jpg"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
+
+    def test_get_telegram_file_url__handles_special_characters_in_path(self):
+        # Arrange
+        bot_token = "test_token_123"
+        file_path = "photos/test image with spaces.jpg"
+        expected_url = "https://api.telegram.org/file/bottest_token_123/photos/test image with spaces.jpg"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
+
+    def test_get_telegram_file_url__handles_empty_file_path(self):
+        # Arrange
+        bot_token = "test_token_123"
+        file_path = ""
+        expected_url = "https://api.telegram.org/file/bottest_token_123/"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
+
     def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
         # Arrange
         mock_bot = unittest.mock.Mock()
