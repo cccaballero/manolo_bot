@@ -8,6 +8,7 @@ from telegram.utils import (
     fallback_telegram_call,
     get_message_from,
     get_message_text,
+    get_telegram_file_url,
     is_bot_reply,
     is_image,
     reply_to_telegram_message,
@@ -238,6 +239,42 @@ class TestTelegramUtils(unittest.TestCase):
             # Assert
             mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="markdown")
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
+
+    def test_get_telegram_file_url__returns_correct_url_format(self):
+        # Arrange
+        bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        file_path = "photos/file_123.jpg"
+        expected_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
+
+    def test_get_telegram_file_url__handles_special_characters(self):
+        # Arrange
+        bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        file_path = "photos/file with spaces.jpg"
+        expected_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
+
+    def test_get_telegram_file_url__handles_empty_file_path(self):
+        # Arrange
+        bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        file_path = ""
+        expected_url = f"https://api.telegram.org/file/bot{bot_token}/"
+
+        # Act
+        result = get_telegram_file_url(bot_token, file_path)
+
+        # Assert
+        self.assertEqual(result, expected_url)
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
         # Arrange
