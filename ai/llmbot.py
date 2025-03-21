@@ -214,6 +214,14 @@ class LLMBot:
             logging.exception(e)
         return None
 
+    def _get_telegram_file_url(self, file_path: str) -> str:
+        """
+        Get the URL for a Telegram file.
+        :param file_path: File path from Telegram
+        :return: Full URL to access the file
+        """
+        return f"https://api.telegram.org/file/bot{self.config.bot_token}/{file_path}"
+
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
         Process the message buffer.
@@ -262,7 +270,7 @@ class LLMBot:
                         file = bot.get_file(fileID)
                         response = self.answer_image_message(
                             prompt.content[0],
-                            f"https://api.telegram.org/file/bot{self.config.bot_token}/{file.file_path}",
+                            self._get_telegram_file_url(file.file_path),
                             chats[chat_id]["messages"],
                         )
                     # Check if the message is a reply to a message with an image
@@ -282,7 +290,7 @@ class LLMBot:
                             prompt_text = str(prompt_content)
                         response = self.answer_image_message(
                             prompt_text,
-                            f"https://api.telegram.org/file/bot{self.config.bot_token}/{file.file_path}",
+                            self._get_telegram_file_url(file.file_path),
                             chats[chat_id]["messages"],
                         )
                     else:
