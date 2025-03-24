@@ -107,11 +107,22 @@ def flush_context_command(message):
 
     if message.chat.type in ["group", "supergroup", "channel"] and not user_is_admin(telegram_bot, user_id, chat_id):
         logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
+        telegram_bot.reply_to(message, "⚠️ You need to be an admin to use this command in a group chat.")
         return
 
     logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
-    chats[chat_id]["messages"] = []
+    
+    # Initialize chat context if it doesn't exist yet
+    if chat_id not in chats:
+        logging.debug(f"Chat {chat_id} not found, creating new one")
+        chats[chat_id] = {
+            "messages": [],
+        }
+    else:
+        chats[chat_id]["messages"] = []
+        
     logging.debug(f"Chat {chat_id} context flushed")
+    telegram_bot.reply_to(message, "🧹 Chat context has been cleared successfully!")
 
 
 @telegram_bot.message_handler(func=lambda message: True, content_types=["text", "photo"])

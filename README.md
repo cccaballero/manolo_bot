@@ -101,6 +101,12 @@ or
 python main.py
 ```
 
+### Available Commands
+
+The bot supports the following commands:
+
+- `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this command.
+
 ## Developers information
 
 Use `uv sync --dev` to install the development dependencies.
