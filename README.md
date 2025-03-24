@@ -88,6 +88,12 @@ This will override the default instructions, and the custom bot character instru
 
 `CONTEXT_MAX_TOKENS`: The maximum number of tokens allowed for the bot's context.
 
+### Available Commands
+
+The bot supports the following commands:
+
+- `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this command. The bot will respond with a message in the configured language.
+
 ### Running the Bot
 
 You can run the bot using the following command:

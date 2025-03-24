@@ -302,71 +302,136 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), HumanMessage(content="World")]
-        mock_llm_chain = unittest.mock.MagicMock()
-        mock_llm_chain.get_num_tokens.return_value = 2
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.get_num_tokens.return_value = 2
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm_chain)
+        result = llm_bot.count_tokens(messages, mock_llm)
 
         # Assert
         self.assertEqual(result, 2)
-        mock_llm_chain.get_num_tokens.assert_called_once_with("Hello World")
+        mock_llm.get_num_tokens.assert_called_once_with("Hello World")
 
     def test_count_tokens__with_list_content(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), AIMessage(content=["World", "Test"])]
-        mock_llm_chain = unittest.mock.MagicMock()
-        mock_llm_chain.get_num_tokens.return_value = 3
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.get_num_tokens.return_value = 3
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm_chain)
+        result = llm_bot.count_tokens(messages, mock_llm)
 
         # Assert
         self.assertEqual(result, 3)
-        mock_llm_chain.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
+        mock_llm.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
 
-    # TODO: find a way to test this method as it is raising a pydantic validation error
-    # def test_answer_webcontent__successful_url_extraction_and_processing(self):
-    #     # Arrange
-    #     llm_bot = self.get_basic_llm_bot()
-    #     llm_bot.llm = unittest.mock.Mock()
-    #
-    #     message_text = "Summarize this webpage"
-    #     response_content = "Check out this link: https://example.com/page"
-    #     url = "https://example.com/page"
-    #
-    #     # Mock _extract_url to return our test URL
-    #     # unittest.mock.patch.object(llm_bot, '_extract_url', return_value=url)
-    #
-    #     # Mock WebBaseLoader
-    #     mock_loader = unittest.mock.Mock()
-    #     mock_docs = [unittest.mock.Mock()]
-    #     mock_loader.load.return_value = mock_docs
-    #
-    #     # Mock StuffDocumentsChain
-    #     mock_chain = unittest.mock.Mock()
-    #     mock_chain.invoke.return_value = {"output_text": "This is a summary of the webpage."}
-    #
-    #     with (
-    #         unittest.mock.patch.object(llm_bot, "_extract_url", return_value=url) as _extract_url_mock,
-    #         unittest.mock.patch.object(
-    #             llm_bot, "_remove_urls", return_value="Summarize this webpage"
-    #         ) as _remove_urls_mock,
-    #         unittest.mock.patch("langchain_community.document_loaders.WebBaseLoader", return_value=mock_loader),
-    #         unittest.mock.patch(
-    #             "langchain.chains.combine_documents.stuff.StuffDocumentsChain", return_value=mock_chain
-    #         ),
-    #     ):
-    #         # Act
-    #         result = llm_bot.answer_webcontent(message_text, response_content)
-    #
-    #         # Assert
-    #         self.assertEqual(result, "This is a summary of the webpage.")
-    #         _extract_url_mock.assert_called_once_with(response_content)
-    #         _remove_urls_mock.assert_called_once_with(message_text)
-    #         mock_loader.load.assert_called_once()
-    #         mock_chain.invoke.assert_called_once_with(mock_docs)
+    def test_generate_feedback_message__success_message(self):
+        # Arrange
+        mock_config = unittest.mock.MagicMock(spec=Config)
+        mock_config.preferred_language = "Spanish"
+        
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.config = mock_config
+        
+        expected_response = AIMessage(content="¡Contexto de chat borrado con éxito!")
+        llm_bot.llm = unittest.mock.Mock()
+        llm_bot.llm.invoke.return_value = expected_response
+        
+        # Act
+        result = llm_bot.generate_feedback_message("success")
+        
+        # Assert
+        self.assertEqual(result, "¡Contexto de chat borrado con éxito!")
+        llm_bot.llm.invoke.assert_called_once()
+        # Check that the prompt contains the right language and message type
+        call_args = llm_bot.llm.invoke.call_args[0][0]
+        self.assertIn("Spanish", call_args[0].content)
+        self.assertIn("chat context has been cleared", call_args[0].content)
+
+    def test_generate_feedback_message__error_message(self):
+        # Arrange
+        mock_config = unittest.mock.MagicMock(spec=Config)
+        mock_config.preferred_language = "French"
+        
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.config = mock_config
+        
+        expected_response = AIMessage(content="Vous devez être administrateur pour utiliser cette commande dans un chat de groupe.")
+        llm_bot.llm = unittest.mock.Mock()
+        llm_bot.llm.invoke.return_value = expected_response
+        
+        # Act
+        result = llm_bot.generate_feedback_message("error")
+        
+        # Assert
+        self.assertEqual(result, "Vous devez être administrateur pour utiliser cette commande dans un chat de groupe.")
+        llm_bot.llm.invoke.assert_called_once()
+        # Check that the prompt contains the right language and message type
+        call_args = llm_bot.llm.invoke.call_args[0][0]
+        self.assertIn("French", call_args[0].content)
+        self.assertIn("admin privileges", call_args[0].content)
+
+    def test_generate_feedback_message__unknown_message_type(self):
+        # Arrange
+        llm_bot = self.get_basic_llm_bot()
+        
+        # Act
+        result = llm_bot.generate_feedback_message("unknown")
+        
+        # Assert
+        self.assertEqual(result, "Unknown message type")
+        # The LLM should not be called for unknown message types
+        self.assertFalse(hasattr(llm_bot.llm, 'invoke.assert_not_called'))
+
+    def test_generate_feedback_message__truncates_long_messages(self):
+        # Arrange
+        mock_config = unittest.mock.MagicMock(spec=Config)
+        mock_config.preferred_language = "English"
+        
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.config = mock_config
+        
+        # Create a response that's longer than 200 characters
+        long_message = "This is a very long message that exceeds the 200 character limit. " * 5
+        expected_response = AIMessage(content=long_message)
+        llm_bot.llm = unittest.mock.Mock()
+        llm_bot.llm.invoke.return_value = expected_response
+        
+        # Act
+        result = llm_bot.generate_feedback_message("success")
+        
+        # Assert
+        self.assertEqual(len(result), 200)  # 197 chars + 3 for "..."
+        self.assertTrue(result.endswith("..."))
+        self.assertEqual(result, long_message[:197] + "...")
+
+    def test_generate_feedback_message__handles_exception(self):
+        # Arrange
+        mock_config = unittest.mock.MagicMock(spec=Config)
+        mock_config.preferred_language = "Spanish"
+        
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.config = mock_config
+        
+        llm_bot.llm = unittest.mock.Mock()
+        llm_bot.llm.invoke.side_effect = Exception("LLM error")
+        
+        with unittest.mock.patch("logging.error") as mock_logger:
+            # Act
+            result = llm_bot.generate_feedback_message("success")
+            
+            # Assert
+            self.assertEqual(result, "🧹 Chat context has been cleared successfully!")
+            mock_logger.assert_called_once_with("Failed to generate feedback message: LLM error")
+            
+        with unittest.mock.patch("logging.error") as mock_logger:
+            # Act for error message
+            result = llm_bot.generate_feedback_message("error")
+            
+            # Assert
+            self.assertEqual(result, "⚠️ You need to be an admin to use this command in a group chat.")
+            mock_logger.assert_called_once_with("Failed to generate feedback message: LLM error")
 
     def test_answer_webcontent__no_url_found_returns_none(self):
         # Arrange
