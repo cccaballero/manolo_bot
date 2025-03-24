@@ -221,6 +221,45 @@ class LLMBot:
             logging.exception(e)
         return None
 
+    def generate_feedback_message(self, message_type: str) -> str:
+        """
+        Generate a feedback message using the LLM.
+        
+        :param message_type: Type of feedback message to generate ('success' or 'error')
+        :return: Generated feedback message in the preferred language
+        """
+        logging.debug(f"Generating {message_type} feedback message")
+        
+        if message_type == "success":
+            prompt = f"Generate a short, friendly message in {self.config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."
+        elif message_type == "error":
+            prompt = f"Generate a short, friendly message in {self.config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."
+        else:
+            return "Unknown message type"
+        
+        try:
+            # Create a simple message list with just the prompt
+            messages = [HumanMessage(content=prompt)]
+            response = self.llm.invoke(messages)
+            
+            # Clean up the response if needed
+            feedback_message = response.content.strip()
+            
+            # Ensure the message isn't too long
+            if len(feedback_message) > 200:  # Allow some buffer over the requested 100
+                feedback_message = feedback_message[:197] + "..."
+                
+            logging.debug(f"Generated feedback message: {feedback_message}")
+            return feedback_message
+        except Exception as e:
+            logging.error(f"Failed to generate feedback message: {e}")
+            # Fallback messages in case of error
+            if message_type == "success":
+                return "🧹 Chat context has been cleared successfully!"
+            elif message_type == "error":
+                return "⚠️ You need to be an admin to use this command in a group chat."
+            else:
+                return "Unknown message type"
 
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
