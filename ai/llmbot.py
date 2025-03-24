@@ -34,7 +34,7 @@ from telegram.utils import (
 
 
 class LLMBot:
-    def __init__(self, config: Config, system_instructions: str, messages_buffer: list):
+    def __init__(self, config: Config, system_instructions: list[BaseMessage], messages_buffer: list):
         self.config = config
         self.system_instructions = system_instructions
         self.messages_buffer = messages_buffer
@@ -195,15 +195,12 @@ class LLMBot:
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
-                
+
                 # Using LCEL approach instead of deprecated LLMChain and StuffDocumentsChain
                 stuff_chain = create_stuff_documents_chain(
-                    llm=self.llm,
-                    prompt=prompt,
-                    document_variable_name="text",
-                    output_parser=StrOutputParser()
+                    llm=self.llm, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
                 )
-                
+
                 # The key should match the document_variable_name parameter
                 response = stuff_chain.invoke({"text": docs})
                 logging.debug(f"Web content response: {response}")
@@ -220,7 +217,6 @@ class LLMBot:
             logging.error("Error connecting to web content")
             logging.exception(e)
         return None
-
 
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
@@ -274,10 +270,12 @@ class LLMBot:
                             chats[chat_id]["messages"],
                         )
                     # Check if the message is a reply to a message with an image
-                    elif (is_reply(message) and 
-                          message.reply_to_message and 
-                          is_image(message.reply_to_message) and 
-                          self.config.is_image_multimodal):
+                    elif (
+                        is_reply(message)
+                        and message.reply_to_message
+                        and is_image(message.reply_to_message)
+                        and self.config.is_image_multimodal
+                    ):
                         logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
                         prompt = chats[chat_id]["messages"][-1]
                         fileID = message.reply_to_message.photo[-1].file_id
