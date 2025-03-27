@@ -108,6 +108,16 @@ def flush_context_command(message):
     logging.debug(f"Received flushcontext command from user {message.from_user.id} in chat {message.chat.id}")
     chat_id = message.chat.id
     user_id = message.from_user.id
+    message_text = get_message_text(message)
+
+    # Check if the bot is mentioned in the command
+    if not (
+        f"@{config.bot_username}" in message_text
+        or config.bot_name.lower() in message_text.lower()
+        or is_bot_reply(config.bot_username, message)
+    ):
+        logging.debug(f"Bot not mentioned in flushcontext command from user {user_id}, ignoring")
+        return
 
     if message.chat.type in ["group", "supergroup", "channel"] and not user_is_admin(telegram_bot, user_id, chat_id):
         logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
