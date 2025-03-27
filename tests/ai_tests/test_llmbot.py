@@ -330,17 +330,17 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "Spanish"
-        
+
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config
-        
+
         expected_response = AIMessage(content="¡Contexto de chat borrado con éxito!")
         llm_bot.llm = unittest.mock.Mock()
         llm_bot.llm.invoke.return_value = expected_response
-        
+
         # Act
         result = llm_bot.generate_feedback_message("success")
-        
+
         # Assert
         self.assertEqual(result, "¡Contexto de chat borrado con éxito!")
         llm_bot.llm.invoke.assert_called_once()
@@ -353,17 +353,19 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "French"
-        
+
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config
-        
-        expected_response = AIMessage(content="Vous devez être administrateur pour utiliser cette commande dans un chat de groupe.")
+
+        expected_response = AIMessage(
+            content="Vous devez être administrateur pour utiliser cette commande dans un chat de groupe."
+        )
         llm_bot.llm = unittest.mock.Mock()
         llm_bot.llm.invoke.return_value = expected_response
-        
+
         # Act
         result = llm_bot.generate_feedback_message("error")
-        
+
         # Assert
         self.assertEqual(result, "Vous devez être administrateur pour utiliser cette commande dans un chat de groupe.")
         llm_bot.llm.invoke.assert_called_once()
@@ -375,32 +377,32 @@ class TestLlmBot(unittest.TestCase):
     def test_generate_feedback_message__unknown_message_type(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
-        
+
         # Act
         result = llm_bot.generate_feedback_message("unknown")
-        
+
         # Assert
         self.assertEqual(result, "Unknown message type")
         # The LLM should not be called for unknown message types
-        self.assertFalse(hasattr(llm_bot.llm, 'invoke.assert_not_called'))
+        self.assertFalse(hasattr(llm_bot.llm, "invoke.assert_not_called"))
 
     def test_generate_feedback_message__truncates_long_messages(self):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "English"
-        
+
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config
-        
+
         # Create a response that's longer than 200 characters
         long_message = "This is a very long message that exceeds the 200 character limit. " * 5
         expected_response = AIMessage(content=long_message)
         llm_bot.llm = unittest.mock.Mock()
         llm_bot.llm.invoke.return_value = expected_response
-        
+
         # Act
         result = llm_bot.generate_feedback_message("success")
-        
+
         # Assert
         self.assertEqual(len(result), 200)  # 197 chars + 3 for "..."
         self.assertTrue(result.endswith("..."))
@@ -410,25 +412,25 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "Spanish"
-        
+
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config
-        
+
         llm_bot.llm = unittest.mock.Mock()
         llm_bot.llm.invoke.side_effect = Exception("LLM error")
-        
+
         with unittest.mock.patch("logging.error") as mock_logger:
             # Act
             result = llm_bot.generate_feedback_message("success")
-            
+
             # Assert
             self.assertEqual(result, "🧹 Chat context has been cleared successfully!")
             mock_logger.assert_called_once_with("Failed to generate feedback message: LLM error")
-            
+
         with unittest.mock.patch("logging.error") as mock_logger:
             # Act for error message
             result = llm_bot.generate_feedback_message("error")
-            
+
             # Assert
             self.assertEqual(result, "⚠️ You need to be an admin to use this command in a group chat.")
             mock_logger.assert_called_once_with("Failed to generate feedback message: LLM error")
