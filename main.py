@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
 from ai.llmbot import LLMBot
+from ai.promptguardian import PromptGuardian
 from config import Config
 from telegram.utils import (
     get_message_text,
@@ -99,6 +100,8 @@ chats = {}
 messages_buffer = []
 
 llm_bot = LLMBot(config, system_instructions, messages_buffer)
+
+pg = PromptGuardian(config)
 
 telegram_bot = telebot.TeleBot(token=config.bot_token)
 

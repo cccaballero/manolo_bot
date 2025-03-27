@@ -6,6 +6,7 @@ authors = [{ name = "Carlos Cesar Caballero Díaz", email = "tbd@example.com" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.5.2",
     "beautifulsoup4>=4.13.3",
     "envmodel>=0.1.0.post2",
     "google-generativeai>=0.8.4",
@@ -19,7 +20,8 @@ dependencies = [
     "pytelegrambotapi>=4.26.0",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
-    "transformers>=4.49.0",
+    "torch>=2.6.0",
+    "transformers>=4.50.1",
 ]
 
 [tool.uv]

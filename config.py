@@ -47,3 +47,9 @@ class Config(EnvModel):
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
     bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
+    enable_prompt_guardian = BooleanField("ENABLE_PROMPT_GUARDIAN", default=False)
+    # prompt_guardian_model = StringField("PROMPT_GUARDIAN_MODEL", default="meta-llama/Prompt-Guard-86M")
+    prompt_guardian_model = StringField("PROMPT_GUARDIAN_MODEL", default="meta-llama/Llama-Guard-3-1B")
+    # prompt_guardian_model = StringField(
+    #     "PROMPT_GUARDIAN_MODEL", default="protectai/deberta-v3-base-prompt-injection-v2"
+    # )
