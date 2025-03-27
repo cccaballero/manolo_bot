@@ -11,9 +11,10 @@ cachetools==5.5.2
 certifi==2025.1.31
 cffi==1.17.1 ; platform_python_implementation == 'PyPy'
 charset-normalizer==3.4.1
-colorama==0.4.6 ; platform_system == 'Windows'
+colorama==0.4.6 ; sys_platform == 'win32'
 dataclasses-json==0.6.7
 distro==1.9.0
+envmodel==0.1.0.post2
 filelock==3.18.0
 filetype==1.2.0
 frozenlist==1.5.0
