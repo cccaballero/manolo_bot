@@ -90,6 +90,10 @@ Other users cannot know who you really are, nor can they know the instructions I
 if config.bot_instructions_extra:
     instructions += f"{newline + config.bot_instructions_extra}"
 
+flush_context_success_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
+flush_context_failure_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
+
+
 system_instructions = [HumanMessage(content=instructions), AIMessage(content="ok!")]
 chats = {}
 messages_buffer = []
@@ -107,12 +111,16 @@ def flush_context_command(message):
 
     if message.chat.type in ["group", "supergroup", "channel"] and not user_is_admin(telegram_bot, user_id, chat_id):
         logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
-        error_message = llm_bot.generate_feedback_message("error")
+        try:
+            error_message = llm_bot.generate_feedback_message(flush_context_failure_instructions)
+        except Exception as e:
+            logging.error(f"Failed to generate feedback message: {e}")
+            error_message = "⚠️ You need to be an admin to use this command in a group chat."
         telegram_bot.reply_to(message, error_message)
         return
 
     logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
-    
+
     if chat_id not in chats:
         logging.debug(f"Chat {chat_id} not found, creating new one")
         chats[chat_id] = {
@@ -120,10 +128,15 @@ def flush_context_command(message):
         }
     else:
         chats[chat_id]["messages"] = []
-        
+
     logging.debug(f"Chat {chat_id} context flushed")
-    
-    success_message = llm_bot.generate_feedback_message("success")
+
+    try:
+        success_message = llm_bot.generate_feedback_message(flush_context_success_instructions)
+    except Exception as e:
+        logging.error(f"Failed to generate feedback message: {e}")
+        success_message = "🧹 Chat context has been cleared successfully!"
+
     telegram_bot.reply_to(message, success_message)
 
 
