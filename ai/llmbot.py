@@ -218,6 +218,30 @@ class LLMBot:
             logging.exception(e)
         return None
 
+    def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:
+        """
+        Generate a feedback message using the LLM.
+
+        :param prompt: Prompt to generate the feedback message
+        :param max_length: Maximum length of the feedback message
+        :return: Generated feedback message
+        """
+        logging.debug("Generating feedback message")
+
+        # Create a simple message list with just the prompt
+        messages = [HumanMessage(content=prompt)]
+        response = self.llm.invoke(messages)
+
+        # Clean up the response if needed
+        feedback_message = response.content.strip()
+
+        # Ensure the message isn't too long
+        if len(feedback_message) > max_length:
+            feedback_message = feedback_message[: max_length - 3] + "..."
+
+        logging.debug(f"Generated feedback message: {feedback_message}")
+        return feedback_message
+
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
         Process the message buffer.
