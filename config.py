@@ -1,6 +1,6 @@
-from confighandler import (
-    BaseConfig,
+from envmodel import (
     BooleanField,
+    EnvModel,
     FloatField,
     IntegerField,
     JsonField,
@@ -9,7 +9,7 @@ from confighandler import (
 )
 
 
-class Config(BaseConfig):
+class Config(EnvModel):
     google_api_key = StringField("GOOGLE_API_KEY")
     google_api_model = StringField("GOOGLE_API_MODEL", default="gemini-2.0-flash")
     openai_api_key = StringField("OPENAI_API_KEY")
@@ -47,3 +47,4 @@ class Config(BaseConfig):
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
     bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
+    enable_character_protection = BooleanField("ENABLE_CHARACTER_PROTECTION", default=False)
