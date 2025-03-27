@@ -47,4 +47,3 @@ class Config(EnvModel):
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
     bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
-    enable_character_protection = BooleanField("ENABLE_CHARACTER_PROTECTION", default=False)
