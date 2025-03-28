@@ -327,6 +327,7 @@ class LLMBot:
                             prompt_guardian_response = self.prompt_guardian.classify(
                                 last_message[last_message.find(":") + 2 :]
                             )
+                            # if prompt_guardian_response in ["UNSAFE"]:
                             if prompt_guardian_response in ["INJECTION", "JAILBREAK"]:
                                 is_dangerous_message = True
                         if is_dangerous_message:
@@ -340,6 +341,7 @@ class LLMBot:
                             )
                             logging.debug(f"Response: {response}")
                         else:
+                            logging.debug(f"Prompt guardian response: {prompt_guardian_response}")
                             logging.debug(f"Text message {message.id} for chat {chat_id}")
                             response = self.llm.invoke(self.system_instructions + chats[chat_id]["messages"])
                             logging.debug(f"Response: {response}")

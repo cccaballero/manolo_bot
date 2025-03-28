@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
 from ai.llmbot import LLMBot
-from ai.promptguardian import PromptGuardian
 from config import Config
 from telegram.utils import (
     get_message_text,
@@ -21,7 +20,9 @@ load_dotenv()
 
 logging.basicConfig(level="DEBUG")
 
+logging.debug("Loading environment variables...")
 config = Config()
+logging.debug("Loaded environment variables successfully")
 
 if (
     not config.google_api_key
@@ -99,9 +100,9 @@ system_instructions = [SystemMessage(content=instructions), AIMessage(content="o
 chats = {}
 messages_buffer = []
 
+logging.debug("Starting LLM bot...")
 llm_bot = LLMBot(config, system_instructions, messages_buffer)
-
-pg = PromptGuardian(config)
+logging.debug("LLM bot started successfully")
 
 telegram_bot = telebot.TeleBot(token=config.bot_token)
 
