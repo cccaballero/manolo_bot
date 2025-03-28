@@ -20,9 +20,7 @@ load_dotenv()
 
 logging.basicConfig(level="DEBUG")
 
-logging.debug("Loading environment variables...")
 config = Config()
-logging.debug("Loaded environment variables successfully")
 
 if (
     not config.google_api_key
@@ -100,9 +98,7 @@ system_instructions = [SystemMessage(content=instructions), AIMessage(content="o
 chats = {}
 messages_buffer = []
 
-logging.debug("Starting LLM bot...")
 llm_bot = LLMBot(config, system_instructions, messages_buffer)
-logging.debug("LLM bot started successfully")
 
 telegram_bot = telebot.TeleBot(token=config.bot_token)
 
