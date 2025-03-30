@@ -168,7 +168,7 @@ def simulate_typing(
     time_left = min(time_left, max_typing_time)
     logging.debug(f"Time left: {time_left} seconds")
 
-    while time_left > 0:
-        bot.send_chat_action(chat_id, "typing")
-        time.sleep(5)
-        time_left -= 5
+    for second in range(int(time_left)):
+        if second % 6 == 0:
+            bot.send_chat_action(chat_id, "typing")
+        time.sleep(1)
