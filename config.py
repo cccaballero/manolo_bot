@@ -47,3 +47,6 @@ class Config(EnvModel):
     bot_instructions = StringField("TELEGRAM_BOT_INSTRUCTIONS")
     bot_instructions_character = StringField("TELEGRAM_BOT_INSTRUCTIONS_CHARACTER")
     bot_instructions_extra = StringField("TELEGRAM_BOT_INSTRUCTIONS_EXTRA")
+    simulate_typing = BooleanField("SIMULATE_TYPING", default=False)
+    simulate_typing_wpm = IntegerField("SIMULATE_TYPING_WPM", default=50)
+    simulate_typing_max_time = IntegerField("SIMULATE_TYPING_MAX_TIME", default=10)
