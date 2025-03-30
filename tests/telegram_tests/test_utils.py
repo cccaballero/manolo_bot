@@ -1,9 +1,11 @@
+import datetime
 import unittest
 import unittest.mock
 
 import telebot
 
 from telegram.utils import (
+    _get_time_from_wpm,
     clean_standard_message,
     fallback_telegram_call,
     get_message_from,
@@ -12,6 +14,7 @@ from telegram.utils import (
     is_bot_reply,
     is_image,
     reply_to_telegram_message,
+    simulate_typing,
     user_is_admin,
 )
 
@@ -296,6 +299,101 @@ class TestTelegramUtils(unittest.TestCase):
         # Act & Assert
         with self.assertRaises(AttributeError):
             clean_standard_message(bot_username, message_text)
+
+    def test_calculate_time_with_average_wpm(self):
+        # Arrange
+        text = "This is a simple text with eight words"
+        wpm = 60.0  # Average reading speed
+        expected_time = 8.0  # 8 words at 60 wpm = 8 seconds
+
+        # Act
+        actual_time = _get_time_from_wpm(text, wpm)
+
+        # Assert
+        self.assertEqual(actual_time, expected_time)
+
+    def test_calculate_time_with_single_word(self):
+        # Arrange
+        text = "Hello"
+        wpm = 120.0
+        expected_time = 0.5  # 1 word at 120 wpm = 0.5 seconds
+
+        # Act
+        actual_time = _get_time_from_wpm(text, wpm)
+
+        # Assert
+        self.assertEqual(actual_time, expected_time)
+
+    def test_calculate_time_with_very_slow_wpm(self):
+        # Arrange
+        text = "Two words"
+        wpm = 0.1  # Very slow typing speed
+        expected_time = 1200.0  # 2 words at 0.1 wpm = 1200 seconds (20 minutes)
+
+        # Act
+        actual_time = _get_time_from_wpm(text, wpm)
+
+        # Assert
+        self.assertEqual(actual_time, expected_time)
+
+    def test_simulate_typing_with_default_parameters(self):
+        # Arrange
+        mock_bot = telebot.TeleBot("234234:test_token")
+        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        chat_id = 123456
+        text = "Hello, this is a test message"
+        start_time = datetime.datetime.now() - datetime.timedelta(seconds=2)
+
+        # Act
+        with unittest.mock.patch("time.sleep") as mock_sleep:
+            simulate_typing(mock_bot, chat_id, text, start_time)
+
+        # Assert
+        # For a short text with default parameters (wpm=50), typing should be simulated
+        # The function should call send_chat_action at least once
+        mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
+        # Sleep should be called at least once
+        mock_sleep.assert_called_with(5)
+
+    def test_simulate_typing_with_empty_text(self):
+        # Arrange
+        mock_bot = telebot.TeleBot("234234:test_token")
+        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        chat_id = 123456
+        text = ""
+        start_time = datetime.datetime.now()
+
+        # Act
+        with unittest.mock.patch("time.sleep") as mock_sleep:
+            simulate_typing(mock_bot, chat_id, text, start_time)
+
+        # Assert
+        # For empty text, typing time should be minimal
+        # The function should not call send_chat_action or sleep
+        mock_bot.send_chat_action.assert_not_called()
+        mock_sleep.assert_not_called()
+
+    def test_simulate_typing_capped_at_max_time(self):
+        # Arrange
+        mock_bot = telebot.TeleBot("234234:test_token")
+        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        chat_id = 123456
+        # Create a very long text (100 words)
+        text = "word " * 100
+        start_time = datetime.datetime.now()
+        max_typing_time = 8  # 8 seconds max
+        wpm = 10  # Very slow typing speed
+
+        # Act
+        with unittest.mock.patch("time.sleep") as mock_sleep:
+            simulate_typing(mock_bot, chat_id, text, start_time, max_typing_time, wpm)
+
+        # Assert
+        # For a long text with low WPM, typing time should be capped at max_typing_time
+        # The function should call send_chat_action twice (8 seconds / 5 seconds per call = 1.6 calls, rounded to 2)
+        self.assertEqual(mock_bot.send_chat_action.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 2)
+        mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
 
 
 if __name__ == "__main__":

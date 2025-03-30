@@ -1,4 +1,5 @@
 import base64
+import datetime
 import logging
 import random
 import re
@@ -30,6 +31,8 @@ from telegram.utils import (
     is_image,
     is_reply,
     reply_to_telegram_message,
+    send_typing_action,
+    simulate_typing,
 )
 
 
@@ -242,6 +245,15 @@ class LLMBot:
         logging.debug(f"Generated feedback message: {feedback_message}")
         return feedback_message
 
+    def _get_time_from_wpm(self, text: str, wpm: float) -> float:
+        """
+        Get the time it takes to write a text with a given WPM.
+        :param text: Text to write
+        :param wpm: Words per minute
+        :return: Time in seconds
+        """
+        return (len(text.split()) / wpm) * 60
+
     def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
         """
         Process the message buffer.
@@ -251,10 +263,14 @@ class LLMBot:
                 # process message
                 logging.debug(f"Buffer size: {len(self.messages_buffer)}")
 
+                start_time = datetime.datetime.now()
+
                 message = self.messages_buffer.pop(0)
                 logging.debug(f"Processing message: {message.id}")
 
                 chat_id = message.chat.id
+
+                send_typing_action(bot, chat_id)
 
                 message_text = get_message_text(message)
                 logging.debug(f"Message text: {message_text}")
@@ -326,6 +342,16 @@ class LLMBot:
                     continue
 
                 response_content = response.content
+
+                if self.config.simulate_typing:
+                    simulate_typing(
+                        bot,
+                        chat_id,
+                        response_content,
+                        start_time,
+                        max_typing_time=self.config.max_typing_time,
+                        wpm=self.config.wpm,
+                    )
 
                 if response_content.startswith("GENERATE_IMAGE"):
                     logging.debug(f"GENERATE_IMAGE response, generating image for chat {chat_id}")

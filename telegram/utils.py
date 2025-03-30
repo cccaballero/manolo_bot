@@ -1,5 +1,7 @@
+import datetime
 import logging
 import re
+import time
 
 import telebot
 from telebot import TeleBot
@@ -131,3 +133,42 @@ def clean_standard_message(bot_username: str, message_text: str) -> str:
     if message_text.startswith(replace):
         message_text = message_text[len(replace) :]
     return message_text
+
+
+def _get_time_from_wpm(text: str, wpm: float) -> float:
+    """
+    Get the time it takes to write a text with a given WPM.
+    :param text: Text to write
+    :param wpm: Words per minute
+    :return: Time in seconds
+    """
+    return (len(text.split()) / wpm) * 60
+
+
+def send_typing_action(bot, chat_id):
+    bot.send_chat_action(chat_id, "typing")
+
+
+def simulate_typing(
+    bot: TeleBot, chat_id: int, text: str, start_time: datetime.datetime, max_typing_time: int = 10, wpm: int = 50
+) -> None:
+    """
+    Simulate typing for a given text.
+    :param bot: Telegram bot instance
+    :param chat_id: Chat ID
+    :param text: Text to simulate typing for
+    :param start_time: Start time of the typing simulation
+    :param max_typing_time: Maximum typing time in seconds, defaults to 10 seconds
+    :param wpm: Words per minute, defaults to 50
+    :return: None
+    """
+    writing_time = _get_time_from_wpm(text, wpm)
+    logging.debug(f"Writing time: {writing_time} seconds")
+    time_left = writing_time - (datetime.datetime.now() - start_time).total_seconds()
+    time_left = min(time_left, max_typing_time)
+    logging.debug(f"Time left: {time_left} seconds")
+
+    while time_left > 0:
+        bot.send_chat_action(chat_id, "typing")
+        time.sleep(5)
+        time_left -= 5
