@@ -92,7 +92,7 @@ This will override the default instructions, and the custom bot character instru
 
 `SIMULATE_TYPING`: Enable simulating human typing behavior. Default is False. This typing simulation will affect the bot's response time in all chats.
 
-`SIMULATE_TYPING_WPM`: The words per minute for simulating human typing behavior. Default is 50.
+`SIMULATE_TYPING_WPM`: The words per minute for simulating human typing behavior. Default is 100.
 
 `SIMULATE_TYPING_MAX_TIME`: The maximum time in seconds for simulating human typing behavior. Default is 10 seconds (we usually don't want to wait too long).
 
