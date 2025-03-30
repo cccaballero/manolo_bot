@@ -349,8 +349,8 @@ class LLMBot:
                         chat_id,
                         response_content,
                         start_time,
-                        max_typing_time=self.config.max_typing_time,
-                        wpm=self.config.wpm,
+                        max_typing_time=self.config.simulate_typing_max_time,
+                        wpm=self.config.simulate_typing_wpm,
                     )
 
                 if response_content.startswith("GENERATE_IMAGE"):
