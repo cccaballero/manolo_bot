@@ -353,7 +353,7 @@ class TestTelegramUtils(unittest.TestCase):
         # The function should call send_chat_action at least once
         mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
         # Sleep should be called at least once
-        mock_sleep.assert_called_with(5)
+        mock_sleep.assert_called_with(1)
 
     def test_simulate_typing_with_empty_text(self):
         # Arrange
@@ -392,7 +392,7 @@ class TestTelegramUtils(unittest.TestCase):
         # For a long text with low WPM, typing time should be capped at max_typing_time
         # The function should call send_chat_action twice (8 seconds / 5 seconds per call = 1.6 calls, rounded to 2)
         self.assertEqual(mock_bot.send_chat_action.call_count, 2)
-        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 8)
         mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
 
 
