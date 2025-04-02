@@ -1,7 +1,7 @@
 import unittest
 import unittest.mock
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from requests import RequestException
 
 from ai.llmbot import LLMBot
@@ -15,9 +15,11 @@ class TestLlmBot(unittest.TestCase):
         mock_config.google_api_key = None
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
-        system_instructions = "You are a helpful assistant"
-        messages_buffer = []
-        return LLMBot(mock_config, system_instructions, messages_buffer)  # Initialize the bot
+        mock_config.context_max_tokens = 4000
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        llm_bot = LLMBot(mock_config, system_instructions)  # Initialize the bot
+        llm_bot.chats = {1: {"messages": []}}
+        return llm_bot
 
     def test_llm_bot__init_with_ollama_ai(self):
         # Arrange
@@ -33,18 +35,16 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
             unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
         ):
-            system_instructions = "You are a helpful assistant"
-            messages_buffer = []
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
             # Act
-            bot = LLMBot(mock_config, system_instructions, messages_buffer)
+            bot = LLMBot(mock_config, system_instructions)
 
             # Assert
             mock_chat_ollama.assert_called_once()
             mock_chat_google.assert_not_called()
             mock_chat_openai.assert_not_called()
             self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.messages_buffer, messages_buffer)
             self.assertEqual(bot.config, mock_config)
             self.assertIsNotNone(bot.llm)
 
@@ -62,18 +62,16 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
             unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
         ):
-            system_instructions = "You are a helpful assistant"
-            messages_buffer = []
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
             # Act
-            bot = LLMBot(mock_config, system_instructions, messages_buffer)
+            bot = LLMBot(mock_config, system_instructions)
 
             # Assert
             mock_chat_google.assert_called_once()
             mock_chat_ollama.assert_not_called()
             mock_chat_openai.assert_not_called()
             self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.messages_buffer, messages_buffer)
             self.assertEqual(bot.config, mock_config)
             self.assertIsNotNone(bot.llm)
 
@@ -91,18 +89,16 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
             unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
         ):
-            system_instructions = "You are a helpful assistant"
-            messages_buffer = []
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
             # Act
-            bot = LLMBot(mock_config, system_instructions, messages_buffer)
+            bot = LLMBot(mock_config, system_instructions)
 
             # Assert
             mock_chat_google.assert_not_called()
             mock_chat_ollama.assert_not_called()
             mock_chat_openai.assert_called_once()
             self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.messages_buffer, messages_buffer)
             self.assertEqual(bot.config, mock_config)
             self.assertIsNotNone(bot.llm)
 
@@ -114,12 +110,11 @@ class TestLlmBot(unittest.TestCase):
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
 
-        system_instructions = "You are a helpful assistant"
-        messages_buffer = []
+        system_instructions = [SystemMessage(content="Hello")]
 
         # Act & Assert
         with self.assertRaises(Exception) as context:
-            LLMBot(mock_config, system_instructions, messages_buffer)
+            LLMBot(mock_config, system_instructions)
 
         self.assertEqual(str(context.exception), "No LLM backend data found")
 
@@ -232,7 +227,8 @@ class TestLlmBot(unittest.TestCase):
         llm_bot = self.get_basic_llm_bot()
         text = "What's in this image?"
         image_url = "https://example.com/image.jpg"
-        messages = []
+        llm_bot.count_tokens = unittest.mock.Mock()
+        llm_bot.count_tokens.return_value = 100
 
         # Mock requests.get
         mock_response = unittest.mock.Mock()
@@ -244,12 +240,12 @@ class TestLlmBot(unittest.TestCase):
             llm_bot.llm.invoke.return_value = expected_response
 
             # Act
-            response = llm_bot.answer_image_message(text, image_url, messages)
+            response = llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
             self.assertEqual(response, expected_response)
-            self.assertEqual(len(messages), 1)
-            llm_bot.llm.invoke.assert_called_once_with(messages)
+            self.assertEqual(len(llm_bot.chats[1]["messages"]), 1)
+            llm_bot.llm.invoke.assert_called_once_with(llm_bot.chats[1]["messages"])
 
     def test_answer_image_message__handles_request_exception(self):
         # Arrange
@@ -266,7 +262,7 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch("logging.exception") as mock_exception_logger,
         ):
             # Act
-            response = llm_bot.answer_image_message(text, image_url, messages)
+            response = llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
             self.assertEqual(response.content, "NO_ANSWER")
@@ -302,29 +298,39 @@ class TestLlmBot(unittest.TestCase):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), HumanMessage(content="World")]
-        mock_llm = unittest.mock.MagicMock()
-        mock_llm.get_num_tokens.return_value = 2
+        llm_bot.llm = unittest.mock.MagicMock()
+        llm_bot.llm.get_num_tokens = unittest.mock.MagicMock()
+        llm_bot.llm.get_num_tokens.return_value = 2
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm)
+        result = llm_bot.count_tokens(messages)
 
         # Assert
         self.assertEqual(result, 2)
-        mock_llm.get_num_tokens.assert_called_once_with("Hello World")
+        llm_bot.llm.get_num_tokens.assert_called_once_with("\n Hello\n World")
 
     def test_count_tokens__with_list_content(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
-        messages = [HumanMessage(content="Hello"), AIMessage(content=["World", "Test"])]
+        messages = [
+            HumanMessage(content="Hello"),
+            AIMessage(
+                content=[
+                    {"type": "text", "text": "Test"},
+                    {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}},
+                ]
+            ),
+        ]
         mock_llm = unittest.mock.MagicMock()
+        llm_bot.llm = mock_llm
         mock_llm.get_num_tokens.return_value = 3
 
         # Act
-        result = llm_bot.count_tokens(messages, mock_llm)
+        result = llm_bot.count_tokens(messages)
 
         # Assert
-        self.assertEqual(result, 3)
-        mock_llm.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
+        self.assertEqual(result, 258 + 3)
+        mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
 
     def test_generate_feedback_message__success_message(self):
         # Arrange
@@ -381,7 +387,7 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch.object(llm_bot, "_remove_urls") as _remove_urls_mock,
         ):
             # Act
-            result = llm_bot.answer_webcontent(message_text, response_content)
+            result = llm_bot.answer_webcontent(message_text, response_content, 1)
 
             # Assert
             self.assertIsNone(result)

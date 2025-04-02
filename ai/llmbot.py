@@ -1,9 +1,7 @@
 import base64
-import datetime
 import logging
 import random
 import re
-from time import sleep
 from typing import Any
 from urllib.parse import urljoin
 
@@ -19,29 +17,17 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from requests import ConnectTimeout, RequestException
-from telebot import TeleBot
 
 from config import Config
-from telegram.utils import (
-    clean_standard_message,
-    get_message_from,
-    get_message_text,
-    get_telegram_file_url,
-    is_bot_reply,
-    is_image,
-    is_reply,
-    reply_to_telegram_message,
-    send_typing_action,
-    simulate_typing,
-)
 
 
 class LLMBot:
-    def __init__(self, config: Config, system_instructions: list[BaseMessage], messages_buffer: list):
+    def __init__(self, config: Config, system_instructions: list[BaseMessage]):
         self.config = config
         self.system_instructions = system_instructions
-        self.messages_buffer = messages_buffer
+        # self.messages_buffer = messages_buffer
         self.llm = None
+        self.chats: dict = {}  #  {'chat_id': {"messages": []}}
         self._load_llm()
 
     def _get_rate_limiter(self):
@@ -106,6 +92,25 @@ class LLMBot:
         else:
             raise Exception("No LLM backend data found")
 
+    def add_chat(self, chat_id: int) -> None:
+        """
+        Add a new chat to the list of chats.
+        :param chat_id: Chat ID
+        """
+        if chat_id not in self.chats:
+            self.chats[chat_id] = {
+                "messages": [],
+            }
+
+    def truncate_chat_context(self, chat_id: int) -> None:
+        """
+        Truncate the chat context if it is too long.
+        :param chat_id: Chat ID
+        """
+        while self.count_tokens(self.chats[chat_id]["messages"]) > self.config.context_max_tokens:
+            self.chats[chat_id]["messages"] = self.chats[chat_id]["messages"][1:]
+            logging.debug(f"Chat context truncated for chat {chat_id}")
+
     def call_sdapi(self, prompt: str) -> dict[str, Any] | None:
         """
         Call the StableDiffusion API.
@@ -126,12 +131,25 @@ class LLMBot:
                 logging.exception(e)
         return None
 
-    def answer_image_message(self, text: str, image: str, messages: list[BaseMessage]) -> BaseMessage:
+    def clean_context(self, chat_id: int) -> None:
+        """
+        Clean the chat context.
+        :param chat_id: Chat ID
+        """
+        self.chats[chat_id]["messages"] = []
+        logging.debug(f"Chat context cleaned for chat {chat_id}")
+
+    def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+        self.chats[chat_id]["messages"].append(HumanMessage(content=message))
+        self.truncate_chat_context(chat_id)
+        return self.llm.invoke(self.system_instructions + self.chats[chat_id]["messages"])
+
+    def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
         """
         Answer an image message.
+        :param chat_id: Chat ID
         :param text: Text to answer
         :param image: Image to answer
-        :param messages: List of messages
         :return: Response
         """
         logging.debug(f"Image message: {text}")
@@ -147,8 +165,9 @@ class LLMBot:
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
                 ]
             )
-            messages.append(llm_message)
-            response = self.llm.invoke(messages)
+            self.chats[chat_id]["messages"].append(llm_message)
+            self.truncate_chat_context(chat_id)
+            response = self.llm.invoke(self.chats[chat_id]["messages"])
         except (RequestException, Exception) as e:
             if isinstance(e, RequestException):
                 logging.error(f"Failed to get image: {image}")
@@ -157,6 +176,47 @@ class LLMBot:
 
         logging.debug(f"Image message response: {response}")
         return response
+
+    def postprocess_response(self, response: BaseMessage, message_text: str, chat_id: int) -> dict | None:
+        """
+        Postprocess the response from the LLM.
+        :param response: Response from the LLM
+        :param message_text: Text of the user message
+        :param chat_id: Chat ID
+        return: Final response data
+        """
+        response_content = response.content
+        final_response = None
+        if response_content.startswith("GENERATE_IMAGE"):
+            logging.debug(f"GENERATE_IMAGE response, generating image for chat {chat_id}")
+            image = self.generate_image(response_content[len("GENERATE_IMAGE ") :])
+            if image:
+                final_response = {
+                    "type": "image",
+                    "content": image,
+                }
+        elif "WEBCONTENT_RESUME" in response_content:
+            logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
+            response_content = self.answer_webcontent(message_text, response_content, chat_id)
+            # TODO: find a way to graciously handle failed web content requests
+            response_content = response_content if response_content else "😐"
+            final_response = {"type": "text", "data": response_content}
+        elif "WEBCONTENT_OPINION" in response_content:
+            logging.debug(f"WEBCONTENT_OPINION response, generating web content opinion for chat {chat_id}")
+            response_content = self.answer_webcontent(message_text, response_content, chat_id)
+            # TODO: find a way to graciously handle failed web content requests
+            response_content = response_content if response_content else "😐"
+            final_response = {"type": "text", "data": response_content}
+        elif "NO_ANSWER" not in response_content:
+            logging.debug(f"Response for chat {chat_id}")
+            final_response = {"type": "text", "data": response_content}
+        else:
+            logging.debug(f"NO_ANSWER response for chat {chat_id}")
+            final_response = {"type": "text", "text": random.choice(["😐", "😶", "😳", "😕", "😑"])}
+
+        self.chats[chat_id]["messages"].append(AIMessage(content=response_content))
+
+        return final_response
 
     def generate_image(self, prompt: str) -> str | None:
         """
@@ -170,19 +230,28 @@ class LLMBot:
             return response["images"][0]
         return None
 
-    def count_tokens(self, messages: list[BaseMessage], llm) -> int:
+    def count_tokens(self, messages: list[BaseMessage]) -> int:
         """
         Count the number of tokens in the messages.
         :param messages: List of messages
-        :param llm: Language model
         :return: Number of tokens
         """
-        text = " ".join(
-            [message.content if not isinstance(message.content, list) else str(message.content) for message in messages]
-        )
-        return llm.get_num_tokens(text)
+        extra_tokens = 0
+        context_text = ""
+        for message in messages:
+            if isinstance(message.content, list):
+                for item in message.content:
+                    if item.get("type") == "text":
+                        context_text += "\n " + item.get("text")
+                    elif item.get("type") == "image_url":
+                        # TODO: Use an LLM-based method to get the image token count.
+                        extra_tokens += 258  # using gemini image context size
+            else:
+                context_text += "\n " + message.content
 
-    def answer_webcontent(self, message_text: str, response_content: str) -> str | None:
+        return self.llm.get_num_tokens(context_text) + extra_tokens
+
+    def answer_webcontent(self, message_text: str, response_content: str, chat_id: int) -> str | None:
         """
         Answer a web content message.
         :param message_text: Text to answer
@@ -199,7 +268,9 @@ class LLMBot:
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
 
-                # Using LCEL approach instead of deprecated LLMChain and StuffDocumentsChain
+                self.truncate_chat_context(chat_id)
+
+                # TODO: Add full chat context
                 stuff_chain = create_stuff_documents_chain(
                     llm=self.llm, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
                 )
@@ -253,133 +324,3 @@ class LLMBot:
         :return: Time in seconds
         """
         return (len(text.split()) / wpm) * 60
-
-    def process_message_buffer(self, chats: dict[str, Any], bot: TeleBot):
-        """
-        Process the message buffer.
-        """
-        while True:
-            if len(self.messages_buffer) > 0:
-                # process message
-                logging.debug(f"Buffer size: {len(self.messages_buffer)}")
-
-                start_time = datetime.datetime.now()
-
-                message = self.messages_buffer.pop(0)
-                logging.debug(f"Processing message: {message.id}")
-
-                chat_id = message.chat.id
-
-                send_typing_action(bot, chat_id)
-
-                message_text = get_message_text(message)
-                logging.debug(f"Message text: {message_text}")
-
-                # build message for llm context
-                message_parts = f"@{get_message_from(message)}: "
-                if is_bot_reply(self.config.bot_username, message):
-                    message_parts += f"@{self.config.bot_username} "
-                elif is_reply(message):
-                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
-                    message_parts += (
-                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
-                    )
-                if message_text:
-                    message_parts += message_text
-                else:
-                    logging.debug(f"No message text for message {message.id}")
-
-                chats[chat_id]["messages"].append(HumanMessage(content=message_parts))
-
-                # clean chat context if it is too long
-                while self.count_tokens(chats[chat_id]["messages"], self.llm) > self.config.context_max_tokens:
-                    chats[chat_id]["messages"] = chats[chat_id]["messages"][1:]
-                    logging.debug(f"Chat context cleaned for chat {chat_id}")
-
-                try:
-                    # Check if the message itself contains an image
-                    if is_image(message) and self.config.is_image_multimodal:
-                        logging.debug(f"Image message {message.id} for chat {chat_id}")
-                        prompt = chats[chat_id]["messages"][-1]
-                        fileID = message.photo[-1].file_id
-                        file = bot.get_file(fileID)
-                        response = self.answer_image_message(
-                            prompt.content[0],
-                            get_telegram_file_url(self.config.bot_token, file.file_path),
-                            chats[chat_id]["messages"],
-                        )
-                    # Check if the message is a reply to a message with an image
-                    elif (
-                        is_reply(message)
-                        and message.reply_to_message
-                        and is_image(message.reply_to_message)
-                        and self.config.is_image_multimodal
-                    ):
-                        logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
-                        prompt = chats[chat_id]["messages"][-1]
-                        fileID = message.reply_to_message.photo[-1].file_id
-                        file = bot.get_file(fileID)
-                        # Ensure we're passing a string to answer_image_message
-                        prompt_content = prompt.content
-                        if isinstance(prompt_content, str):
-                            prompt_text = prompt_content
-                        else:
-                            prompt_text = str(prompt_content)
-                        response = self.answer_image_message(
-                            prompt_text,
-                            get_telegram_file_url(self.config.bot_token, file.file_path),
-                            chats[chat_id]["messages"],
-                        )
-                    else:
-                        logging.debug(f"Text message {message.id} for chat {chat_id}")
-                        response = self.llm.invoke(self.system_instructions + chats[chat_id]["messages"])
-                        logging.debug(f"Response: {response}")
-                except Exception as e:
-                    logging.exception(e)
-                    # clean chat context if there is an error for avoid looping on context based error
-                    chats[chat_id]["messages"] = []
-                    continue
-
-                response_content = response.content
-
-                if self.config.simulate_typing:
-                    simulate_typing(
-                        bot,
-                        chat_id,
-                        response_content,
-                        start_time,
-                        max_typing_time=self.config.simulate_typing_max_time,
-                        wpm=self.config.simulate_typing_wpm,
-                    )
-
-                if response_content.startswith("GENERATE_IMAGE"):
-                    logging.debug(f"GENERATE_IMAGE response, generating image for chat {chat_id}")
-                    image = self.generate_image(response_content[len("GENERATE_IMAGE ") :])
-                    if image:
-                        logging.debug(f"Sending image for chat {chat_id}")
-                        bot.send_photo(chat_id, base64.b64decode(image), reply_to_message_id=message.id)
-                elif "WEBCONTENT_RESUME" in response_content:
-                    logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
-                    response_content = self.answer_webcontent(message_text, response_content)
-                    # TODO: find a way to graciously handle failed web content requests
-                    response_content = response_content if response_content else "😐"
-                    reply_to_telegram_message(bot, message, response_content)
-                elif "WEBCONTENT_OPINION" in response_content:
-                    logging.debug(f"WEBCONTENT_OPINION response, generating web content opinion for chat {chat_id}")
-                    response_content = self.answer_webcontent(message_text, response_content)
-                    # TODO: find a way to graciously handle failed web content requests
-                    response_content = response_content if response_content else "😐"
-                    reply_to_telegram_message(bot, message, response_content)
-                elif "NO_ANSWER" not in response_content:
-                    logging.debug(f"Sending response for chat {chat_id}")
-                    response_content = clean_standard_message(self.config.bot_username, response_content)
-                    reply_to_telegram_message(bot, message, response_content)
-                else:
-                    logging.debug(f"NO_ANSWER response for chat {chat_id}")
-                    reply_to_telegram_message(bot, message, random.choice(["😐", "😶", "😳", "😕", "😑"]))
-
-                chats[chat_id]["messages"].append(AIMessage(content=response_content))
-
-            else:
-                sleep(0.1)
