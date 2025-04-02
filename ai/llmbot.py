@@ -11,28 +11,14 @@ from langchain.chains.combine_documents.stuff import create_stuff_documents_chai
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from requests import ConnectTimeout, RequestException
 
-# from telebot import TeleBot
 from config import Config
-
-# from telegram.utils import (
-#     clean_standard_message,
-#     get_message_from,
-#     get_message_text,
-#     get_telegram_file_url,
-#     is_bot_reply,
-#     is_image,
-#     is_reply,
-#     reply_to_telegram_message,
-#     send_typing_action,
-#     simulate_typing,
-# )
 
 
 class LLMBot:
@@ -248,13 +234,22 @@ class LLMBot:
         """
         Count the number of tokens in the messages.
         :param messages: List of messages
-        :param llm: Language model
         :return: Number of tokens
         """
-        text = " ".join(
-            [message.content if not isinstance(message.content, list) else str(message.content) for message in messages]
-        )
-        return self.llm.get_num_tokens(text)
+        extra_tokens = 0
+        context_text = ""
+        for message in messages:
+            if isinstance(message.content, list):
+                for item in message.content:
+                    if item.get("type") == "text":
+                        context_text += "\n " + item.get("text")
+                    elif item.get("type") == "image_url":
+                        # TODO: Use an LLM-based method to get the image token count.
+                        extra_tokens += 258  # using gemini image context size
+            else:
+                context_text += "\n " + message.content
+
+        return self.llm.get_num_tokens(context_text) + extra_tokens
 
     def answer_webcontent(self, message_text: str, response_content: str, chat_id: int) -> str | None:
         """
@@ -275,14 +270,9 @@ class LLMBot:
 
                 self.truncate_chat_context(chat_id)
 
-                chat_history = ChatPromptTemplate.from_messages(
-                    self.system_instructions + self.chats[chat_id]["messages"]
-                )
-                runnable = chat_history | self.llm
-
-                # Using LCEL approach instead of deprecated LLMChain and StuffDocumentsChain
+                # TODO: Add full chat context
                 stuff_chain = create_stuff_documents_chain(
-                    llm=runnable, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
+                    llm=self.llm, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
                 )
 
                 # The key should match the document_variable_name parameter

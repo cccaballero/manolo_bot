@@ -307,12 +307,20 @@ class TestLlmBot(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, 2)
-        llm_bot.llm.get_num_tokens.assert_called_once_with("Hello World")
+        llm_bot.llm.get_num_tokens.assert_called_once_with("\n Hello\n World")
 
     def test_count_tokens__with_list_content(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
-        messages = [HumanMessage(content="Hello"), AIMessage(content=["World", "Test"])]
+        messages = [
+            HumanMessage(content="Hello"),
+            AIMessage(
+                content=[
+                    {"type": "text", "text": "Test"},
+                    {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}},
+                ]
+            ),
+        ]
         mock_llm = unittest.mock.MagicMock()
         llm_bot.llm = mock_llm
         mock_llm.get_num_tokens.return_value = 3
@@ -321,8 +329,8 @@ class TestLlmBot(unittest.TestCase):
         result = llm_bot.count_tokens(messages)
 
         # Assert
-        self.assertEqual(result, 3)
-        mock_llm.get_num_tokens.assert_called_once_with("Hello ['World', 'Test']")
+        self.assertEqual(result, 258 + 3)
+        mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
 
     def test_generate_feedback_message__success_message(self):
         # Arrange
