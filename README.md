@@ -96,6 +96,10 @@ This will override the default instructions, and the custom bot character instru
 
 `SIMULATE_TYPING_MAX_TIME`: The maximum time in seconds for simulating human typing behavior. Default is 10 seconds (we usually don't want to wait too long).
 
+#### Tools usage
+
+`ENABLE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+
 ### Available Commands
 
 The bot supports the following commands:

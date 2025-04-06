@@ -18,6 +18,7 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from requests import ConnectTimeout, RequestException
 
+from ai.tools import get_tool, get_tools
 from config import Config
 
 
@@ -29,6 +30,9 @@ class LLMBot:
         self.llm = None
         self.chats: dict = {}  #  {'chat_id': {"messages": []}}
         self._load_llm()
+
+        if self.config.use_tools:
+            self._load_tools()
 
     def _get_rate_limiter(self):
         return InMemoryRateLimiter(
@@ -142,7 +146,15 @@ class LLMBot:
     def answer_message(self, chat_id: int, message: str) -> BaseMessage:
         self.chats[chat_id]["messages"].append(HumanMessage(content=message))
         self.truncate_chat_context(chat_id)
-        return self.llm.invoke(self.system_instructions + self.chats[chat_id]["messages"])
+        ai_msg = self.llm.invoke(self.system_instructions + self.chats[chat_id]["messages"])
+        if ai_msg.tool_calls:
+            self.chats[chat_id]["messages"].append(ai_msg)
+            for tool_call in ai_msg.tool_calls:
+                selected_tool = get_tool(tool_call["name"])
+                tool_msg = selected_tool.invoke(tool_call)
+                self.chats[chat_id]["messages"].append(tool_msg)
+            ai_msg = self.llm.invoke(self.system_instructions + self.chats[chat_id]["messages"])
+        return ai_msg
 
     def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
         """
@@ -324,3 +336,6 @@ class LLMBot:
         :return: Time in seconds
         """
         return (len(text.split()) / wpm) * 60
+
+    def _load_tools(self):
+        self.llm = self.llm.bind_tools(get_tools())  # add wikipedia?
