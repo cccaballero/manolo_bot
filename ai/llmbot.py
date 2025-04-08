@@ -197,7 +197,13 @@ class LLMBot:
         :param chat_id: Chat ID
         return: Final response data
         """
-        response_content = response.content
+
+        # response.content is sometimes a list instead of a string, TODO: find why this happens and fix it
+        if isinstance(response.content, list):
+            response_content = response.content[0]
+        else:
+            response_content = response.content
+
         final_response = None
         if response_content.startswith("GENERATE_IMAGE"):
             logging.debug(f"GENERATE_IMAGE response, generating image for chat {chat_id}")
