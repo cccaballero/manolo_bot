@@ -1,6 +1,7 @@
 import base64
 import datetime
 import logging
+import re
 import signal
 import sys
 import threading
@@ -283,18 +284,20 @@ def process_message_buffer(bot: TeleBot):
                         chat_id, base64.b64decode(final_response.get("data")), reply_to_message_id=message.id
                     )
                 elif final_response.get("type") == "text":
+                    # Remove thinking in reasoning models
+                    response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
                     # Simulate typing if enabled
                     if config.simulate_typing:
                         simulate_typing(
                             bot,
                             chat_id,
-                            final_response.get("data"),
+                            response_text,
                             start_time,
                             max_typing_time=config.simulate_typing_max_time,
                             wpm=config.simulate_typing_wpm,
                         )
 
-                    reply_to_telegram_message(bot, message, final_response.get("data"))
+                    reply_to_telegram_message(bot, message, response_text)
         else:
             sleep(0.1)
 
