@@ -100,6 +100,10 @@ This will override the default instructions, and the custom bot character instru
 
 `ENABLE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
 
+#### Logging Level
+
+`LOGGING_LEVEL`: Sets the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL), defaulting to INFO.
+
 ### Available Commands
 
 The bot supports the following commands:
