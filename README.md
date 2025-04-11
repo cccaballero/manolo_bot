@@ -14,11 +14,11 @@ uv sync --no-dev
 
 ### Configuration
 
-You can copy and rename the provided `env.example` to `.env` and edit the file according your data
+You can copy and rename the provided `env.example` to `.env` and edit the file according to your data
 
 You can create a bot on Telegram and get its API token by following the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot).
 
-For use the bot on a group you have to use the @BotFather bot to [set the Group Privacy off](https://stackoverflow.com/questions/50204633/allow-bot-to-access-telegram-group-messages/50236522#50236522). This let the bot to access all the group messages.
+To use the bot in a group, you have to use the @BotFather bot to [set the Group Privacy off](https://stackoverflow.com/questions/50204633/allow-bot-to-access-telegram-group-messages/50236522#50236522). This allows the bot to access all group messages.
 
 #### Required environment variables.
 
@@ -26,27 +26,27 @@ You can use the `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL` or `OL
 LLM provider.
 The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
-- <b>Note:</b> When `GOOGLE_API_KEY` option is selected the default model used will be Gemini 2.0 Flash.
+- <b>Note:</b> When `GOOGLE_API_KEY` option is selected, the default model will be Gemini 2.0 Flash.
 
 `TELEGRAM_BOT_NAME`: Your Telegram bot name
 
-`TELEGRAM_BOT_USERNAME`: Your Telegram bot name
+`TELEGRAM_BOT_USERNAME`: Your Telegram bot username
 
 `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
 
 #### Selecting OpenAI Model.
 
-`OPENAI_API_MODEL`: LLM to use for OpenAI or OpenAI-like API, if not provided the default model will be used.
+`OPENAI_API_MODEL`: LLM to use for OpenAI or OpenAI-like API; if not provided, the default model will be used.
 
 #### Selecting Google API Model.
 
-`GOOGLE_API_MODEL`: LLM to use for Google API, if not provided the default model will be used.
+`GOOGLE_API_MODEL`: LLM to use for Google API; if not provided, the default model will be used.
 
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the bot will answer image generation requests using Stable Diffusion generated images.
 
-`WEBUI_SD_API_PARAMS`: A JSON string containing Stable Diffusion Web UI API params. If not provided default params for SDXL Turbo model will me used.
+`WEBUI_SD_API_PARAMS`: A JSON string containing Stable Diffusion Web UI API params. If not provided, default parameters for the SDXL Turbo model will be used.
 
 #### Setting custom bot character instructions
 
@@ -64,7 +64,7 @@ This will override the default instructions, and the custom bot character instru
 
 #### Limiting Bot interaction
 
-`TELEGRAM_ALLOWED_CHATS`: You can use a comma separated allowed chat IDs for limiting bot interaction to those chats.
+`TELEGRAM_ALLOWED_CHATS`: You can use a comma-separated list of allowed chat IDs to limit bot interaction to those chats.
 
 #### Enable multimodal capabilities
 
@@ -72,7 +72,7 @@ This will override the default instructions, and the custom bot character instru
 
 #### Enable group assistant
 
-`ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will answer to group chats with a question mark. Default is False.
+`ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will respond to group chats with a question mark. The default value is False.
 
 #### Enable rate limiting
 
@@ -90,7 +90,7 @@ This will override the default instructions, and the custom bot character instru
 
 #### Simulate typing human behavior
 
-`SIMULATE_TYPING`: Enable simulating human typing behavior. Default is False. This typing simulation will affect the bot's response time in all chats.
+`SIMULATE_TYPING`: Enable simulating human typing behavior. The default is False. This typing simulation will influence the bot's response time in all chats.
 
 `SIMULATE_TYPING_WPM`: The words per minute for simulating human typing behavior. Default is 100.
 
@@ -125,7 +125,7 @@ Use `uv sync --dev` to install the development dependencies.
 
 ### Pre-commit hooks
 
-After installing the development dependencies, For installing pre-commit scripts including ruff checks, you can run
+After installing the development dependencies, to install pre-commit scripts, including ruff checks, you can run
 the following command:
 
 ```shell
