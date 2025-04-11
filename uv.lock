@@ -259,11 +259,11 @@ wheels = [
 
 [[package]]
 name = "envmodel"
-version = "0.1.0.post2"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a6/34/e26ed811e1772aba763359645d0a5ae08735701ce2e023af9fded95cd3a2/envmodel-0.1.0.post2.tar.gz", hash = "sha256:89b9fa4aaee2968af5e3f5a4e908b18501d603836f01c5636980d7d54a3a0eb2", size = 14246 }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/d7/48b9bc5f7d3fe2660b6e5909011dfd60b66732dee2ca33be900424e78b93/envmodel-0.2.0.tar.gz", hash = "sha256:57b2e312ec97f17a04077448c5a9b9b5d1f62e552d383df9a41613d10019cc24", size = 14293 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/40/e0173f390bc8b676b092b566ef0082db16323a3d5e70bb747998367237ff/envmodel-0.1.0.post2-py3-none-any.whl", hash = "sha256:5ed9ee625b96067d1bb9611021b34118cc269715bdcc1d7e468e5aa4fe47d9ed", size = 12653 },
+    { url = "https://files.pythonhosted.org/packages/1b/94/29a6e4006613b1f37ea1e9b4ae52fd944f655c21839ff5c8234588dc65fa/envmodel-0.2.0-py3-none-any.whl", hash = "sha256:249a3e38998f4bd2361cd3d2d647417bb708688cd1050d63c1ea90a08113b088", size = 12626 },
 ]
 
 [[package]]
@@ -828,7 +828,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.13.3" },
-    { name = "envmodel", specifier = ">=0.1.0.post2" },
+    { name = "envmodel", specifier = ">=0.2" },
     { name = "google-generativeai", specifier = ">=0.8.4" },
     { name = "langchain", specifier = ">=0.3.20" },
     { name = "langchain-community", specifier = ">=0.3.19" },

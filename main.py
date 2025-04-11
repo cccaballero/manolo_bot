@@ -30,9 +30,9 @@ from telegram.utils import (
 
 load_dotenv()
 
-logging.basicConfig(level="DEBUG")
-
 config = Config()
+
+logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 
 if (
     not config.google_api_key

@@ -52,3 +52,7 @@ class Config(EnvModel):
     simulate_typing_max_time = IntegerField("SIMULATE_TYPING_MAX_TIME", default=10)
 
     use_tools = BooleanField("USE_TOOLS", default=False)
+
+    logging_level = StringField(
+        "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    )
