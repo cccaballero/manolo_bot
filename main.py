@@ -205,101 +205,107 @@ def process_message_buffer(bot: TeleBot):
     :param bot: Telegram bot instance
     """
     while True:
-        if len(messages_buffer) > 0:
-            # process message
-            logging.debug(f"Buffer size: {len(messages_buffer)}")
+        try:
+            if len(messages_buffer) > 0:
+                # process message
+                logging.debug(f"Buffer size: {len(messages_buffer)}")
 
-            start_time = datetime.datetime.now()
+                start_time = datetime.datetime.now()
 
-            message = messages_buffer.pop(0)
-            logging.debug(f"Processing message: {message.id}")
+                message = messages_buffer.pop(0)
+                logging.debug(f"Processing message: {message.id}")
 
-            chat_id = message.chat.id
+                chat_id = message.chat.id
 
-            send_typing_action(bot, chat_id)
+                send_typing_action(bot, chat_id)
 
-            message_text = get_message_text(message)
-            logging.debug(f"Message text: {message_text}")
+                message_text = get_message_text(message)
+                logging.debug(f"Message text: {message_text}")
 
-            # build message for llm context
-            message_parts = f"@{get_message_from(message)}: "
-            if is_bot_reply(config.bot_username, message):
-                message_parts += f"@{config.bot_username} "
-            elif is_reply(message):
-                reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-                image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
-                message_parts += f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
-            if message_text:
-                message_parts += message_text
-            else:
-                logging.debug(f"No message text for message {message.id}")
-
-            try:
-                # Check if the message itself contains an image
-                if is_image(message) and config.is_image_multimodal:
-                    logging.debug(f"Image message {message.id} for chat {chat_id}")
-                    fileID = message.photo[-1].file_id
-                    file = bot.get_file(fileID)
-                    response = llm_bot.answer_image_message(
-                        chat_id,
-                        message_parts,
-                        get_telegram_file_url(config.bot_token, file.file_path),
+                # build message for llm context
+                message_parts = f"@{get_message_from(message)}: "
+                if is_bot_reply(config.bot_username, message):
+                    message_parts += f"@{config.bot_username} "
+                elif is_reply(message):
+                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
+                    message_parts += (
+                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
                     )
-                # Check if the message is a reply to a message with an image
-                elif (
-                    is_reply(message)
-                    and message.reply_to_message
-                    and is_image(message.reply_to_message)
-                    and config.is_image_multimodal
-                ):
-                    logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
-                    fileID = message.reply_to_message.photo[-1].file_id
-                    file = bot.get_file(fileID)
-                    # Ensure we're passing a string to answer_image_message
-                    if isinstance(message_parts, str):
-                        prompt_text = message_parts
-                    else:
-                        prompt_text = str(message_parts)
-                    response = llm_bot.answer_image_message(
-                        chat_id,
-                        prompt_text,
-                        get_telegram_file_url(config.bot_token, file.file_path),
-                    )
+                if message_text:
+                    message_parts += message_text
                 else:
-                    logging.debug(f"Text message {message.id} for chat {chat_id}")
-                    response = llm_bot.answer_message(chat_id, message_parts)
-                    logging.debug(f"Response: {response}")
-            except Exception as e:
-                logging.exception(e)
-                # clean chat context if there is an error for avoid looping on context based error
-                llm_bot.clean_context(chat_id)
-                continue
+                    logging.debug(f"No message text for message {message.id}")
 
-            final_response = llm_bot.postprocess_response(response, message_text, chat_id)
-
-            if final_response:
-                if final_response.get("type") == "image":
-                    logging.debug(f"Sending image for chat {chat_id}")
-                    bot.send_photo(
-                        chat_id, base64.b64decode(final_response.get("data")), reply_to_message_id=message.id
-                    )
-                elif final_response.get("type") == "text":
-                    # Remove thinking in reasoning models
-                    response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
-                    # Simulate typing if enabled
-                    if config.simulate_typing:
-                        simulate_typing(
-                            bot,
+                try:
+                    # Check if the message itself contains an image
+                    if is_image(message) and config.is_image_multimodal:
+                        logging.debug(f"Image message {message.id} for chat {chat_id}")
+                        fileID = message.photo[-1].file_id
+                        file = bot.get_file(fileID)
+                        response = llm_bot.answer_image_message(
                             chat_id,
-                            response_text,
-                            start_time,
-                            max_typing_time=config.simulate_typing_max_time,
-                            wpm=config.simulate_typing_wpm,
+                            message_parts,
+                            get_telegram_file_url(config.bot_token, file.file_path),
                         )
+                    # Check if the message is a reply to a message with an image
+                    elif (
+                        is_reply(message)
+                        and message.reply_to_message
+                        and is_image(message.reply_to_message)
+                        and config.is_image_multimodal
+                    ):
+                        logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
+                        fileID = message.reply_to_message.photo[-1].file_id
+                        file = bot.get_file(fileID)
+                        # Ensure we're passing a string to answer_image_message
+                        if isinstance(message_parts, str):
+                            prompt_text = message_parts
+                        else:
+                            prompt_text = str(message_parts)
+                        response = llm_bot.answer_image_message(
+                            chat_id,
+                            prompt_text,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                        )
+                    else:
+                        logging.debug(f"Text message {message.id} for chat {chat_id}")
+                        response = llm_bot.answer_message(chat_id, message_parts)
+                        logging.debug(f"Response: {response}")
+                except Exception as e:
+                    logging.exception(e)
+                    # clean chat context if there is an error for avoid looping on context based error
+                    llm_bot.clean_context(chat_id)
+                    continue
 
-                    reply_to_telegram_message(bot, message, response_text)
-        else:
-            sleep(0.1)
+                final_response = llm_bot.postprocess_response(response, message_text, chat_id)
+
+                if final_response:
+                    if final_response.get("type") == "image":
+                        logging.debug(f"Sending image for chat {chat_id}")
+                        bot.send_photo(
+                            chat_id, base64.b64decode(final_response.get("data")), reply_to_message_id=message.id
+                        )
+                    elif final_response.get("type") == "text":
+                        # Remove thinking in reasoning models
+                        response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
+                        # Simulate typing if enabled
+                        if config.simulate_typing:
+                            simulate_typing(
+                                bot,
+                                chat_id,
+                                response_text,
+                                start_time,
+                                max_typing_time=config.simulate_typing_max_time,
+                                wpm=config.simulate_typing_wpm,
+                            )
+
+                        reply_to_telegram_message(bot, message, response_text)
+            else:
+                sleep(0.1)
+        except Exception as e:
+            logging.error(f"Error processing message buffer: {e}")
+            continue
 
 
 def shutdown_handler(signum, frame):
