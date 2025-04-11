@@ -200,7 +200,9 @@ class LLMBot:
 
         # response.content is sometimes a list instead of a string, TODO: find why this happens and fix it
         if isinstance(response.content, list):
-            response_content = response.content[0]
+            response_content = ""
+            for content_item in response.content:
+                response_content += f"\n\n{content_item}"
         else:
             response_content = response.content
 
