@@ -223,7 +223,12 @@ def process_message_buffer(bot: TeleBot):
                 logging.debug(f"Message text: {message_text}")
 
                 # build message for llm context
-                message_parts = f"@{get_message_from(message)}: "
+                username = get_message_from(message)
+                if username:
+                    message_parts = f"@{username}: "
+                else:
+                    user_name = message.from_user.first_name or "Unknown user"
+                    message_parts = f"{user_name}: "
                 if is_bot_reply(config.bot_username, message):
                     message_parts += f"@{config.bot_username} "
                 elif is_reply(message):
