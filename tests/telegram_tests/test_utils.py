@@ -7,6 +7,7 @@ import telebot
 from telegram.utils import (
     _get_time_from_wpm,
     clean_standard_message,
+    convert_markdown_to_telegram_format,
     fallback_telegram_call,
     get_message_from,
     get_message_text,
@@ -259,7 +260,7 @@ class TestTelegramUtils(unittest.TestCase):
 
             # Assert
             mock_bot.reply_to.assert_called_once_with(
-                mock_message, "Hello @username, this is a *markdown* message", parse_mode="markdown"
+                mock_message, "Hello @username, this is a _markdown_ message\n", parse_mode="MarkdownV2"
             )
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
@@ -276,7 +277,7 @@ class TestTelegramUtils(unittest.TestCase):
             reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="markdown")
+            mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="MarkdownV2")
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
@@ -394,6 +395,36 @@ class TestTelegramUtils(unittest.TestCase):
         self.assertEqual(mock_bot.send_chat_action.call_count, 2)
         self.assertEqual(mock_sleep.call_count, 8)
         mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
+
+    def test_convert_simple_markdown(self):
+        # Arrange
+        markdown_text = "# Heading\n**Bold text** and *italic text*"
+
+        # Act
+        result = convert_markdown_to_telegram_format(markdown_text)
+
+        # Assert
+        self.assertIn("*Bold text*", result)
+        self.assertIn("_italic text_", result)
+        self.assertNotEqual(markdown_text, result)
+
+    def test_markdown_with_special_characters(self):
+        # Arrange
+        markdown_text = """
+## Special Characters
+* List item with [link](https://example.com)
+* Item with `code` and ~~strikethrough~~
+"""
+
+        # Act
+        result = convert_markdown_to_telegram_format(markdown_text)
+
+        # Assert
+        self.assertNotEqual(markdown_text, result)
+        self.assertIn("*✏ Special Characters*", result)
+        self.assertIn("[link](https://example.com)", result)
+        self.assertIn("`code`", result)
+        self.assertIn("~strikethrough~", result)
 
 
 if __name__ == "__main__":

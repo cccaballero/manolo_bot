@@ -1,12 +1,12 @@
 import datetime
 import logging
-import re
 import time
 
-import telebot
-from telebot import TeleBot
+import telegramify_markdown
+from telebot import TeleBot, util
 from telebot.apihelper import ApiTelegramException
 from telebot.types import Message
+from telegramify_markdown import customize
 
 
 def get_telegram_file_url(bot_token: str, file_path: str) -> str:
@@ -28,7 +28,13 @@ def fallback_telegram_call(bot: TeleBot, message: Message, response_content: str
     :return: True if the call was successful, False otherwise
     """
     try:
-        bot.reply_to(message, response_content)
+        text_chunks = util.smart_split(response_content, chars_per_string=3000)
+        previous_message = None
+        for text in text_chunks:
+            if previous_message:
+                previous_message = bot.reply_to(previous_message, text)
+            else:
+                previous_message = bot.reply_to(message, text)
     except Exception as e:
         logging.exception(e)
         return False
@@ -93,6 +99,16 @@ def get_message_from(message: Message) -> str:
     return message.from_user.username
 
 
+def convert_markdown_to_telegram_format(markdown_text: str) -> str:
+    """
+    Convert markdown to Telegram format.
+    :param markdown_text: Text to convert
+    :return: Converted text
+    """
+    customize.strict_markdown = False
+    return telegramify_markdown.markdownify(markdown_text)
+
+
 def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: str) -> None:
     """
     Reply to a message.
@@ -103,20 +119,24 @@ def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: 
     """
     chat_id = message.chat.id
     use_fallback = False
-    try:
-        usernames = re.findall(r"(?<!\S)@\w+", response_content)
-        for username in usernames:
-            response_content = response_content.replace(username, telebot.formatting.escape_markdown(username))
-        bot.reply_to(message, response_content, parse_mode="markdown")
-        logging.debug(f"Sent response for chat {chat_id}")
-    except ApiTelegramException:
-        logging.warning(
-            f"Failed to send response for chat {chat_id} using Markdown. Attempting fallback to plain text."
-        )
+
+    if len(response_content) > 4096:
+        logging.warning(f"Response for chat {chat_id} is too long. Attempting fallback to plain text.")
         use_fallback = True
-    except Exception as e:
-        logging.exception(e)
-        use_fallback = True
+    else:
+        try:
+            markdown_text = convert_markdown_to_telegram_format(response_content)
+            bot.reply_to(message, markdown_text, parse_mode="MarkdownV2")
+            logging.debug(f"Sent response for chat {chat_id}")
+        except ApiTelegramException as e:
+            logging.exception(e)
+            logging.warning(
+                f"Failed to send response for chat {chat_id} using Markdown. Attempting fallback to plain text."
+            )
+            use_fallback = True
+        except Exception as e:
+            logging.exception(e)
+            use_fallback = True
 
     if use_fallback and not fallback_telegram_call(bot, message, response_content):
         logging.error(f"Failed to send response for chat {chat_id}")
