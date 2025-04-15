@@ -19,6 +19,7 @@ dependencies = [
     "pytelegrambotapi>=4.26.0",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
+    "telegramify-markdown[mermaid]>=0.5.1",
     "transformers>=4.49.0",
 ]
 
