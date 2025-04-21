@@ -104,6 +104,17 @@ This will override the default instructions, and the custom bot character instru
 
 `LOGGING_LEVEL`: Sets the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL), defaulting to INFO.
 
+#### Prompt Guardian
+
+`ENABLE_PROMPT_GUARDIAN`: Enable prompt guardian (True, False). Default is False. When prompt guardian is enabled, the bot will use the prompt guardian to prevent basic jailbreak attacks.
+
+Prompt Guardian uses the `meta-llama/Prompt-Guard-86M` model to detect prompt injection attacks. To install the necessary dependencies, use the following command:
+```shell
+uv sync --group promptguardian
+```
+
+The Prompt Guard model will be downloaded automatically from Hugging Face Hub. Ensure you have a Hugging Face API key and have accepted the model's terms and conditions [here](https://huggingface.co/meta-llama/Prompt-Guard-86M).
+
 ### Available Commands
 
 The bot supports the following commands:

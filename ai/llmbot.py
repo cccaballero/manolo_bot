@@ -26,7 +26,6 @@ class LLMBot:
     def __init__(self, config: Config, system_instructions: list[BaseMessage]):
         self.config = config
         self.system_instructions = system_instructions
-        # self.messages_buffer = messages_buffer
         self.llm = None
         self.chats: dict = {}  #  {'chat_id': {"messages": []}}
         self._load_llm()

@@ -20,6 +20,11 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "telegramify-markdown[mermaid]>=0.5.1",
+]
+
+[project.optional-dependencies]
+promptguardian = [
+    "torch>=2.6.0",
     "transformers>=4.49.0",
 ]
 

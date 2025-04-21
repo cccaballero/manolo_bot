@@ -56,3 +56,5 @@ class Config(EnvModel):
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )
+
+    enable_prompt_guardian = BooleanField("ENABLE_PROMPT_GUARDIAN", default=False)
