@@ -8,6 +8,7 @@ from requests import ConnectTimeout, ReadTimeout
 
 from config import Config
 
+
 def timeout_decorator(func):
     """
     Decorator to add a total timeout to a function.
@@ -22,7 +23,10 @@ def timeout_decorator(func):
         elapsed_time = time.time() - start_time
         
         if elapsed_time > total_timeout:
-            logging.warning(f"Function {func.__name__} took {elapsed_time:.2f}s, exceeding total timeout of {total_timeout}s")
+            logging.warning(
+                f"Function {func.__name__} took {elapsed_time:.2f}s, "
+                f"exceeding total timeout of {total_timeout}s"
+            )
         
         return result
     return wrapper

@@ -3,7 +3,6 @@ import logging
 import random
 import re
 import time
-from functools import wraps
 from typing import Any
 from urllib.parse import urljoin
 
@@ -299,7 +298,10 @@ class LLMBot:
                 # Check if total processing time exceeds the limit
                 elapsed_time = time.time() - start_time
                 if elapsed_time > self.config.web_content_total_timeout:
-                    logging.warning(f"Web content processing took {elapsed_time:.2f}s, exceeding total timeout of {self.config.web_content_total_timeout}s")
+                    logging.warning(
+                        f"Web content processing took {elapsed_time:.2f}s, "
+                        f"exceeding total timeout of {self.config.web_content_total_timeout}s"
+                    )
                 
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
