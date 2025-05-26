@@ -2,6 +2,8 @@ import base64
 import logging
 import random
 import re
+import time
+from functools import wraps
 from typing import Any
 from urllib.parse import urljoin
 
@@ -16,7 +18,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from requests import ConnectTimeout, RequestException
+from requests import ConnectTimeout, ReadTimeout, RequestException
 
 from ai.tools import get_tool, get_tools
 from config import Config
@@ -282,8 +284,23 @@ class LLMBot:
             url = self._extract_url(response_content)
             if url:
                 logging.debug(f"Obtaining web content for {url}")
+                
+                # Configure WebBaseLoader with timeout settings
                 loader = WebBaseLoader(url)
+                loader.requests_kwargs = {
+                    'timeout': self.config.web_content_request_timeout
+                }
+                
+                # Track total processing time
+                start_time = time.time()
+                
                 docs = loader.load()
+                
+                # Check if total processing time exceeds the limit
+                elapsed_time = time.time() - start_time
+                if elapsed_time > self.config.web_content_total_timeout:
+                    logging.warning(f"Web content processing took {elapsed_time:.2f}s, exceeding total timeout of {self.config.web_content_total_timeout}s")
+                
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
@@ -304,12 +321,19 @@ class LLMBot:
         except ConnectionError as e:
             logging.error("Connection error connecting to web content")
             logging.exception(e)
+            return "I couldn't connect to this webpage. Please check the URL or try again later."
+        except ReadTimeout as e:
+            logging.error("Read timeout error connecting to web content")
+            logging.exception(e)
+            return "The webpage took too long to send data. It might be unavailable or too large."
         except ConnectTimeout as e:
             logging.error("Timeout error connecting to web content")
             logging.exception(e)
+            return "The webpage took too long to respond. It might be unavailable or too large."
         except Exception as e:
             logging.error("Error connecting to web content")
             logging.exception(e)
+            return "I had trouble processing this webpage. Please try again later or try a different URL."
         return None
 
     def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:

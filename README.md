@@ -88,6 +88,12 @@ This will override the default instructions, and the custom bot character instru
 
 `CONTEXT_MAX_TOKENS`: The maximum number of tokens allowed for the bot's context.
 
+#### Web Content Retrieval Configuration
+
+`WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for individual HTTP requests when retrieving web content. Default is 10 seconds.
+
+`WEB_CONTENT_TOTAL_TIMEOUT_SECONDS`: Total timeout in seconds for the entire web content retrieval process. Default is 30 seconds.
+
 #### Simulate typing human behavior
 
 `SIMULATE_TYPING`: Enable simulating human typing behavior. The default is False. This typing simulation will influence the bot's response time in all chats.
