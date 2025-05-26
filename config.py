@@ -30,7 +30,6 @@ class Config(EnvModel):
     
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)
-    web_content_total_timeout = IntegerField("WEB_CONTENT_TOTAL_TIMEOUT_SECONDS", default=30)
     
     sdapi_url = StringField(
         "WEBUI_SD_API_URL", warning="WEBUI_SD_API_URL environment variable not set. Image generation disabled."

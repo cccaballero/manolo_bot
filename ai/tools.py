@@ -1,35 +1,10 @@
 import logging
-import time
-from functools import wraps
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.tools import tool
 from requests import ConnectTimeout, ReadTimeout
 
 from config import Config
-
-
-def timeout_decorator(func):
-    """
-    Decorator to add a total timeout to a function.
-    """
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        config = Config()
-        total_timeout = config.web_content_total_timeout
-        
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        elapsed_time = time.time() - start_time
-        
-        if elapsed_time > total_timeout:
-            logging.warning(
-                f"Function {func.__name__} took {elapsed_time:.2f}s, "
-                f"exceeding total timeout of {total_timeout}s"
-            )
-        
-        return result
-    return wrapper
 
 
 @tool
@@ -40,7 +15,6 @@ def multiply(first_int: int, second_int: int) -> int:
 
 
 @tool
-@timeout_decorator
 def get_website_content(url: str) -> str:
     """
     Tool for obtaining the content of a website.
@@ -94,3 +68,4 @@ def get_tool(name: str):
         if tool_function.name == name:
             return tool_function
     return None
+

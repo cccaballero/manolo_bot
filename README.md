@@ -90,9 +90,7 @@ This will override the default instructions, and the custom bot character instru
 
 #### Web Content Retrieval Configuration
 
-`WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for individual HTTP requests when retrieving web content. Default is 10 seconds.
-
-`WEB_CONTENT_TOTAL_TIMEOUT_SECONDS`: Total timeout in seconds for the entire web content retrieval process. Default is 30 seconds.
+`WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for HTTP requests when retrieving web content. Default is 10 seconds.
 
 #### Simulate typing human behavior
 
