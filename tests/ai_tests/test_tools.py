@@ -8,6 +8,18 @@ from ai.tools import get_tool, get_website_content, multiply
 
 
 class TestLlmBot(unittest.TestCase):
+    def setUp(self):
+        # Mock the Config class for all tests
+        self.config_patcher = patch('ai.tools.Config')
+        self.mock_config_class = self.config_patcher.start()
+        self.mock_config = self.mock_config_class.return_value
+        # Set default timeout values
+        self.mock_config.web_content_request_timeout = 10
+        self.mock_config.web_content_total_timeout = 30
+
+    def tearDown(self):
+        self.config_patcher.stop()
+
     def test_multiply__positive_integers(self):
         # Arrange
         first_int = 5
@@ -47,7 +59,7 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         mock_logging.error.assert_called_with("Connection error connecting to web content")
         mock_logging.exception.assert_called_once()
-        self.assertEqual(result, "Failed to get content of the website")
+        self.assertEqual(result, "Failed to connect to the website. Please check the URL or try again later.")
 
     @patch("ai.tools.WebBaseLoader")
     @patch("ai.tools.logging")
@@ -62,7 +74,7 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         mock_logging.error.assert_called_with("Timeout error connecting to web content")
         mock_logging.exception.assert_called_once()
-        self.assertEqual(result, "Failed to get content of the website")
+        self.assertEqual(result, "The website took too long to respond. It might be unavailable or too large.")
 
     def test_get_tool__returns_correct_tool_for_valid_name(self):
         # Arrange
