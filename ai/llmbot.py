@@ -311,19 +311,23 @@ class LLMBot:
         except ConnectionError as e:
             logging.error("Connection error connecting to web content")
             logging.exception(e)
-            return "I couldn't connect to this webpage. Please check the URL or try again later."
+            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that you couldn't connect to the webpage {url}. Suggest checking the URL or trying again later. Keep your response under 150 characters and maintain your character's style."
+            return self.generate_feedback_message(error_prompt)
         except ReadTimeout as e:
             logging.error("Read timeout error connecting to web content")
             logging.exception(e)
-            return "The webpage took too long to send data. It might be unavailable or too large."
+            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that the webpage {url} took too long to send data. Suggest it might be unavailable or too large. Keep your response under 150 characters and maintain your character's style."
+            return self.generate_feedback_message(error_prompt)
         except ConnectTimeout as e:
             logging.error("Timeout error connecting to web content")
             logging.exception(e)
-            return "The webpage took too long to respond. It might be unavailable or too large."
+            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that the webpage {url} took too long to respond. Suggest it might be unavailable or too large. Keep your response under 150 characters and maintain your character's style."
+            return self.generate_feedback_message(error_prompt)
         except Exception as e:
             logging.error("Error connecting to web content")
             logging.exception(e)
-            return "I had trouble processing this webpage. Please try again later or try a different URL."
+            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that you had trouble processing the webpage {url}. Suggest trying again later or trying a different URL. Keep your response under 150 characters and maintain your character's style."
+            return self.generate_feedback_message(error_prompt)
         return None
 
     def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:

@@ -37,19 +37,20 @@ def get_website_content(url: str) -> str:
     except ConnectionError as e:
         logging.error("Connection error connecting to web content")
         logging.exception(e)
-        return "Failed to connect to the website. Please check the URL or try again later."
+        # For the tool, we'll use a more generic error message since we can't use the LLM directly here
+        return f"Failed to connect to the website {url}. Please check the URL or try again later."
     except ConnectTimeout as e:
         logging.error("Timeout error connecting to web content")
         logging.exception(e)
-        return "The website took too long to respond. It might be unavailable or too large."
+        return f"The website {url} took too long to respond. It might be unavailable or too large."
     except ReadTimeout as e:
         logging.error("Read timeout error connecting to web content")
         logging.exception(e)
-        return "The website took too long to send data. It might be unavailable or too large."
+        return f"The website {url} took too long to send data. It might be unavailable or too large."
     except Exception as e:
         logging.error("Error connecting to web content")
         logging.exception(e)
-        return "Failed to get content of the website"
+        return f"Failed to get content of the website {url}. Please try again later or try a different URL."
 
 
 @tool
@@ -68,4 +69,3 @@ def get_tool(name: str):
         if tool_function.name == name:
             return tool_function
     return None
-
