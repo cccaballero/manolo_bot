@@ -311,22 +311,42 @@ class LLMBot:
         except ConnectionError as e:
             logging.error("Connection error connecting to web content")
             logging.exception(e)
-            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that you couldn't connect to the webpage {url}. Suggest checking the URL or trying again later. Keep your response under 150 characters and maintain your character's style."
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that you couldn't connect to the webpage {url}. "
+                f"Suggest checking the URL or trying again later. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
             return self.generate_feedback_message(error_prompt)
         except ReadTimeout as e:
             logging.error("Read timeout error connecting to web content")
             logging.exception(e)
-            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that the webpage {url} took too long to send data. Suggest it might be unavailable or too large. Keep your response under 150 characters and maintain your character's style."
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that the webpage {url} took too long to send data. "
+                f"Suggest it might be unavailable or too large. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
             return self.generate_feedback_message(error_prompt)
         except ConnectTimeout as e:
             logging.error("Timeout error connecting to web content")
             logging.exception(e)
-            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that the webpage {url} took too long to respond. Suggest it might be unavailable or too large. Keep your response under 150 characters and maintain your character's style."
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that the webpage {url} took too long to respond. "
+                f"Suggest it might be unavailable or too large. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
             return self.generate_feedback_message(error_prompt)
         except Exception as e:
             logging.error("Error connecting to web content")
             logging.exception(e)
-            error_prompt = f"Generate a brief response in {self.config.preferred_language} explaining that you had trouble processing the webpage {url}. Suggest trying again later or trying a different URL. Keep your response under 150 characters and maintain your character's style."
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that you had trouble processing the webpage {url}. "
+                f"Suggest trying again later or trying a different URL. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
             return self.generate_feedback_message(error_prompt)
         return None
 
