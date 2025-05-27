@@ -16,7 +16,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from requests import ConnectTimeout, RequestException
+from requests import ConnectTimeout, ReadTimeout, RequestException
 
 from ai.tools import get_tool, get_tools
 from config import Config
@@ -282,8 +282,15 @@ class LLMBot:
             url = self._extract_url(response_content)
             if url:
                 logging.debug(f"Obtaining web content for {url}")
+                
+                # Configure WebBaseLoader with timeout settings
                 loader = WebBaseLoader(url)
+                loader.requests_kwargs = {
+                    'timeout': self.config.web_content_request_timeout
+                }
+                
                 docs = loader.load()
+                
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
@@ -304,12 +311,43 @@ class LLMBot:
         except ConnectionError as e:
             logging.error("Connection error connecting to web content")
             logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that you couldn't connect to the webpage {url}. "
+                f"Suggest checking the URL or trying again later. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return self.generate_feedback_message(error_prompt)
+        except ReadTimeout as e:
+            logging.error("Read timeout error connecting to web content")
+            logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that the webpage {url} took too long to send data. "
+                f"Suggest it might be unavailable or too large. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return self.generate_feedback_message(error_prompt)
         except ConnectTimeout as e:
             logging.error("Timeout error connecting to web content")
             logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that the webpage {url} took too long to respond. "
+                f"Suggest it might be unavailable or too large. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return self.generate_feedback_message(error_prompt)
         except Exception as e:
             logging.error("Error connecting to web content")
             logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.config.preferred_language} "
+                f"explaining that you had trouble processing the webpage {url}. "
+                f"Suggest trying again later or trying a different URL. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return self.generate_feedback_message(error_prompt)
         return None
 
     def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:
