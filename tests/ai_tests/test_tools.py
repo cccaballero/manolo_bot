@@ -58,7 +58,10 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         mock_logging.error.assert_called_with("Connection error connecting to web content")
         mock_logging.exception.assert_called_once()
-        self.assertEqual(result, "Failed to connect to the website https://example.com. Please check the URL or try again later.")
+        self.assertEqual(
+            result, 
+            "Failed to connect to the website https://example.com. Please check the URL or try again later."
+        )
 
     @patch("ai.tools.WebBaseLoader")
     @patch("ai.tools.logging")
@@ -73,7 +76,10 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         mock_logging.error.assert_called_with("Timeout error connecting to web content")
         mock_logging.exception.assert_called_once()
-        self.assertEqual(result, "The website https://example.com took too long to respond. It might be unavailable or too large.")
+        self.assertEqual(
+            result, 
+            "The website https://example.com took too long to respond. It might be unavailable or too large."
+        )
 
     def test_get_tool__returns_correct_tool_for_valid_name(self):
         # Arrange
