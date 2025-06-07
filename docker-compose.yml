@@ -10,9 +10,8 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
-    environment:
-      - LOGGING_LEVEL=INFO
-      # Add other environment variables as needed
+#    environment:
+      ## Add other environment variables as needed
       # - TELEGRAM_BOT_NAME=
       # - TELEGRAM_BOT_TOKEN=
       # - TELEGRAM_BOT_USERNAME=
@@ -28,4 +27,5 @@ services:
       # - SIMULATE_TYPING=false
       # - SIMULATE_TYPING_WPM=100
       # - SIMULATE_TYPING_MAX_TIME=10
+      # - LOGGING_LEVEL=INFO
 
