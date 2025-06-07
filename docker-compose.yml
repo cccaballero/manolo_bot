@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  manolo_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - LOGGING_LEVEL=INFO
+      # Add other environment variables as needed
+      # - TELEGRAM_BOT_NAME=
+      # - TELEGRAM_BOT_TOKEN=
+      # - TELEGRAM_BOT_USERNAME=
+      # - GOOGLE_API_KEY=
+      # - OPENAI_API_KEY=
+      # - OPENAI_API_BASE_URL=
+      # - GOOGLE_API_MODEL=gemini-2.0-flash
+      # - CONTEXT_MAX_TOKENS=4096
+      # - PREFERRED_LANGUAGE=Spanish
+      # - ENABLE_MULTIMODAL=false
+      # - ENABLE_GROUP_ASSISTANT=false
+      # - USE_TOOLS=false
+      # - SIMULATE_TYPING=false
+      # - SIMULATE_TYPING_WPM=100
+      # - SIMULATE_TYPING_MAX_TIME=10
+
