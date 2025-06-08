@@ -13,9 +13,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
+
+# from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_ollama import ChatOllama
+# from langchain_openai import ChatOpenAI
 from requests import ConnectTimeout, ReadTimeout, RequestException
 
 from ai.tools import get_tool, get_tools
@@ -30,9 +31,15 @@ class LLMBot:
         self.llm = None
         self.chats: dict = {}  #  {'chat_id': {"messages": []}}
         self._load_llm()
+        self._session = requests.Session()  # Single session for all HTTP requests
 
         if self.config.use_tools:
             self._load_tools()
+
+    def __del__(self):
+        # Clean up the session when the object is garbage collected
+        if hasattr(self, "_session"):
+            self._session.close()
 
     def _get_rate_limiter(self):
         return InMemoryRateLimiter(
@@ -42,9 +49,13 @@ class LLMBot:
         )
 
     def _get_chat_ollama(self):
+        from langchain_ollama import ChatOllama
+
         return ChatOllama(model=self.config.ollama_model)
 
-    def _get_chat_google_generativeai(self) -> ChatGoogleGenerativeAI:
+    def _get_chat_google_generativeai(self):
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
         return ChatGoogleGenerativeAI(
             model=self.config.google_api_model,
             safety_settings={
@@ -56,7 +67,9 @@ class LLMBot:
             rate_limiter=self._get_rate_limiter(),
         )
 
-    def _get_chat_openai(self) -> ChatOpenAI:
+    def _get_chat_openai(self):
+        from langchain_openai import ChatOpenAI
+
         api_key = self.config.openai_api_key if self.config.openai_api_key else "not-needed"
         base_url = self.config.openai_api_base_url
         model = self.config.openai_api_model
@@ -127,7 +140,13 @@ class LLMBot:
                 params["prompt"] = prompt
                 if self.config.sdapi_negative_prompt:
                     params["negative_prompt"] = self.config.sdapi_negative_prompt
-                response = requests.post(urljoin(self.config.sdapi_url, "/sdapi/v1/txt2img"), json=params)
+
+                # Use the shared session instead of requests.post
+                response = self._session.post(
+                    urljoin(self.config.sdapi_url, "/sdapi/v1/txt2img"),
+                    json=params,
+                    timeout=self.config.web_content_request_timeout,
+                )
                 if response.status_code == 200:
                     return response.json()
             except Exception as e:
@@ -167,7 +186,11 @@ class LLMBot:
         logging.debug(f"Image message: {text}")
 
         try:
-            image_data = base64.b64encode(requests.get(image).content).decode("utf-8")
+            # Use the shared session to download the image
+            response = self._session.get(image, timeout=self.config.web_content_request_timeout)
+            response.raise_for_status()
+            image_data = base64.b64encode(response.content).decode("utf-8")
+
             llm_message = HumanMessage(
                 content=[
                     {
@@ -282,15 +305,17 @@ class LLMBot:
             url = self._extract_url(response_content)
             if url:
                 logging.debug(f"Obtaining web content for {url}")
-                
-                # Configure WebBaseLoader with timeout settings
-                loader = WebBaseLoader(url)
-                loader.requests_kwargs = {
-                    'timeout': self.config.web_content_request_timeout
-                }
-                
+
+                # Configure WebBaseLoader with the shared session
+                loader = WebBaseLoader(
+                    url,
+                    requests_kwargs={
+                        "timeout": self.config.web_content_request_timeout,
+                        "session": self._session,  # Reuse the session
+                    },
+                )
                 docs = loader.load()
-                
+
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
