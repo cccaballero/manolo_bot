@@ -21,6 +21,7 @@ dependencies = [
     "requests>=2.32.3",
     "telegramify-markdown[mermaid]>=0.5.1",
     "transformers>=4.49.0",
+    "youtube-transcript-api>=1.1.1",
 ]
 
 [tool.uv]
@@ -38,3 +39,4 @@ ignore = []
 [tool.ruff.format]
 docstring-code-format = true
 docstring-code-line-length = 120
+

@@ -64,7 +64,7 @@ If a user asks to you, and only you to resume the content of a webpage or online
 If a user asks to you, and only you to read, analyze or your opinion about the content of a webpage or online article, you will answer "WEBCONTENT_OPINION" and the webpage url, like: "WEBCONTENT_OPINION https://pepe.com"
 """  # noqa: E501
 tools_instructions = """
-Please remember to utilize the provided tools, for example, to access the content of a webpage or an online article. It is important that you always use the tool as necessary.
+Please remember to utilize the provided tools, for example, to access the content of a webpage or an online article. It is important that you always use the tool as necessary. If there is a tool that can be used to answer the user's question, use it, do not inform the user about it or that you are going to use it.
 """  # noqa: E501
 
 language_instructions = f"""Try to answer in the {config.preferred_language} language unless the user asks you to talk in a different one."""  # noqa: E501
