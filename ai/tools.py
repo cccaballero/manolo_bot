@@ -1,8 +1,11 @@
 import logging
+import re
+from typing import Optional
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.tools import tool
 from requests import ConnectTimeout, ReadTimeout
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 
 from config import Config
 
@@ -54,6 +57,76 @@ def get_website_content(url: str) -> str:
 
 
 @tool
+def get_youtube_transcript(url: str) -> str:
+    """
+    Tool for fetching and analyzing YouTube video transcripts.
+    Can be used to understand and discuss the content of YouTube videos without watching them.
+    Supports various YouTube URL formats (standard, shortened, shorts).
+    """
+    try:
+        logging.debug(f"Obtaining YouTube transcript for {url}")
+        video_id = extract_youtube_video_id(url)
+        
+        if not video_id:
+            return f"Could not extract a valid YouTube video ID from the URL: {url}. Please provide a valid YouTube URL."
+        
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        
+        # Combine all transcript segments into a single text
+        full_transcript = ""
+        for segment in transcript_list:
+            full_transcript += segment['text'] + " "
+        
+        # Truncate if too long (to avoid token limits)
+        config = Config()
+        max_chars = config.context_max_tokens * 4  # Rough estimate of chars per token
+        if len(full_transcript) > max_chars:
+            full_transcript = full_transcript[:max_chars] + "... [Transcript truncated due to length]"
+        
+        return full_transcript.strip()
+    except NoTranscriptFound:
+        logging.error(f"No transcript found for YouTube video: {url}")
+        return f"No transcript is available for this YouTube video. The video might not have captions or subtitles enabled."
+    except TranscriptsDisabled:
+        logging.error(f"Transcripts are disabled for YouTube video: {url}")
+        return f"Transcripts are disabled for this YouTube video. The creator may have turned off the captions/subtitles feature."
+    except Exception as e:
+        logging.error(f"Error fetching YouTube transcript: {str(e)}")
+        logging.exception(e)
+        return f"Failed to get the transcript for the YouTube video. Error: {str(e)}"
+
+
+def extract_youtube_video_id(url: str) -> Optional[str]:
+    """
+    Extract the YouTube video ID from various URL formats.
+    
+    Supported formats:
+    - Standard: https://www.youtube.com/watch?v=VIDEO_ID
+    - Shortened: https://youtu.be/VIDEO_ID
+    - Shorts: https://youtube.com/shorts/VIDEO_ID
+    
+    Returns:
+        str or None: The video ID if found, None otherwise
+    """
+    # Standard YouTube URL pattern
+    pattern1 = r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)'
+    
+    # Shortened YouTube URL pattern
+    pattern2 = r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]+)'
+    
+    # YouTube Shorts URL pattern
+    pattern3 = r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]+)'
+    
+    # Try each pattern
+    for pattern in [pattern1, pattern2, pattern3]:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    
+    return None
+
+
+@tool
 def author() -> str:
     """Tool that should be called when someone inquires about your creator or author. This will provide information for you to use."""  # noqa: E501
     logging.debug("Getting author")
@@ -61,7 +134,7 @@ def author() -> str:
 
 
 def get_tools():
-    return [multiply, get_website_content, author]
+    return [multiply, get_website_content, author, get_youtube_transcript]
 
 
 def get_tool(name: str):
@@ -69,3 +142,4 @@ def get_tool(name: str):
         if tool_function.name == name:
             return tool_function
     return None
+
