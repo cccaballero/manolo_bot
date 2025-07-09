@@ -1,11 +1,10 @@
 import logging
 import re
-from typing import Optional
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.tools import tool
 from requests import ConnectTimeout, ReadTimeout
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
 from config import Config
 
@@ -68,7 +67,8 @@ def get_youtube_transcript(url: str) -> str:
         video_id = extract_youtube_video_id(url)
         
         if not video_id:
-            return f"Could not extract a valid YouTube video ID from the URL: {url}. Please provide a valid YouTube URL."
+            return (f"Could not extract a valid YouTube video ID from the URL: {url}. "
+                   f"Please provide a valid YouTube URL.")
         
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
         
@@ -86,17 +86,19 @@ def get_youtube_transcript(url: str) -> str:
         return full_transcript.strip()
     except NoTranscriptFound:
         logging.error(f"No transcript found for YouTube video: {url}")
-        return f"No transcript is available for this YouTube video. The video might not have captions or subtitles enabled."
+        return ("No transcript is available for this YouTube video. "
+                "The video might not have captions or subtitles enabled.")
     except TranscriptsDisabled:
         logging.error(f"Transcripts are disabled for YouTube video: {url}")
-        return f"Transcripts are disabled for this YouTube video. The creator may have turned off the captions/subtitles feature."
+        return ("Transcripts are disabled for this YouTube video. "
+                "The creator may have turned off the captions/subtitles feature.")
     except Exception as e:
         logging.error(f"Error fetching YouTube transcript: {str(e)}")
         logging.exception(e)
         return f"Failed to get the transcript for the YouTube video. Error: {str(e)}"
 
 
-def extract_youtube_video_id(url: str) -> Optional[str]:
+def extract_youtube_video_id(url: str) -> str | None:
     """
     Extract the YouTube video ID from various URL formats.
     
