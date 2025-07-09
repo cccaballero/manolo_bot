@@ -197,14 +197,16 @@ class TestLlmBot(unittest.TestCase):
         mock_response.status_code = 200
         mock_response.json.return_value = expected_response
 
-        with unittest.mock.patch("requests.post", return_value=mock_response) as mock_post:
+        # Mock the session's post method
+        with unittest.mock.patch.object(llm_bot._session, "post", return_value=mock_response) as mock_post:
             # Act
             result = llm_bot.call_sdapi(prompt)
 
             # Assert
-            mock_post.assert_called_once_with(
-                "http://test-sd-api.com/sdapi/v1/txt2img", json={**config_mock.sdapi_params, "prompt": prompt}
-            )
+            mock_post.assert_called_once()
+            call_args, call_kwargs = mock_post.call_args
+            self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
+            self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
             self.assertEqual(result, expected_response)
 
     def test_call_sdapi__non_200_response(self):
@@ -225,13 +227,23 @@ class TestLlmBot(unittest.TestCase):
         prompt = "a beautiful landscape"
 
         mock_response = unittest.mock.MagicMock()
-        mock_response.status_code = 404
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
 
-        with unittest.mock.patch("requests.post", return_value=mock_response) as mock_response:
+        # Mock the session's post method
+        with unittest.mock.patch.object(llm_bot._session, "post", return_value=mock_response) as mock_post:
             # Act
             result = llm_bot.call_sdapi(prompt)
 
             # Assert
+            mock_post.assert_called_once()
+            call_args, call_kwargs = mock_post.call_args
+            self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
+
+            # Check the json payload without negative_prompt since it's None
+            expected_json = {**config_mock.sdapi_params, "prompt": prompt}
+            actual_json = {k: v for k, v in call_kwargs["json"].items() if k != "negative_prompt"}
+            self.assertEqual(actual_json, expected_json)
             self.assertIsNone(result)
 
     def test_answer_image_message__successful_image_message_processing(self):
@@ -242,19 +254,23 @@ class TestLlmBot(unittest.TestCase):
         llm_bot.count_tokens = unittest.mock.Mock()
         llm_bot.count_tokens.return_value = 100
 
-        # Mock requests.get
+        # Mock session.get response
         mock_response = unittest.mock.Mock()
+        mock_response.status_code = 200
         mock_response.content = b"fake_image_data"
-        with unittest.mock.patch("requests.get", return_value=mock_response):
-            # Mock LLM response
-            expected_response = AIMessage(content="This is an image of a cat")
-            llm_bot.llm = unittest.mock.Mock()
-            llm_bot.llm.invoke.return_value = expected_response
 
+        # Mock LLM response
+        expected_response = AIMessage(content="This is an image of a cat")
+        llm_bot.llm = unittest.mock.Mock()
+        llm_bot.llm.invoke.return_value = expected_response
+
+        # Mock the session's get method
+        with unittest.mock.patch.object(llm_bot._session, "get", return_value=mock_response) as mock_get:
             # Act
             response = llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
+            mock_get.assert_called_once_with(image_url, timeout=llm_bot.config.web_content_request_timeout)
             self.assertEqual(response, expected_response)
             self.assertEqual(len(llm_bot.chats[1]["messages"]), 1)
             llm_bot.llm.invoke.assert_called_once_with(llm_bot.chats[1]["messages"])
@@ -264,12 +280,10 @@ class TestLlmBot(unittest.TestCase):
         llm_bot = self.get_basic_llm_bot()
         text = "What's in this image?"
         image_url = "https://invalid-url.com/image.jpg"
-        messages = []
 
-        # Mock requests.get to raise RequestException
-        # unittest.mock.patch("requests.get", side_effect=RequestException("Failed to get image"))
+        # Mock the session's get method to raise RequestException
         with (
-            unittest.mock.patch("requests.get", side_effect=RequestException("Failed to get image")),
+            unittest.mock.patch.object(llm_bot._session, "get", side_effect=RequestException("Failed to get image")),
             unittest.mock.patch("logging.error") as mock_logger,
             unittest.mock.patch("logging.exception") as mock_exception_logger,
         ):
@@ -277,11 +291,12 @@ class TestLlmBot(unittest.TestCase):
             response = llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
+            mock_logger.assert_called_once_with(f"Failed to get image: {image_url}")
+            mock_exception_logger.assert_called_once()
             self.assertEqual(response.content, "NO_ANSWER")
             self.assertEqual(response.type, "text")
             mock_logger.assert_called_once_with(f"Failed to get image: {image_url}")
             mock_exception_logger.assert_called_once()
-            self.assertEqual(len(messages), 0)  # No message should be added to the list
 
     def test_generate_image__success(self):
         # Arrange
