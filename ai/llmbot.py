@@ -13,10 +13,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
-
-# from langchain_google_genai import ChatGoogleGenerativeAI
-# from langchain_ollama import ChatOllama
-# from langchain_openai import ChatOpenAI
 from requests import ConnectTimeout, ReadTimeout, RequestException
 
 from ai.tools import get_tool, get_tools

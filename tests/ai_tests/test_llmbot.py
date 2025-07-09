@@ -21,7 +21,10 @@ class TestLlmBot(unittest.TestCase):
         llm_bot.chats = {1: {"messages": []}}
         return llm_bot
 
-    def test_llm_bot__init_with_ollama_ai(self):
+    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
+    def test_llm_bot__init_with_ollama_ai(self, mock_openai, mock_google, mock_ollama):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = "ollama_model"
@@ -29,26 +32,30 @@ class TestLlmBot(unittest.TestCase):
         mock_config.google_api_model = None
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
+        mock_config.use_tools = False  # Disable tools for this test
 
-        with (
-            unittest.mock.patch("ai.llmbot.ChatGoogleGenerativeAI") as mock_chat_google,
-            unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
-            unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
-        ):
-            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        # Create a mock LLM with bind_tools method
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
+        mock_ollama.return_value = mock_llm
 
-            # Act
-            bot = LLMBot(mock_config, system_instructions)
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
-            # Assert
-            mock_chat_ollama.assert_called_once()
-            mock_chat_google.assert_not_called()
-            mock_chat_openai.assert_not_called()
-            self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.config, mock_config)
-            self.assertIsNotNone(bot.llm)
+        # Act
+        bot = LLMBot(mock_config, system_instructions)
 
-    def test_llm_bot__init_with_google_ai(self):
+        # Assert
+        mock_ollama.assert_called_once()
+        mock_google.assert_not_called()
+        mock_openai.assert_not_called()
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.config, mock_config)
+        self.assertEqual(bot.llm, mock_llm)
+
+    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
+    def test_llm_bot__init_with_google_ai(self, mock_openai, mock_google, mock_ollama):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = None
@@ -56,26 +63,30 @@ class TestLlmBot(unittest.TestCase):
         mock_config.google_api_model = "gemini-2.0-flash"
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
+        mock_config.use_tools = False  # Disable tools for this test
 
-        with (
-            unittest.mock.patch("ai.llmbot.ChatGoogleGenerativeAI") as mock_chat_google,
-            unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
-            unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
-        ):
-            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        # Create a mock LLM with bind_tools method
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
+        mock_google.return_value = mock_llm
 
-            # Act
-            bot = LLMBot(mock_config, system_instructions)
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
-            # Assert
-            mock_chat_google.assert_called_once()
-            mock_chat_ollama.assert_not_called()
-            mock_chat_openai.assert_not_called()
-            self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.config, mock_config)
-            self.assertIsNotNone(bot.llm)
+        # Act
+        bot = LLMBot(mock_config, system_instructions)
 
-    def test_llm_bot__init_with_openai_ai(self):
+        # Assert
+        mock_google.assert_called_once()
+        mock_ollama.assert_not_called()
+        mock_openai.assert_not_called()
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.config, mock_config)
+        self.assertEqual(bot.llm, mock_llm)
+
+    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
+    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
+    def test_llm_bot__init_with_openai_ai(self, mock_openai, mock_google, mock_ollama):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = None
@@ -83,24 +94,25 @@ class TestLlmBot(unittest.TestCase):
         mock_config.google_api_model = None
         mock_config.openai_api_key = "fake_openai_key"
         mock_config.openai_api_base_url = None
+        mock_config.use_tools = False  # Disable tools for this test
 
-        with (
-            unittest.mock.patch("ai.llmbot.ChatGoogleGenerativeAI") as mock_chat_google,
-            unittest.mock.patch("ai.llmbot.ChatOllama") as mock_chat_ollama,
-            unittest.mock.patch("ai.llmbot.ChatOpenAI") as mock_chat_openai,
-        ):
-            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        # Create a mock LLM with bind_tools method
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
+        mock_openai.return_value = mock_llm
 
-            # Act
-            bot = LLMBot(mock_config, system_instructions)
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
-            # Assert
-            mock_chat_google.assert_not_called()
-            mock_chat_ollama.assert_not_called()
-            mock_chat_openai.assert_called_once()
-            self.assertEqual(bot.system_instructions, system_instructions)
-            self.assertEqual(bot.config, mock_config)
-            self.assertIsNotNone(bot.llm)
+        # Act
+        bot = LLMBot(mock_config, system_instructions)
+
+        # Assert
+        mock_openai.assert_called_once()
+        mock_ollama.assert_not_called()
+        mock_google.assert_not_called()
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.config, mock_config)
+        self.assertEqual(bot.llm, mock_llm)
 
     def test_llm_bot__init_raises_exception_with_no_llm_backend(self):
         # Arrange
