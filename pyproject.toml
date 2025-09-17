@@ -15,6 +15,7 @@ dependencies = [
     "langchain-google-genai>=2.0.10",
     "langchain-ollama>=0.2.3",
     "langchain-openai>=0.3.8",
+    "langgraph>=0.5.4",
     "pillow>=11.1.0",
     "pytelegrambotapi>=4.26.0",
     "python-dotenv>=1.0.1",

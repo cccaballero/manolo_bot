@@ -27,6 +27,7 @@ class Config(EnvModel):
     rate_limiter_max_bucket_size = IntegerField("RATE_LIMITER_MAX_BUCKET_SIZE", default=10)
     is_image_multimodal = BooleanField("ENABLE_MULTIMODAL", default=False)
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
+    agent_mode = BooleanField("AGENT_MODE", default=False)
 
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)

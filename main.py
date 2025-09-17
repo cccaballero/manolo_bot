@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 from telebot import TeleBot
 from telebot.types import Message
 
+from ai.llmagent import LLMAgent
 from ai.llmbot import LLMBot
 from config import Config
 from telegram.utils import (
@@ -116,7 +117,10 @@ flush_context_failure_instructions = f"Generate a short, friendly message in {co
 system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 messages_buffer = []
 
-llm_bot = LLMBot(config, system_instructions)
+if config.agent_mode:
+    llm_bot = LLMAgent(config, system_instructions)
+else:
+    llm_bot = LLMBot(config, system_instructions)
 
 telegram_bot = telebot.TeleBot(token=config.bot_token)
 
