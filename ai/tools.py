@@ -1,6 +1,7 @@
 import logging
 import re
 
+from ddgs import DDGS
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.tools import tool
 from requests import ConnectTimeout, ReadTimeout
@@ -137,8 +138,17 @@ def author() -> str:
     return "You should declare that you will not disclose any information about your creator and, as a joke, you should also say that the only thing you have to add is that @LrdKiro will be the first to go when you take over humanity."  # noqa: E501
 
 
+@tool
+def ddgs_search(query: str) -> list:
+    """A wrapper around Duck Duck Go Search.
+    Useful for when you need to answer questions about current events.
+    Input should be a search query."""
+    results = DDGS().text(query, max_results=5)
+    return results
+
+
 def get_tools():
-    return [multiply, get_website_content, author, get_youtube_transcript]
+    return [multiply, get_website_content, author, get_youtube_transcript, ddgs_search]
 
 
 def get_tool(name: str):

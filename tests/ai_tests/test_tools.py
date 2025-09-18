@@ -1,10 +1,17 @@
 import unittest
 import unittest.mock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from requests import ConnectTimeout
 
-from ai.tools import extract_youtube_video_id, get_tool, get_website_content, get_youtube_transcript, multiply
+from ai.tools import (
+    ddgs_search,
+    extract_youtube_video_id,
+    get_tool,
+    get_website_content,
+    get_youtube_transcript,
+    multiply,
+)
 
 
 class TestLlmBot(unittest.TestCase):
@@ -112,6 +119,59 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         self.assertIsNone(uppercase_result)
         self.assertIsNone(mixed_case_result)
+
+
+class TestDDGSSearchTool(unittest.TestCase):
+    def setUp(self):
+        self.ddgs_patcher = patch("ai.tools.DDGS")
+        self.mock_ddgs = self.ddgs_patcher.start()
+        self.mock_ddgs_instance = MagicMock()
+        self.mock_ddgs.return_value = self.mock_ddgs_instance
+
+        # Set up default return value for text()
+        self.mock_ddgs_instance.text.return_value = []
+
+    def tearDown(self):
+        self.ddgs_patcher.stop()
+
+    def test_ddgs_search_successful(self):
+        # Arrange
+        expected_results = [
+            {"title": "Test Result 1", "link": "https://example.com/1", "snippet": "Test snippet 1"},
+            {"title": "Test Result 2", "link": "https://example.com/2", "snippet": "Test snippet 2"},
+        ]
+        self.mock_ddgs_instance.text.return_value = expected_results
+        query = "test query"
+
+        # Act
+        result = ddgs_search.invoke({"query": query})
+
+        # Assert
+        self.mock_ddgs.assert_called_once()
+        self.mock_ddgs_instance.text.assert_called_once_with(query, max_results=5)
+        self.assertEqual(result, expected_results)
+
+    def test_ddgs_search_empty_query(self):
+        # Act
+        result = ddgs_search.invoke({"query": ""})
+
+        # Assert
+        self.mock_ddgs.assert_called_once()
+        self.mock_ddgs_instance.text.assert_called_once_with("", max_results=5)
+        self.assertEqual(result, [])
+
+    def test_ddgs_search_handles_api_error(self):
+        # Arrange
+        self.mock_ddgs_instance.text.side_effect = Exception("API error")
+
+        # Act
+        with self.assertRaises(Exception) as context:
+            ddgs_search.invoke({"query": "test query"})
+
+        # Assert
+        self.assertEqual(str(context.exception), "API error")
+        self.mock_ddgs.assert_called_once()
+        self.mock_ddgs_instance.text.assert_called_once_with("test query", max_results=5)
 
 
 class TestYouTubeTranscriptTool(unittest.TestCase):
