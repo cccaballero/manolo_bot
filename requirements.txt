@@ -47,6 +47,10 @@ langchain-google-genai==2.0.10
 langchain-ollama==0.2.3
 langchain-openai==0.3.8
 langchain-text-splitters==0.3.6
+langgraph==0.5.4
+langgraph-checkpoint==2.1.1
+langgraph-prebuilt==0.5.1
+langgraph-sdk==0.1.74
 langsmith==0.3.15
 marshmallow==3.26.1
 mistletoe==1.4.0
@@ -55,7 +59,8 @@ mypy-extensions==1.0.0
 numpy==2.2.4
 ollama==0.4.7
 openai==1.66.3
-orjson==3.10.15 ; platform_python_implementation != 'PyPy'
+orjson==3.10.15
+ormsgpack==1.10.0
 packaging==24.2
 pillow==11.1.0
 propcache==0.3.0
@@ -89,6 +94,7 @@ typing-extensions==4.12.2
 typing-inspect==0.9.0
 uritemplate==4.1.1
 urllib3==2.3.0
+xxhash==3.5.0
 yarl==1.18.3
 youtube-transcript-api==1.1.1
 zstandard==0.23.0
