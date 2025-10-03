@@ -107,13 +107,14 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         # Mock the aiohttp response
         mock_response = unittest.mock.AsyncMock()
         mock_response.status = 200
-        mock_response.read.return_value = b"fake_image_data"
+        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock the session
         mock_session = unittest.mock.AsyncMock()
         mock_context_manager = unittest.mock.AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_response
-        mock_context_manager.__aexit__.return_value = None
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
         mock_session.get.return_value = mock_context_manager
 
         # Mock the agent's response

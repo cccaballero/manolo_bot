@@ -41,7 +41,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Arrange
         mock_session = unittest.mock.AsyncMock()
         mock_response = unittest.mock.AsyncMock()
-        mock_response.text.return_value = "<html><body>Test content</body></html>"
+        mock_response.text = unittest.mock.AsyncMock(return_value="<html><body>Test content</body></html>")
         
         mock_context_manager = unittest.mock.AsyncMock()
         mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
@@ -129,7 +129,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(mixed_case_result)
 
 
-class TestDDGSSearchTool(unittest.TestCase):
+class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.ddgs_patcher = patch("ai.tools.DDGS")
         self.mock_ddgs = self.ddgs_patcher.start()
@@ -182,7 +182,7 @@ class TestDDGSSearchTool(unittest.TestCase):
         self.mock_ddgs_instance.text.assert_called_once_with("test query", max_results=5)
 
 
-class TestYouTubeTranscriptTool(unittest.TestCase):
+class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Mock the Config class for all tests
         self.config_patcher = patch("ai.tools.Config")
