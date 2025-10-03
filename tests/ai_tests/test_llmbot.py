@@ -209,7 +209,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
             self.assertEqual(result, expected_response)
 
-    def test_call_sdapi__non_200_response(self):
+    async def test_call_sdapi__non_200_response(self):
         # Arrange
         config_mock = unittest.mock.MagicMock()
         config_mock.sdapi_url = "http://test-sd-api.com"
@@ -226,18 +226,24 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         prompt = "a beautiful landscape"
 
-        mock_response = unittest.mock.MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
+        # Mock the session and response
+        mock_response = unittest.mock.AsyncMock()
+        mock_response.status = 500
+        mock_response.text.return_value = "Internal Server Error"
+        
+        mock_session = unittest.mock.AsyncMock()
+        mock_context_manager = unittest.mock.AsyncMock()
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.post.return_value = mock_context_manager
 
-        # Mock the session's post method
-        with unittest.mock.patch.object(llm_bot._session, "post", return_value=mock_response) as mock_post:
+        with unittest.mock.patch.object(llm_bot, "_get_session", return_value=mock_session):
             # Act
-            result = llm_bot.call_sdapi(prompt)
+            result = await llm_bot.call_sdapi(prompt)
 
             # Assert
-            mock_post.assert_called_once()
-            call_args, call_kwargs = mock_post.call_args
+            mock_session.post.assert_called_once()
+            call_args, call_kwargs = mock_session.post.call_args
             self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
 
             # Check the json payload without negative_prompt since it's None
@@ -267,8 +273,8 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Mock the session's get method
         mock_session = unittest.mock.AsyncMock()
         mock_context_manager = unittest.mock.AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_response
-        mock_context_manager.__aexit__.return_value = None
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
         mock_session.get.return_value = mock_context_manager
 
         with unittest.mock.patch.object(llm_bot, "_get_session", return_value=mock_session):

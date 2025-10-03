@@ -126,23 +126,17 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_is_bot_reply__message_is_reply_to_bot_with_matching_username(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
+        message = Message(
             message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
+            from_user=User(id=123, is_bot=False, first_name="User"),
             date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
+            chat=Chat(id=1, type="private"),
         )
-        message.reply_to_message = telebot.types.Message(
+        message.reply_to_message = Message(
             message_id=2,
-            from_user=telebot.types.User(id=456, is_bot=True, first_name="Bot", username=bot_username),
+            from_user=User(id=456, is_bot=True, first_name="Bot", username=bot_username),
             date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
+            chat=Chat(id=1, type="private"),
         )
 
         # Act
@@ -154,14 +148,11 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_is_bot_reply__message_has_no_reply_to_bot(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
+        message = Message(
             message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
+            from_user=User(id=123, is_bot=False, first_name="User"),
             date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
+            chat=Chat(id=1, type="private"),
         )
         message.reply_to_message = None
 
@@ -213,15 +204,12 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
 
     def test_get_message_from__returns_username_when_valid(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username="test_user")
-        mock_message = telebot.types.Message(
+        mock_user = User(id=123, is_bot=False, first_name="Test", username="test_user")
+        mock_message = Message(
             message_id=1,
             from_user=mock_user,
             date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
+            chat=Chat(id=1, type="private"),
         )
 
         # Act
@@ -232,15 +220,12 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
 
     def test_get_message_from__handles_none_username(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username=None)
-        mock_message = telebot.types.Message(
+        mock_user = User(id=123, is_bot=False, first_name="Test", username=None)
+        mock_message = Message(
             message_id=1,
             from_user=mock_user,
             date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
+            chat=Chat(id=1, type="private"),
         )
 
         # Act
