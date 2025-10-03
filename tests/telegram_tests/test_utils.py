@@ -249,38 +249,40 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertIsNone(result)
 
-    def test_reply_to_telegram_message__successful_reply_with_markdown(self):
+    async def test_reply_to_telegram_message__successful_reply_with_markdown(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
         mock_message.chat.id = 123456
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Hello @username, this is a *markdown* message"
 
         # Mock the logging
         with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
-            reply_to_telegram_message(mock_bot, mock_message, response_content)
+            await reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(
-                mock_message, "Hello @username, this is a _markdown_ message\n", parse_mode="MarkdownV2"
+            mock_message.reply.assert_called_once_with(
+                "Hello @username, this is a _markdown_ message\n", parse_mode="MarkdownV2"
             )
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
-    def test_reply_to_telegram_message__empty_response_content(self):
+    async def test_reply_to_telegram_message__empty_response_content(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
         mock_message.chat.id = 123456
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = ""
 
         # Mock logging
         with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
-            reply_to_telegram_message(mock_bot, mock_message, response_content)
+            await reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="MarkdownV2")
+            mock_message.reply.assert_called_once_with("", parse_mode="MarkdownV2")
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
@@ -340,17 +342,16 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(actual_time, expected_time)
 
-    def test_simulate_typing_with_default_parameters(self):
+    async def test_simulate_typing_with_default_parameters(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         text = "Hello, this is a test message"
         start_time = datetime.datetime.now() - datetime.timedelta(seconds=2)
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time)
 
         # Assert
         # For a short text with default parameters (wpm=50), typing should be simulated
@@ -359,17 +360,16 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         # Sleep should be called at least once
         mock_sleep.assert_called_with(1)
 
-    def test_simulate_typing_with_empty_text(self):
+    async def test_simulate_typing_with_empty_text(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         text = ""
         start_time = datetime.datetime.now()
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time)
 
         # Assert
         # For empty text, typing time should be minimal
@@ -377,10 +377,9 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         mock_bot.send_chat_action.assert_not_called()
         mock_sleep.assert_not_called()
 
-    def test_simulate_typing_capped_at_max_time(self):
+    async def test_simulate_typing_capped_at_max_time(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         # Create a very long text (100 words)
         text = "word " * 100
@@ -389,8 +388,8 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         wpm = 10  # Very slow typing speed
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time, max_typing_time, wpm)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time, max_typing_time, wpm)
 
         # Assert
         # For a long text with low WPM, typing time should be capped at max_typing_time
