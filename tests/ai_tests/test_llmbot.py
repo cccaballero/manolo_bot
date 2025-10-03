@@ -266,9 +266,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         # Mock the session's get method
         mock_session = unittest.mock.AsyncMock()
-        mock_session.get.return_value = unittest.mock.AsyncMock()
-        mock_session.get.return_value.__aenter__.return_value = mock_response
-        mock_session.get.return_value.__aexit__.return_value = None
+        mock_context_manager = unittest.mock.AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_response
+        mock_context_manager.__aexit__.return_value = None
+        mock_session.get.return_value = mock_context_manager
 
         with unittest.mock.patch.object(llm_bot, "_get_session", return_value=mock_session):
             # Act

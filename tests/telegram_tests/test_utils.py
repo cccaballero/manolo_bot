@@ -2,9 +2,10 @@ import datetime
 import unittest
 import unittest.mock
 
-import telebot
+from aiogram import Bot
+from aiogram.types import Message, User, Chat
 
-from telegram.utils import (
+from telegram.async_utils import (
     _get_time_from_wpm,
     clean_standard_message,
     convert_markdown_to_telegram_format,
@@ -20,7 +21,7 @@ from telegram.utils import (
 )
 
 
-class TestTelegramUtils(unittest.TestCase):
+class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_get_telegram_file_url__returns_correct_url_format(self):
         # Arrange
         bot_token = "test_token_123"
@@ -57,36 +58,38 @@ class TestTelegramUtils(unittest.TestCase):
         # Assert
         self.assertEqual(result, expected_url)
 
-    def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
+    async def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Test response"
 
         # Act
-        result = fallback_telegram_call(mock_bot, mock_message, response_content)
+        result = await fallback_telegram_call(mock_bot, mock_message, response_content)
 
         # Assert
         self.assertTrue(result)
-        mock_bot.reply_to.assert_called_once_with(mock_message, response_content)
+        mock_message.reply.assert_called_once_with(response_content)
 
-    def test_fallback_telegram_call__return_false_when_exception_raised(self):
+    async def test_fallback_telegram_call__return_false_when_exception_raised(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Test response"
-        mock_bot.reply_to.side_effect = Exception("API Error")
+        mock_message.reply.side_effect = Exception("API Error")
 
         # Act
-        result = fallback_telegram_call(mock_bot, mock_message, response_content)
+        result = await fallback_telegram_call(mock_bot, mock_message, response_content)
 
         # Assert
         self.assertFalse(result)
-        mock_bot.reply_to.assert_called_once_with(mock_message, response_content)
+        mock_message.reply.assert_called_once_with(response_content)
 
-    def test_user_is_admin__when_user_in_admin_list(self):
+    async def test_user_is_admin__when_user_in_admin_list(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
         user_id = 12345
         chat_id = 67890
 
@@ -94,27 +97,27 @@ class TestTelegramUtils(unittest.TestCase):
         mock_admin = unittest.mock.Mock()
         mock_admin.user.id = user_id
 
-        # Configure the mock telegram_bot to return a list with our admin
+        # Configure the mock bot to return a list with our admin
         mock_bot.get_chat_administrators.return_value = [mock_admin]
 
         # Act
-        result = user_is_admin(mock_bot, user_id, chat_id)
+        result = await user_is_admin(mock_bot, user_id, chat_id)
 
         # Assert
         self.assertTrue(result)
         mock_bot.get_chat_administrators.assert_called_once_with(chat_id)
 
-    def test_user_is_admin__when_admin_list_empty(self):
+    async def test_user_is_admin__when_admin_list_empty(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
         user_id = 12345
         chat_id = 67890
 
-        # Configure the mock telegram_bot to return an empty list
+        # Configure the mock bot to return an empty list
         mock_bot.get_chat_administrators.return_value = []
 
         # Act
-        result = user_is_admin(mock_bot, user_id, chat_id)
+        result = await user_is_admin(mock_bot, user_id, chat_id)
 
         # Assert
         self.assertFalse(result)

@@ -111,9 +111,10 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Mock the session
         mock_session = unittest.mock.AsyncMock()
-        mock_session.get.return_value = unittest.mock.AsyncMock()
-        mock_session.get.return_value.__aenter__.return_value = mock_response
-        mock_session.get.return_value.__aexit__.return_value = None
+        mock_context_manager = unittest.mock.AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_response
+        mock_context_manager.__aexit__.return_value = None
+        mock_session.get.return_value = mock_context_manager
 
         # Mock the agent's response
         mock_ai_message = AIMessage(content="This is an image response")

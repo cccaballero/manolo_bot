@@ -9,7 +9,7 @@ from aiogram.types import Message
 from telegramify_markdown import customize
 
 
-async def get_telegram_file_url(bot_token: str, file_path: str) -> str:
+def get_telegram_file_url(bot_token: str, file_path: str) -> str:
     """
     Get the URL for a Telegram file.
     :param bot_token: Telegram bot token
