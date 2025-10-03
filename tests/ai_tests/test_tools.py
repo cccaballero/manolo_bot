@@ -42,12 +42,12 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_session = unittest.mock.AsyncMock()
         mock_response = unittest.mock.AsyncMock()
         mock_response.text = unittest.mock.AsyncMock(return_value="<html><body>Test content</body></html>")
-        
+
         mock_context_manager = unittest.mock.AsyncMock()
         mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
         mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
         mock_session.get.return_value = mock_context_manager
-        
+
         mock_session_class.return_value = mock_session
 
         # Act
@@ -79,9 +79,8 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     @patch("ai.tools.logging")
     async def test_get_website_content__timeout_error_handling(self, mock_logging, mock_session_class):
         # Arrange
-        import asyncio
         mock_session = unittest.mock.AsyncMock()
-        mock_session.get.side_effect = asyncio.TimeoutError("Connection timed out")
+        mock_session.get.side_effect = TimeoutError("Connection timed out")
         mock_session_class.return_value = mock_session
 
         # Act

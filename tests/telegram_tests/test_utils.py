@@ -2,9 +2,6 @@ import datetime
 import unittest
 import unittest.mock
 
-from aiogram import Bot
-from aiogram.types import Message, User, Chat
-
 from telegram.async_utils import (
     _get_time_from_wpm,
     clean_standard_message,

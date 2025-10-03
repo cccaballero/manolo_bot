@@ -115,7 +115,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_context_manager = unittest.mock.AsyncMock()
         mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
         mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get.return_value = mock_context_manager
+        mock_session.get = unittest.mock.AsyncMock(return_value=mock_context_manager)
 
         # Mock the agent's response
         mock_ai_message = AIMessage(content="This is an image response")
@@ -151,7 +151,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Mock the session to raise aiohttp.ClientError
         mock_session = unittest.mock.AsyncMock()
-        mock_session.get.side_effect = aiohttp.ClientError("Failed to fetch image")
+        mock_session.get = unittest.mock.AsyncMock(side_effect=aiohttp.ClientError("Failed to fetch image"))
 
         # Act
         with (
