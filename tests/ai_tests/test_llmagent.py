@@ -2,9 +2,9 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock
 
+import aiohttp
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables.base import RunnableBinding
-from requests import RequestException
 
 from ai.llmagent import LLMAgent
 from config import Config
@@ -73,7 +73,7 @@ class TestLlmAgent(unittest.TestCase):
         self.assertEqual(agent.system_instructions, system_instructions)
         self.assertEqual(agent.config, mock_config)
 
-    def test_answer_message(self):
+    async def test_answer_message(self):
         # Arrange
         agent = self.get_basic_llm_agent()
         chat_id = 1
@@ -86,7 +86,7 @@ class TestLlmAgent(unittest.TestCase):
         agent.agent = mock_agent
 
         # Act
-        response = agent.answer_message(chat_id, user_message)
+        response = await agent.answer_message(chat_id, user_message)
 
         # Assert
         self.assertEqual(response, mock_ai_message)
@@ -97,19 +97,21 @@ class TestLlmAgent(unittest.TestCase):
         self.assertIsInstance(agent.chats[chat_id]["messages"][0], HumanMessage)
         self.assertEqual(agent.chats[chat_id]["messages"][0].content, user_message)
 
-    @unittest.mock.patch("requests.Session.get")
-    def test_answer_image_message_success(self, mock_session_get):
+    async def test_answer_image_message_success(self):
         # Arrange
         agent = self.get_basic_llm_agent()
         chat_id = 1
         text = "What's in this image?"
         image_url = "http://example.com/image.jpg"
 
-        # Mock the image response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.content = b"fake_image_data"
-        mock_session_get.return_value = mock_response
+        # Mock the aiohttp response
+        mock_response = unittest.mock.AsyncMock()
+        mock_response.status = 200
+        mock_response.read.return_value = b"fake_image_data"
+
+        # Mock the session
+        mock_session = unittest.mock.AsyncMock()
+        mock_session.get.return_value.__aenter__.return_value = mock_response
 
         # Mock the agent's response
         mock_ai_message = AIMessage(content="This is an image response")
@@ -117,44 +119,48 @@ class TestLlmAgent(unittest.TestCase):
         mock_agent.invoke.return_value = {"messages": [mock_ai_message]}
         agent.agent = mock_agent
 
-        # Act
-        response = agent.answer_image_message(chat_id, text, image_url)
+        with unittest.mock.patch.object(agent, "_get_session", return_value=mock_session):
+            # Act
+            response = await agent.answer_image_message(chat_id, text, image_url)
 
-        # Assert
-        self.assertEqual(response, mock_ai_message)
-        mock_session_get.assert_called_once_with(image_url, timeout=30)
-        mock_agent.invoke.assert_called_once()
+            # Assert
+            self.assertEqual(response, mock_ai_message)
+            mock_session.get.assert_called_once_with(image_url)
+            mock_agent.invoke.assert_called_once()
 
-        # Check that the chat history was updated with the image message
-        self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)
-        self.assertIsInstance(agent.chats[chat_id]["messages"][0], HumanMessage)
+            # Check that the chat history was updated with the image message
+            self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)
+            self.assertIsInstance(agent.chats[chat_id]["messages"][0], HumanMessage)
 
-        # Check the image content in the message
-        content = agent.chats[chat_id]["messages"][0].content
-        self.assertEqual(len(content), 2)
-        self.assertEqual(content[0]["text"], text)
-        self.assertIn("data:image/jpeg;base64,", content[1]["image_url"]["url"])
+            # Check the image content in the message
+            content = agent.chats[chat_id]["messages"][0].content
+            self.assertEqual(len(content), 2)
+            self.assertEqual(content[0]["text"], text)
+            self.assertIn("data:image/jpeg;base64,", content[1]["image_url"]["url"])
 
-    @unittest.mock.patch("requests.Session.get")
-    def test_answer_image_message_request_failure(self, mock_session_get):
+    async def test_answer_image_message_request_failure(self):
         # Arrange
         agent = self.get_basic_llm_agent()
         chat_id = 1
         text = "What's in this image?"
         image_url = "http://example.com/image.jpg"
 
-        # Simulate a request failure
-        mock_session_get.side_effect = RequestException("Failed to fetch image")
+        # Mock the session to raise aiohttp.ClientError
+        mock_session = unittest.mock.AsyncMock()
+        mock_session.get.side_effect = aiohttp.ClientError("Failed to fetch image")
 
         # Act
-        with self.assertLogs(level="ERROR") as log_context:
-            response = agent.answer_image_message(chat_id, text, image_url)
+        with (
+            unittest.mock.patch.object(agent, "_get_session", return_value=mock_session),
+            self.assertLogs(level="ERROR") as log_context,
+        ):
+            response = await agent.answer_image_message(chat_id, text, image_url)
 
         # Assert
         self.assertIsInstance(response, BaseMessage)
         self.assertEqual(response.content, "NO_ANSWER")
         self.assertEqual(response.type, "text")
-        mock_session_get.assert_called_once_with(image_url, timeout=30)
+        mock_session.get.assert_called_once_with(image_url)
 
         # Verify error was logged
         self.assertTrue(any("Failed to get image" in log for log in log_context.output))
