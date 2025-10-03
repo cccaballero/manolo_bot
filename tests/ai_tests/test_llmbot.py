@@ -270,7 +270,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_context_manager = unittest.mock.AsyncMock()
         mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
         mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get = unittest.mock.AsyncMock(return_value=mock_context_manager)
+        mock_session.get.return_value = mock_context_manager
 
         with unittest.mock.patch.object(llm_bot, "_get_session", return_value=mock_session):
             # Act
@@ -290,7 +290,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         # Mock the session's get method to raise aiohttp.ClientError
         mock_session = unittest.mock.AsyncMock()
-        mock_session.get = unittest.mock.AsyncMock(side_effect=aiohttp.ClientError("Failed to get image"))
+        mock_session.get.side_effect = aiohttp.ClientError("Failed to get image")
 
         with (
             unittest.mock.patch.object(llm_bot, "_get_session", return_value=mock_session),
