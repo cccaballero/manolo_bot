@@ -6,6 +6,8 @@ authors = [{ name = "Carlos Cesar Caballero Díaz", email = "tbd@example.com" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp>=3.11.11",
+    "aiogram>=3.17.0",
     "beautifulsoup4>=4.13.3",
     "ddgs>=9.6.0",
     "envmodel>=0.2",
@@ -18,16 +20,14 @@ dependencies = [
     "langchain-openai>=0.3.8",
     "langgraph>=0.5.4",
     "pillow>=11.1.0",
-    "pytelegrambotapi>=4.26.0",
     "python-dotenv>=1.0.1",
-    "requests>=2.32.3",
     "telegramify-markdown[mermaid]>=0.5.1",
     "transformers>=4.53.0",
     "youtube-transcript-api>=1.1.1",
 ]
 
 [tool.uv]
-dev-dependencies = ["pre-commit>=4.1.0", "ruff>=0.11.0"]
+dev-dependencies = ["pre-commit>=4.1.0", "pytest-asyncio>=0.24.0", "ruff>=0.11.0"]
 
 [tool.ruff]
 line-length = 120
@@ -41,4 +41,3 @@ ignore = []
 [tool.ruff.format]
 docstring-code-format = true
 docstring-code-line-length = 120
-
