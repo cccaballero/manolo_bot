@@ -82,7 +82,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         # Create a mock response from the agent
         mock_ai_message = AIMessage(content="I'm doing well, thank you!")
         mock_agent = unittest.mock.MagicMock()
-        mock_agent.invoke.return_value = {"messages": [mock_ai_message]}
+        mock_agent.ainvoke = unittest.mock.AsyncMock(return_value={"messages": [mock_ai_message]})
         agent.agent = mock_agent
 
         # Act
@@ -90,7 +90,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(response, mock_ai_message)
-        mock_agent.invoke.assert_called_once()
+        mock_agent.ainvoke.assert_called_once()
 
         # Check that the chat history was updated
         self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)
@@ -119,7 +119,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         # Mock the agent's response
         mock_ai_message = AIMessage(content="This is an image response")
         mock_agent = MagicMock()
-        mock_agent.invoke.return_value = {"messages": [mock_ai_message]}
+        mock_agent.ainvoke = unittest.mock.AsyncMock(return_value={"messages": [mock_ai_message]})
         agent.agent = mock_agent
 
         with unittest.mock.patch.object(agent, "_get_session", return_value=mock_session):
@@ -129,7 +129,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
             # Assert
             self.assertEqual(response, mock_ai_message)
             mock_session.get.assert_called_once_with(image_url)
-            mock_agent.invoke.assert_called_once()
+            mock_agent.ainvoke.assert_called_once()
 
             # Check that the chat history was updated with the image message
             self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)

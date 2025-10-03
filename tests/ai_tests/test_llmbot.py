@@ -262,7 +262,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Mock LLM response
         expected_response = AIMessage(content="This is an image of a cat")
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Mock the session's get method
         mock_session = unittest.mock.AsyncMock()
@@ -279,7 +279,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
             mock_session.get.assert_called_once_with(image_url)
             self.assertEqual(response, expected_response)
             self.assertEqual(len(llm_bot.chats[1]["messages"]), 1)
-            llm_bot.llm.invoke.assert_called_once_with(llm_bot.chats[1]["messages"])
+            llm_bot.llm.ainvoke.assert_called_once_with(llm_bot.chats[1]["messages"])
 
     async def test_answer_image_message__handles_request_exception(self):
         # Arrange
@@ -376,14 +376,14 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         expected_response = AIMessage(content="¡Contexto de chat borrado con éxito!")
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Act
         result = await llm_bot.generate_feedback_message("some prompt")
 
         # Assert
         self.assertEqual(result, "¡Contexto de chat borrado con éxito!")
-        llm_bot.llm.invoke.assert_called_once()
+        llm_bot.llm.ainvoke.assert_called_once()
 
     async def test_generate_feedback_message__truncates_long_messages(self):
         # Arrange
@@ -397,7 +397,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         long_message = "This is a very long message that exceeds the 200 character limit. " * 5
         expected_response = AIMessage(content=long_message)
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Act
         result = await llm_bot.generate_feedback_message("success")
