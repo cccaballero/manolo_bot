@@ -10,7 +10,7 @@ from ai.llmagent import LLMAgent
 from config import Config
 
 
-class TestLlmAgent(unittest.TestCase):
+class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_agent(self):
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"

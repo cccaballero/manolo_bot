@@ -8,7 +8,7 @@ from ai.llmbot import LLMBot
 from config import Config
 
 
-class TestLlmBot(unittest.TestCase):
+class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_bot(self):
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
