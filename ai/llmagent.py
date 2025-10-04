@@ -24,29 +24,26 @@ class LLMAgent(LLMBot):
 
         tools = await get_all_tools(self._mcp_manager)
 
-        # Create a state modifier that adds tool usage instructions
-        # This prepends instructions before the user's system instructions
-        from langchain_core.messages import SystemMessage
+        # Create a prompt that emphasizes tool usage
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-        def add_tool_instructions(state):
-            """Add tool usage instructions to the state."""
-            messages = state.get("messages", [])
-
-            # Add a system message emphasizing tool usage if not already present
-            tool_instruction = SystemMessage(
-                content="CRITICAL: You have access to tools. When a user asks a question that requires "
-                "information you don't have, you MUST use the appropriate tool. "
-                "Do NOT respond without using tools when tools are needed. "
-                "After receiving tool results, synthesize them into a helpful response."
-            )
-
-            # Prepend the tool instruction before other messages
-            return [tool_instruction] + messages
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "CRITICAL: You have access to tools. When a user asks a question that requires "
+                    "information you don't have, you MUST use the appropriate tool. "
+                    "Do NOT respond without using tools when tools are needed. "
+                    "After receiving tool results, synthesize them into a helpful response.",
+                ),
+                MessagesPlaceholder(variable_name="messages"),
+            ]
+        )
 
         self.agent = create_react_agent(
             model=self.llm,
             tools=tools,
-            state_modifier=add_tool_instructions,
+            prompt=prompt,
         )
         logging.debug(f"Agent created with {len(tools)} tools")
 
