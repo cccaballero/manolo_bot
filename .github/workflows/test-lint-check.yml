@@ -36,4 +36,4 @@ jobs:
       - name: Installs Python Project
         run: uv sync --no-dev
       - name: Run tests
-        run: uv run python -m unittest discover -s ./tests
+        run: unset PYTHONPATH && uv run python -m unittest discover -s ./tests
