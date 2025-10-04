@@ -252,7 +252,7 @@ async def process_message_queue():
                     response = await llm_bot.answer_image_message(
                         chat_id,
                         message_parts,
-                        await get_telegram_file_url(config.bot_token, file.file_path),
+                        get_telegram_file_url(config.bot_token, file.file_path),
                     )
                 # Check if the message is a reply to a message with an image
                 elif (
@@ -271,7 +271,7 @@ async def process_message_queue():
                     response = await llm_bot.answer_image_message(
                         chat_id,
                         prompt_text,
-                        await get_telegram_file_url(config.bot_token, file.file_path),
+                        get_telegram_file_url(config.bot_token, file.file_path),
                     )
                 else:
                     logging.debug(f"Text message {message.message_id} for chat {chat_id}")
