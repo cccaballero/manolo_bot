@@ -133,3 +133,21 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
         # Client should only be initialized once
         mock_client_class.assert_called_once()
         self.assertTrue(manager.is_connected)
+
+    async def test_mcp_manager_malicious_server_name(self):
+        """Test MCP manager safely handles malicious server names with newlines."""
+        # Server name with newline attempt for log injection
+        malicious_name = "evil\nERROR - Fake error"
+        server_config = {malicious_name: {"transport": "invalid"}}
+        self.config.mcp_servers_config = json.dumps(server_config)
+
+        manager = MCPManager(self.config)
+
+        with self.assertRaises(ValueError) as context:
+            await manager.connect()
+
+        # Verify the name is safely escaped with repr()
+        error_msg = str(context.exception)
+        self.assertIn("'evil\\nERROR - Fake error'", error_msg)
+        # Ensure actual newline is NOT in the error message
+        self.assertNotIn("\nERROR", error_msg)

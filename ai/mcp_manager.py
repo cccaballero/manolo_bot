@@ -87,18 +87,18 @@ class MCPManager:
             # Validate each server configuration
             for name, server_config in servers.items():
                 if not isinstance(server_config, dict):
-                    raise ValueError(f"Server '{name}' configuration must be an object")
+                    raise ValueError(f"Server {name!r} configuration must be an object")
 
                 transport = server_config.get("transport", "stdio")
                 if transport not in ["stdio", "streamable_http"]:
-                    raise ValueError(f"Server '{name}' has invalid transport: {transport}")
+                    raise ValueError(f"Server {name!r} has invalid transport: {transport!r}")
 
                 if transport == "stdio":
                     if "command" not in server_config:
-                        raise ValueError(f"Server '{name}' missing 'command' for stdio transport")
+                        raise ValueError(f"Server {name!r} missing 'command' for stdio transport")
                 elif transport == "streamable_http":
                     if "url" not in server_config:
-                        raise ValueError(f"Server '{name}' missing 'url' for streamable_http transport")
+                        raise ValueError(f"Server {name!r} missing 'url' for streamable_http transport")
 
             return servers
 
