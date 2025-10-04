@@ -111,11 +111,11 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock the session
-        mock_session = unittest.mock.AsyncMock()
-        mock_context_manager = unittest.mock.AsyncMock()
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
         mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
         mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get.return_value = mock_context_manager
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_context_manager)
 
         # Mock the agent's response
         mock_ai_message = AIMessage(content="This is an image response")
@@ -151,9 +151,15 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         text = "What's in this image?"
         image_url = "http://example.com/image.jpg"
 
-        # Mock the session to raise aiohttp.ClientError
-        mock_session = unittest.mock.AsyncMock()
-        mock_session.get.side_effect = aiohttp.ClientError("Failed to fetch image")
+        # Mock the session to raise aiohttp.ClientError in __aenter__
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        # Raise the exception in __aenter__ to simulate network error during request
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(
+            side_effect=aiohttp.ClientError("Failed to fetch image")
+        )
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_context_manager)
 
         # Act
         with (

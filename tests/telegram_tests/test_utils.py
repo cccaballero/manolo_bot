@@ -123,24 +123,18 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_is_bot_reply__message_is_reply_to_bot_with_matching_username(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
-            message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
-        message.reply_to_message = telebot.types.Message(
-            message_id=2,
-            from_user=telebot.types.User(id=456, is_bot=True, first_name="Bot", username=bot_username),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+
+        # Mock the reply_to_message with a bot user
+        mock_bot_user = unittest.mock.Mock()
+        mock_bot_user.username = bot_username
+        mock_bot_user.is_bot = True
+
+        mock_reply_message = unittest.mock.Mock()
+        mock_reply_message.from_user = mock_bot_user
+
+        # Mock the main message
+        message = unittest.mock.Mock()
+        message.reply_to_message = mock_reply_message
 
         # Act
         result = is_bot_reply(bot_username, message)
@@ -151,15 +145,9 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_is_bot_reply__message_has_no_reply_to_bot(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
-            message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+
+        # Mock the main message with no reply
+        message = unittest.mock.Mock()
         message.reply_to_message = None
 
         # Act
@@ -169,8 +157,9 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result)
 
     def test_is_image__returns_true_when_content_type_is_photo(self):
-        # Create a mock message with content_type 'photo'
-        mock_message = type("obj", (object,), {"content_type": "photo"})
+        # Create a mock message with photo attribute
+        mock_message = unittest.mock.Mock()
+        mock_message.photo = [unittest.mock.Mock()]  # Non-empty photo list
 
         # Act
         result = is_image(mock_message)
@@ -187,7 +176,7 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         # Arrange
         message = unittest.mock.Mock()
         message.text = "Hello, world!"
-        message.content_type = "text"
+        message.photo = None  # Not an image
 
         # Act
         result = get_message_text(message)
@@ -210,16 +199,11 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
 
     def test_get_message_from__returns_username_when_valid(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username="test_user")
-        mock_message = telebot.types.Message(
-            message_id=1,
-            from_user=mock_user,
-            date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+        mock_user = unittest.mock.Mock()
+        mock_user.username = "test_user"
+
+        mock_message = unittest.mock.Mock()
+        mock_message.from_user = mock_user
 
         # Act
         result = get_message_from(mock_message)
@@ -229,16 +213,8 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
 
     def test_get_message_from__handles_none_username(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username=None)
-        mock_message = telebot.types.Message(
-            message_id=1,
-            from_user=mock_user,
-            date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+        mock_message = unittest.mock.Mock()
+        mock_message.from_user = None
 
         # Act
         result = get_message_from(mock_message)
