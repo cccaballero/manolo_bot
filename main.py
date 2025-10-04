@@ -320,6 +320,9 @@ async def process_message_queue():
 
 async def main():
     """Main async function to run the bot."""
+    # Initialize async resources (including MCP)
+    await llm_bot.initialize_async_resources()
+
     # Start the message queue processor
     processor_task = asyncio.create_task(process_message_queue())
 

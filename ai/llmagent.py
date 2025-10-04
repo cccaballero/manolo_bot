@@ -6,20 +6,46 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from ai.llmbot import LLMBot
-from ai.tools import get_tools
 from config import Config
 
 
 class LLMAgent(LLMBot):
     def __init__(self, config: Config, system_instructions: list[BaseMessage]):
         super().__init__(config, system_instructions)
+        # Don't create agent yet - wait for async initialization
+        self.agent = None
+
+    async def initialize_async_resources(self):
+        """Initialize async resources and create agent with all tools."""
+        await super().initialize_async_resources()
+
+        # Create agent with all tools (custom + MCP)
+        from ai.tools import get_all_tools
+
+        tools = await get_all_tools(self._mcp_manager)
+
+        # Create a prompt that emphasizes tool usage
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "CRITICAL: You have access to tools. When a user asks a question that requires "
+                    "information you don't have, you MUST use the appropriate tool. "
+                    "Do NOT respond without using tools when tools are needed. "
+                    "After receiving tool results, synthesize them into a helpful response.",
+                ),
+                MessagesPlaceholder(variable_name="messages"),
+            ]
+        )
 
         self.agent = create_react_agent(
             model=self.llm,
-            tools=get_tools(),
-            # A static prompt that never changes
-            # prompt=self.system_instructions[0],
+            tools=tools,
+            prompt=prompt,
         )
+        logging.debug(f"Agent created with {len(tools)} tools")
 
     # is probably better to not use the agent for this
     # def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:

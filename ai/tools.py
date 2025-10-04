@@ -168,3 +168,37 @@ def get_tool(name: str):
         if tool_function.name == name:
             return tool_function
     return None
+
+
+async def get_all_tools(mcp_manager=None) -> list:
+    """
+    Get all available tools (custom + MCP).
+
+    :param mcp_manager: Optional MCP manager to load MCP tools from
+    :return: List of all available tools
+    """
+    # Start with custom tools
+    tools = get_tools()
+
+    # Add MCP tools if available
+    if mcp_manager and mcp_manager.is_connected:
+        try:
+            mcp_tools = await mcp_manager.get_tools()
+
+            # Detect name conflicts and remove conflicting custom tools
+            custom_names = {t.name for t in tools}
+            mcp_names = {t.name for t in mcp_tools}
+            conflicts = custom_names & mcp_names
+
+            if conflicts:
+                logging.warning(f"Tool name conflicts detected: {conflicts}. MCP tools will override custom tools.")
+                # Remove conflicting custom tools
+                tools = [t for t in tools if t.name not in conflicts]
+
+            tools.extend(mcp_tools)
+            logging.info(f"Loaded {len(mcp_tools)} MCP tools, total tools: {len(tools)}")
+
+        except Exception as e:
+            logging.error(f"Failed to load MCP tools: {e}", exc_info=True)
+
+    return tools

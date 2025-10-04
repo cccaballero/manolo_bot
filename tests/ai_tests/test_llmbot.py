@@ -16,6 +16,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
         mock_config.context_max_tokens = 4000
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
+        mock_config.use_tools = False
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
         llm_bot = LLMBot(mock_config, system_instructions)  # Initialize the bot
         llm_bot.chats = {1: {"messages": []}}
@@ -33,6 +37,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
         mock_config.use_tools = False  # Disable tools for this test
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
 
         # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
@@ -64,6 +71,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
         mock_config.use_tools = False  # Disable tools for this test
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
 
         # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
@@ -95,6 +105,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.openai_api_key = "fake_openai_key"
         mock_config.openai_api_base_url = None
         mock_config.use_tools = False  # Disable tools for this test
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
 
         # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
@@ -121,6 +134,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.google_api_key = None
         mock_config.openai_api_key = None
         mock_config.openai_api_base_url = None
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
+        mock_config.use_tools = False
 
         system_instructions = [SystemMessage(content="Hello")]
 
@@ -270,9 +287,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         llm_bot.count_tokens.return_value = 100
 
         # Mock aiohttp response
-        mock_response = unittest.mock.AsyncMock()
+        mock_response = unittest.mock.MagicMock()
         mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.raise_for_status = unittest.mock.MagicMock()  # This is synchronous, not async
         mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock LLM response
@@ -398,6 +415,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "Spanish"
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
+        mock_config.use_tools = False
 
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config
@@ -417,6 +438,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "English"
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
+        mock_config.use_tools = False
 
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = mock_config

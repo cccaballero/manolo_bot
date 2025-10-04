@@ -1,6 +1,6 @@
 import unittest
 import unittest.mock
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -20,6 +20,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.context_max_tokens = 4000
         mock_config.web_content_request_timeout = 30
         mock_config.use_tools = False
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Create a mock LLM for the agent
@@ -37,26 +40,31 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         return agent
 
     @unittest.mock.patch("ai.llmagent.create_react_agent")
-    @unittest.mock.patch("ai.llmagent.get_tools")
-    def test_llm_agent_initialization(self, mock_get_tools, mock_create_agent):
+    @unittest.mock.patch("ai.tools.get_all_tools", new_callable=AsyncMock)
+    async def test_llm_agent_initialization(self, mock_get_all_tools, mock_create_agent):
         # Arrange
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
         mock_config.use_tools = True
         mock_config.context_max_tokens = 4000
         mock_config.web_content_request_timeout = 30
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
 
         mock_tools = ["tool1", "tool2"]
-        mock_get_tools.return_value = mock_tools
+        mock_get_all_tools.return_value = mock_tools
 
         # Create a mock agent that will be returned by create_react_agent
         mock_agent = MagicMock()
 
         # Make create_react_agent return our mock_agent
-        def create_react_agent_side_effect(model, tools):
+        def create_react_agent_side_effect(model, tools, prompt=None, **kwargs):
             # Verify the model is our bound LLM with tools
             self.assertIsInstance(model, RunnableBinding)
             self.assertEqual(tools, mock_tools)
+            # Verify prompt is provided
+            self.assertIsNotNone(prompt)
             return mock_agent
 
         mock_create_agent.side_effect = create_react_agent_side_effect
@@ -65,9 +73,10 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Act
         agent = LLMAgent(mock_config, system_instructions)
+        await agent.initialize_async_resources()
 
         # Assert
-        mock_get_tools.assert_called_once()
+        mock_get_all_tools.assert_called_once()
         mock_create_agent.assert_called_once()
         self.assertEqual(agent.agent, mock_agent)
         self.assertEqual(agent.system_instructions, system_instructions)
@@ -105,9 +114,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         image_url = "http://example.com/image.jpg"
 
         # Mock the aiohttp response
-        mock_response = unittest.mock.AsyncMock()
+        mock_response = unittest.mock.MagicMock()
         mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.raise_for_status = unittest.mock.MagicMock()  # This is synchronous, not async
         mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock the session

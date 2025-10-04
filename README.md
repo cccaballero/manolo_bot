@@ -106,7 +106,65 @@ This will override the default instructions, and the custom bot character instru
 
 #### Tools usage
 
-`ENABLE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+`USE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+
+### MCP (Model Context Protocol) Support
+
+manolo_bot supports the [Model Context Protocol](https://modelcontextprotocol.io/) for connecting to external tool servers.
+
+#### Enabling MCP
+
+Set the following environment variables:
+
+`ENABLE_MCP`: Enable MCP support (True, False). Default is False.
+
+`MCP_SERVERS_CONFIG`: MCP server configuration in JSON format.
+
+#### MCP Server Configuration
+
+MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, which accepts a JSON object mapping server names to their configurations.
+
+**stdio transport example:**
+```json
+{
+  "math": {
+    "command": "python",
+    "args": ["/path/to/math_server.py"],
+    "transport": "stdio"
+  }
+}
+```
+
+**streamable_http transport example:**
+```json
+{
+  "weather": {
+    "url": "http://localhost:8000/mcp/",
+    "transport": "streamable_http"
+  }
+}
+```
+
+**Multiple servers:**
+```json
+{
+  "math": {
+    "command": "python",
+    "args": ["/path/to/math_server.py"],
+    "transport": "stdio"
+  },
+  "weather": {
+    "url": "http://localhost:8000/mcp/",
+    "transport": "streamable_http"
+  }
+}
+```
+
+**Notes:**
+- MCP tools are loaded alongside custom tools defined in `ai/tools.py`
+- If tool name conflicts occur, MCP tools will override custom tools (a warning is logged)
+- The bot will start successfully even if MCP initialization fails (graceful degradation)
+- MCP is only loaded when both `ENABLE_MCP=True` and valid `MCP_SERVERS_CONFIG` are provided
 
 #### Logging Level
 
