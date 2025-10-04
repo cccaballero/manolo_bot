@@ -123,7 +123,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_agent.ainvoke = unittest.mock.AsyncMock(return_value={"messages": [mock_ai_message]})
         agent.agent = mock_agent
 
-        with unittest.mock.patch.object(agent, "_get_session", return_value=mock_session):
+        with unittest.mock.patch.object(
+            agent, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+        ):
             # Act
             response = await agent.answer_image_message(chat_id, text, image_url)
 
@@ -155,7 +157,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Act
         with (
-            unittest.mock.patch.object(agent, "_get_session", return_value=mock_session),
+            unittest.mock.patch.object(
+                agent, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+            ),
             self.assertLogs(level="ERROR") as log_context,
         ):
             response = await agent.answer_image_message(chat_id, text, image_url)

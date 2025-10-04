@@ -2,6 +2,8 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, patch
 
+import aiohttp
+
 from ai.tools import (
     ddgs_search,
     extract_youtube_video_id,
@@ -39,16 +41,23 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     @patch("ai.tools.aiohttp.ClientSession")
     async def test_get_website_content__successful_content_retrieval(self, mock_session_class):
         # Arrange
-        mock_session = unittest.mock.AsyncMock()
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, as the session itself is not async
         mock_response = unittest.mock.AsyncMock()
         mock_response.text = unittest.mock.AsyncMock(return_value="<html><body>Test content</body></html>")
 
-        mock_context_manager = unittest.mock.AsyncMock()
-        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get.return_value = mock_context_manager
+        # Mock the response context manager
+        mock_response_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_response_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_response_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(
+            return_value=mock_response_context_manager
+        )  # get() returns CM, not a coroutine
 
-        mock_session_class.return_value = mock_session
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
         result = await get_website_content.ainvoke({"url": "https://example.com"})
@@ -61,9 +70,18 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     @patch("ai.tools.logging")
     async def test_get_website_content__connection_error_handling(self, mock_logging, mock_session_class):
         # Arrange
-        mock_session = unittest.mock.AsyncMock()
-        mock_session.get.side_effect = ConnectionError("Connection refused")
-        mock_session_class.return_value = mock_session
+        mock_session = unittest.mock.MagicMock()
+        # Create a context manager that raises aiohttp.ClientError on __aenter__
+        mock_response_cm = unittest.mock.MagicMock()
+        mock_response_cm.__aenter__ = unittest.mock.AsyncMock(side_effect=aiohttp.ClientError("Connection refused"))
+        mock_response_cm.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_response_cm)
+
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
         result = await get_website_content.ainvoke({"url": "https://example.com"})
@@ -79,9 +97,19 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     @patch("ai.tools.logging")
     async def test_get_website_content__timeout_error_handling(self, mock_logging, mock_session_class):
         # Arrange
-        mock_session = unittest.mock.AsyncMock()
-        mock_session.get.side_effect = TimeoutError("Connection timed out")
-        mock_session_class.return_value = mock_session
+
+        mock_session = unittest.mock.MagicMock()
+        # Create a context manager that raises TimeoutError on __aenter__
+        mock_response_cm = unittest.mock.MagicMock()
+        mock_response_cm.__aenter__ = unittest.mock.AsyncMock(side_effect=TimeoutError("Connection timed out"))
+        mock_response_cm.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_response_cm)
+
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
         result = await get_website_content.ainvoke({"url": "https://example.com"})
@@ -133,7 +161,10 @@ class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):
         self.ddgs_patcher = patch("ai.tools.DDGS")
         self.mock_ddgs = self.ddgs_patcher.start()
         self.mock_ddgs_instance = MagicMock()
-        self.mock_ddgs.return_value = self.mock_ddgs_instance
+
+        # Mock the context manager behavior
+        self.mock_ddgs.return_value.__enter__ = MagicMock(return_value=self.mock_ddgs_instance)
+        self.mock_ddgs.return_value.__exit__ = MagicMock(return_value=None)
 
         # Set up default return value for text()
         self.mock_ddgs_instance.text.return_value = []
