@@ -1,10 +1,9 @@
 import logging
 import re
 
+import aiohttp
 from ddgs import DDGS
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.tools import tool
-from requests import ConnectTimeout, ReadTimeout
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
 from config import Config
@@ -18,7 +17,7 @@ def multiply(first_int: int, second_int: int) -> int:
 
 
 @tool
-def get_website_content(url: str) -> str:
+async def get_website_content(url: str) -> str:
     """
     Tool for obtaining the content of a website.
     Can be used to resume the content of a webpage or online article or give your opinion about it.
@@ -29,25 +28,25 @@ def get_website_content(url: str) -> str:
         config = Config()
         request_timeout = config.web_content_request_timeout
 
-        # Configure WebBaseLoader with timeout settings
-        loader = WebBaseLoader(url)
-        loader.requests_kwargs = {"timeout": request_timeout}
+        # Use aiohttp for async HTTP requests
+        timeout = aiohttp.ClientTimeout(total=request_timeout)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                html_content = await response.text()
+                # Use WebBaseLoader for parsing (synchronous parsing is fine)
+                from bs4 import BeautifulSoup
 
-        docs = loader.load()
-        return docs[0].page_content
-    except ConnectionError as e:
+                soup = BeautifulSoup(html_content, "html.parser")
+                # Extract text content similar to WebBaseLoader
+                return soup.get_text(separator=" ", strip=True)
+    except aiohttp.ClientError as e:
         logging.error("Connection error connecting to web content")
         logging.exception(e)
-        # For the tool, we'll use a more generic error message since we can't use the LLM directly here
         return f"Failed to connect to the website {url}. Please check the URL or try again later."
-    except ConnectTimeout as e:
+    except TimeoutError as e:
         logging.error("Timeout error connecting to web content")
         logging.exception(e)
         return f"The website {url} took too long to respond. It might be unavailable or too large."
-    except ReadTimeout as e:
-        logging.error("Read timeout error connecting to web content")
-        logging.exception(e)
-        return f"The website {url} took too long to send data. It might be unavailable or too large."
     except Exception as e:
         logging.error("Error connecting to web content")
         logging.exception(e)
@@ -55,7 +54,7 @@ def get_website_content(url: str) -> str:
 
 
 @tool
-def get_youtube_transcript(url: str) -> str:
+async def get_youtube_transcript(url: str) -> str:
     """
     Tool for fetching and analyzing YouTube video transcripts.
     Can be used to understand and discuss the content of YouTube videos without watching them.
@@ -70,9 +69,14 @@ def get_youtube_transcript(url: str) -> str:
                 f"Could not extract a valid YouTube video ID from the URL: {url}. Please provide a valid YouTube URL."
             )
 
+        # YouTubeTranscriptApi is synchronous, but we can wrap it in asyncio
+        import asyncio
+
         youtube_transcript = YouTubeTranscriptApi()
-        # Get all available transcripts
-        transcript_list = list(youtube_transcript.list(video_id))
+
+        # Run the synchronous API call in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        transcript_list = await loop.run_in_executor(None, lambda: list(youtube_transcript.list(video_id)))
 
         # Check if any transcripts are available
         if not transcript_list:
@@ -81,7 +85,7 @@ def get_youtube_transcript(url: str) -> str:
 
         # Get the first available transcript
         transcript = transcript_list[0]
-        transcript_segments = transcript.fetch()
+        transcript_segments = await loop.run_in_executor(None, transcript.fetch)
 
         # Combine all transcript segments into a single text
         full_transcript = " ".join(segment.text for segment in transcript_segments)
@@ -139,12 +143,20 @@ def author() -> str:
 
 
 @tool
-def ddgs_search(query: str) -> list:
+async def ddgs_search(query: str) -> list:
     """A wrapper around Duck Duck Go Search.
     Useful for when you need to answer questions about current events.
     Input should be a search query."""
-    results = DDGS().text(query, max_results=5)
-    return results
+    # DDGS doesn't provide async API, use run_in_executor
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+
+    def search():
+        with DDGS() as ddgs:
+            return list(ddgs.text(query, max_results=5))
+
+    return await loop.run_in_executor(None, search)
 
 
 def get_tools():

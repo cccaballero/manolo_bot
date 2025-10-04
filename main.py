@@ -1,22 +1,21 @@
+import asyncio
 import base64
 import datetime
 import logging
 import re
 import signal
 import sys
-import threading
-from time import sleep
 
-import telebot.formatting
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
+from aiogram.types import Message
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
-from telebot import TeleBot
-from telebot.types import Message
 
 from ai.llmagent import LLMAgent
 from ai.llmbot import LLMBot
 from config import Config
-from telegram.utils import (
+from telegram.async_utils import (
     get_message_from,
     get_message_text,
     get_telegram_file_url,
@@ -119,18 +118,20 @@ flush_context_failure_instructions = f"Generate a short, friendly message in {co
 
 
 system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
-messages_buffer = []
+message_queue = asyncio.Queue()
 
 if config.agent_mode:
     llm_bot = LLMAgent(config, system_instructions)
 else:
     llm_bot = LLMBot(config, system_instructions)
 
-telegram_bot = telebot.TeleBot(token=config.bot_token)
+# Initialize bot and dispatcher
+bot = Bot(token=config.bot_token)
+dp = Dispatcher()
 
 
-@telegram_bot.message_handler(commands=["flushcontext"])
-def flush_context_command(message: Message):
+@dp.message(Command("flushcontext"))
+async def flush_context_command(message: Message):
     """
     Flush the chat context. This function is called when the user sends the /flushcontext command.
     :param message: Telegram message object
@@ -149,14 +150,14 @@ def flush_context_command(message: Message):
         logging.debug(f"Bot not mentioned in flushcontext command from user {user_id}, ignoring")
         return
 
-    if message.chat.type in ["group", "supergroup", "channel"] and not user_is_admin(telegram_bot, user_id, chat_id):
+    if message.chat.type in ["group", "supergroup", "channel"] and not await user_is_admin(bot, user_id, chat_id):
         logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
         try:
-            error_message = llm_bot.generate_feedback_message(flush_context_failure_instructions)
+            error_message = await llm_bot.generate_feedback_message(flush_context_failure_instructions)
         except Exception as e:
             logging.error(f"Failed to generate feedback message: {e}")
             error_message = "⚠️ You need to be an admin to use this command in a group chat."
-        telegram_bot.reply_to(message, error_message)
+        await message.reply(error_message)
         return
 
     logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
@@ -170,18 +171,18 @@ def flush_context_command(message: Message):
     logging.debug(f"Chat {chat_id} context flushed")
 
     try:
-        success_message = llm_bot.generate_feedback_message(flush_context_success_instructions)
+        success_message = await llm_bot.generate_feedback_message(flush_context_success_instructions)
     except Exception as e:
         logging.error(f"Failed to generate feedback message: {e}")
         success_message = "🧹 Chat context has been cleared successfully!"
 
-    telegram_bot.reply_to(message, success_message)
+    await message.reply(success_message)
 
 
-@telegram_bot.message_handler(func=lambda message: True, content_types=["text", "photo"])
-def echo_all(message: Message):
+@dp.message(F.content_type.in_(["text", "photo"]))
+async def handle_message(message: Message):
     """
-    Echo all incoming messages. This function is called for every incoming message.
+    Handle all incoming messages. This function is called for every incoming message.
     :param message: Telegram message object
     """
     chat_id = message.chat.id
@@ -201,135 +202,154 @@ def echo_all(message: Message):
         and (f"@{config.bot_username}" in message_text or config.bot_name.lower() in message_text.lower())
         or (config.is_group_assistant and not is_reply(message) and "?" in message_text)
     ) or is_bot_reply(config.bot_username, message):
-        messages_buffer.append(message)
-        logging.debug(f"Message {message.id} added to buffer")
+        await message_queue.put(message)
+        logging.debug(f"Message {message.message_id} added to queue")
     else:
-        logging.debug(f"Message {message.id} ignored, not added to buffer")
+        logging.debug(f"Message {message.message_id} ignored, not added to queue")
 
 
-def process_message_buffer(bot: TeleBot):
+async def process_message_queue():
     """
-    Process the message buffer and generate responses.
-    :param bot: Telegram bot instance
+    Process the message queue and generate responses.
     """
     while True:
         try:
-            if len(messages_buffer) > 0:
-                # process message
-                logging.debug(f"Buffer size: {len(messages_buffer)}")
+            message = await message_queue.get()
+            logging.debug(f"Processing message: {message.message_id}")
 
-                start_time = datetime.datetime.now()
+            start_time = datetime.datetime.now()
 
-                message = messages_buffer.pop(0)
-                logging.debug(f"Processing message: {message.id}")
+            chat_id = message.chat.id
 
-                chat_id = message.chat.id
+            await send_typing_action(bot, chat_id)
 
-                send_typing_action(bot, chat_id)
+            message_text = get_message_text(message)
+            logging.debug(f"Message text: {message_text}")
 
-                message_text = get_message_text(message)
-                logging.debug(f"Message text: {message_text}")
-
-                # build message for llm context
-                username = get_message_from(message)
-                if username:
-                    message_parts = f"@{username}: "
-                else:
-                    user_name = message.from_user.first_name or "Unknown user"
-                    message_parts = f"{user_name}: "
-                if is_bot_reply(config.bot_username, message):
-                    message_parts += f"@{config.bot_username} "
-                elif is_reply(message):
-                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
-                    message_parts += (
-                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
-                    )
-                if message_text:
-                    message_parts += message_text
-                else:
-                    logging.debug(f"No message text for message {message.id}")
-
-                try:
-                    # Check if the message itself contains an image
-                    if is_image(message) and config.is_image_multimodal:
-                        logging.debug(f"Image message {message.id} for chat {chat_id}")
-                        fileID = message.photo[-1].file_id
-                        file = bot.get_file(fileID)
-                        response = llm_bot.answer_image_message(
-                            chat_id,
-                            message_parts,
-                            get_telegram_file_url(config.bot_token, file.file_path),
-                        )
-                    # Check if the message is a reply to a message with an image
-                    elif (
-                        is_reply(message)
-                        and message.reply_to_message
-                        and is_image(message.reply_to_message)
-                        and config.is_image_multimodal
-                    ):
-                        logging.debug(f"Reply to image message {message.id} for chat {chat_id}")
-                        fileID = message.reply_to_message.photo[-1].file_id
-                        file = bot.get_file(fileID)
-                        # Ensure we're passing a string to answer_image_message
-                        if isinstance(message_parts, str):
-                            prompt_text = message_parts
-                        else:
-                            prompt_text = str(message_parts)
-                        response = llm_bot.answer_image_message(
-                            chat_id,
-                            prompt_text,
-                            get_telegram_file_url(config.bot_token, file.file_path),
-                        )
-                    else:
-                        logging.debug(f"Text message {message.id} for chat {chat_id}")
-                        response = llm_bot.answer_message(chat_id, message_parts)
-                        logging.debug(f"Response: {response}")
-                except Exception as e:
-                    logging.exception(e)
-                    # clean chat context if there is an error for avoid looping on context based error
-                    llm_bot.clean_context(chat_id)
-                    continue
-
-                final_response = llm_bot.postprocess_response(response, message_text, chat_id)
-
-                if final_response:
-                    if final_response.get("type") == "image":
-                        logging.debug(f"Sending image for chat {chat_id}")
-                        bot.send_photo(
-                            chat_id, base64.b64decode(final_response.get("data")), reply_to_message_id=message.id
-                        )
-                    elif final_response.get("type") == "text":
-                        # Remove thinking in reasoning models
-                        response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
-                        # Simulate typing if enabled
-                        if config.simulate_typing:
-                            simulate_typing(
-                                bot,
-                                chat_id,
-                                response_text,
-                                start_time,
-                                max_typing_time=config.simulate_typing_max_time,
-                                wpm=config.simulate_typing_wpm,
-                            )
-
-                        reply_to_telegram_message(bot, message, response_text)
+            # build message for llm context
+            username = get_message_from(message)
+            if username:
+                message_parts = f"@{username}: "
             else:
-                sleep(0.1)
+                user_name = message.from_user.first_name or "Unknown user"
+                message_parts = f"{user_name}: "
+            if is_bot_reply(config.bot_username, message):
+                message_parts += f"@{config.bot_username} "
+            elif is_reply(message):
+                reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+                image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
+                message_parts += f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
+            if message_text:
+                message_parts += message_text
+            else:
+                logging.debug(f"No message text for message {message.message_id}")
+
+            try:
+                # Check if the message itself contains an image
+                if is_image(message) and config.is_image_multimodal:
+                    logging.debug(f"Image message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.photo[-1].file_id)
+                    response = await llm_bot.answer_image_message(
+                        chat_id,
+                        message_parts,
+                        get_telegram_file_url(config.bot_token, file.file_path),
+                    )
+                # Check if the message is a reply to a message with an image
+                elif (
+                    is_reply(message)
+                    and message.reply_to_message
+                    and is_image(message.reply_to_message)
+                    and config.is_image_multimodal
+                ):
+                    logging.debug(f"Reply to image message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.reply_to_message.photo[-1].file_id)
+                    # Ensure we're passing a string to answer_image_message
+                    if isinstance(message_parts, str):
+                        prompt_text = message_parts
+                    else:
+                        prompt_text = str(message_parts)
+                    response = await llm_bot.answer_image_message(
+                        chat_id,
+                        prompt_text,
+                        get_telegram_file_url(config.bot_token, file.file_path),
+                    )
+                else:
+                    logging.debug(f"Text message {message.message_id} for chat {chat_id}")
+                    response = await llm_bot.answer_message(chat_id, message_parts)
+                    logging.debug(f"Response: {response}")
+            except Exception as e:
+                logging.exception(e)
+                # clean chat context if there is an error for avoid looping on context based error
+                llm_bot.clean_context(chat_id)
+                message_queue.task_done()
+                continue
+
+            final_response = await llm_bot.postprocess_response(response, message_text, chat_id)
+
+            if final_response:
+                if final_response.get("type") == "image":
+                    logging.debug(f"Sending image for chat {chat_id}")
+                    await bot.send_photo(
+                        chat_id,
+                        photo=base64.b64decode(final_response.get("data")),
+                        reply_to_message_id=message.message_id,
+                    )
+                elif final_response.get("type") == "text":
+                    # Remove thinking in reasoning models
+                    response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
+                    # Simulate typing if enabled
+                    if config.simulate_typing:
+                        await simulate_typing(
+                            bot,
+                            chat_id,
+                            response_text,
+                            start_time,
+                            max_typing_time=config.simulate_typing_max_time,
+                            wpm=config.simulate_typing_wpm,
+                        )
+
+                    await reply_to_telegram_message(bot, message, response_text)
+
+            message_queue.task_done()
         except Exception as e:
-            logging.error(f"Error processing message buffer: {e}")
+            logging.error(f"Error processing message queue: {e}")
+            logging.exception(e)
+            message_queue.task_done()
             continue
 
 
-def shutdown_handler(signum, frame):
-    logging.debug("Shutting down bot...")
-    telegram_bot.stop_polling()
+async def main():
+    """Main async function to run the bot."""
+    # Start the message queue processor
+    processor_task = asyncio.create_task(process_message_queue())
+
+    # Setup shutdown handlers
+    loop = asyncio.get_running_loop()
+
+    def shutdown_handler(signum, frame):
+        logging.debug("Shutting down bot...")
+        loop.create_task(shutdown())
+
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
+
+    try:
+        # Start polling
+        logging.info("Starting bot...")
+        await dp.start_polling(bot)
+    finally:
+        processor_task.cancel()
+        await llm_bot.close()
+        await bot.session.close()
+
+
+async def shutdown():
+    """Graceful shutdown."""
+    logging.info("Shutting down...")
+    await llm_bot.close()
+    await bot.session.close()
     sys.exit(0)
 
 
-signal.signal(signal.SIGINT, shutdown_handler)
-signal.signal(signal.SIGTERM, shutdown_handler)
-
-buffer_processing = threading.Thread(target=process_message_buffer, args=(telegram_bot,), daemon=True)
-buffer_processing.start()
-telegram_bot.infinity_polling(timeout=10, long_polling_timeout=5)
+if __name__ == "__main__":
+    asyncio.run(main())

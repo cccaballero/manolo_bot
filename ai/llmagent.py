@@ -1,9 +1,9 @@
 import base64
 import logging
 
+import aiohttp
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
-from requests import RequestException
 
 from ai.llmbot import LLMBot
 from ai.tools import get_tools
@@ -37,14 +37,14 @@ class LLMAgent(LLMBot):
     #     logging.debug(f"Generated feedback message: {feedback_message}")
     #     return feedback_message
 
-    def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+    async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
         self.chats[chat_id]["messages"].append(HumanMessage(content=message))
         self.truncate_chat_context(chat_id)
 
-        ai_msg = self.agent.invoke({"messages": self.system_instructions + self.chats[chat_id]["messages"]})
+        ai_msg = await self.agent.ainvoke({"messages": self.system_instructions + self.chats[chat_id]["messages"]})
         return ai_msg["messages"][-1]
 
-    def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
+    async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
         """
         Answer an image message.
         :param chat_id: Chat ID
@@ -55,10 +55,12 @@ class LLMAgent(LLMBot):
         logging.debug(f"Image message: {text}")
 
         try:
-            # Use the shared session to download the image
-            response = self._session.get(image, timeout=self.config.web_content_request_timeout)
-            response.raise_for_status()
-            image_data = base64.b64encode(response.content).decode("utf-8")
+            # Use aiohttp to download the image
+            session = await self._get_session()
+            async with session.get(image) as response:
+                response.raise_for_status()
+                image_bytes = await response.read()
+                image_data = base64.b64encode(image_bytes).decode("utf-8")
 
             llm_message = HumanMessage(
                 content=[
@@ -71,9 +73,9 @@ class LLMAgent(LLMBot):
             )
             self.chats[chat_id]["messages"].append(llm_message)
             self.truncate_chat_context(chat_id)
-            response = self.agent.invoke({"messages": self.chats[chat_id]["messages"]})["messages"][-1]
-        except (RequestException, Exception) as e:
-            if isinstance(e, RequestException):
+            response = (await self.agent.ainvoke({"messages": self.chats[chat_id]["messages"]}))["messages"][-1]
+        except (aiohttp.ClientError, Exception) as e:
+            if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get image: {image}")
             logging.exception(e)
             response = BaseMessage(content="NO_ANSWER", type="text")

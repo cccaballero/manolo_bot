@@ -1,14 +1,14 @@
 import unittest
 import unittest.mock
 
+import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from requests import RequestException
 
 from ai.llmbot import LLMBot
 from config import Config
 
 
-class TestLlmBot(unittest.TestCase):
+class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_bot(self):
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
@@ -174,7 +174,7 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         self.assertEqual("", result)
 
-    def test_call_sdapi__successful_api_call(self):
+    async def test_call_sdapi__successful_api_call(self):
         # Arrange
         config_mock = unittest.mock.MagicMock()
         config_mock.sdapi_url = "http://test-sd-api.com"
@@ -193,23 +193,32 @@ class TestLlmBot(unittest.TestCase):
         prompt = "a beautiful landscape"
         expected_response = {"images": ["base64_image_data"]}
 
+        # Mock the response
         mock_response = unittest.mock.MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = expected_response
+        mock_response.status = 200
+        mock_response.json = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Mock the session's post method
-        with unittest.mock.patch.object(llm_bot._session, "post", return_value=mock_response) as mock_post:
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.post = unittest.mock.MagicMock(return_value=mock_context_manager)
+
+        with unittest.mock.patch.object(
+            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+        ):
             # Act
-            result = llm_bot.call_sdapi(prompt)
+            result = await llm_bot.call_sdapi(prompt)
 
             # Assert
-            mock_post.assert_called_once()
-            call_args, call_kwargs = mock_post.call_args
+            mock_session.post.assert_called_once()
+            call_args, call_kwargs = mock_session.post.call_args
             self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
             self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
             self.assertEqual(result, expected_response)
 
-    def test_call_sdapi__non_200_response(self):
+    async def test_call_sdapi__non_200_response(self):
         # Arrange
         config_mock = unittest.mock.MagicMock()
         config_mock.sdapi_url = "http://test-sd-api.com"
@@ -220,33 +229,39 @@ class TestLlmBot(unittest.TestCase):
             "height": 512,
             "timestep_spacing": "trailing",
         }
+        config_mock.sdapi_negative_prompt = None
 
         llm_bot = self.get_basic_llm_bot()
         llm_bot.config = config_mock
 
         prompt = "a beautiful landscape"
 
+        # Mock the response with non-200 status
         mock_response = unittest.mock.MagicMock()
-        mock_response.status_code = 500
+        mock_response.status = 500
         mock_response.text = "Internal Server Error"
 
         # Mock the session's post method
-        with unittest.mock.patch.object(llm_bot._session, "post", return_value=mock_response) as mock_post:
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.post = unittest.mock.MagicMock(return_value=mock_context_manager)
+
+        with unittest.mock.patch.object(
+            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+        ):
             # Act
-            result = llm_bot.call_sdapi(prompt)
+            result = await llm_bot.call_sdapi(prompt)
 
             # Assert
-            mock_post.assert_called_once()
-            call_args, call_kwargs = mock_post.call_args
+            mock_session.post.assert_called_once()
+            call_args, call_kwargs = mock_session.post.call_args
             self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
-
-            # Check the json payload without negative_prompt since it's None
-            expected_json = {**config_mock.sdapi_params, "prompt": prompt}
-            actual_json = {k: v for k, v in call_kwargs["json"].items() if k != "negative_prompt"}
-            self.assertEqual(actual_json, expected_json)
+            self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
             self.assertIsNone(result)
 
-    def test_answer_image_message__successful_image_message_processing(self):
+    async def test_answer_image_message__successful_image_message_processing(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         text = "What's in this image?"
@@ -254,68 +269,88 @@ class TestLlmBot(unittest.TestCase):
         llm_bot.count_tokens = unittest.mock.Mock()
         llm_bot.count_tokens.return_value = 100
 
-        # Mock session.get response
-        mock_response = unittest.mock.Mock()
-        mock_response.status_code = 200
-        mock_response.content = b"fake_image_data"
+        # Mock aiohttp response
+        mock_response = unittest.mock.AsyncMock()
+        mock_response.status = 200
+        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock LLM response
         expected_response = AIMessage(content="This is an image of a cat")
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Mock the session's get method
-        with unittest.mock.patch.object(llm_bot._session, "get", return_value=mock_response) as mock_get:
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(
+            return_value=mock_context_manager
+        )  # get() returns CM, not a coroutine
+
+        with unittest.mock.patch.object(
+            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+        ):
             # Act
-            response = llm_bot.answer_image_message(1, text, image_url)
+            response = await llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
-            mock_get.assert_called_once_with(image_url, timeout=llm_bot.config.web_content_request_timeout)
+            mock_session.get.assert_called_once_with(image_url)
             self.assertEqual(response, expected_response)
             self.assertEqual(len(llm_bot.chats[1]["messages"]), 1)
-            llm_bot.llm.invoke.assert_called_once_with(llm_bot.chats[1]["messages"])
+            llm_bot.llm.ainvoke.assert_called_once_with(llm_bot.chats[1]["messages"])
 
-    def test_answer_image_message__handles_request_exception(self):
+    async def test_answer_image_message__handles_request_exception(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         text = "What's in this image?"
         image_url = "https://invalid-url.com/image.jpg"
 
-        # Mock the session's get method to raise RequestException
+        # Mock the session's get method to raise aiohttp.ClientError in __aenter__
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
+        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        # Raise the exception in __aenter__ to simulate network error during request
+        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(
+            side_effect=aiohttp.ClientError("Failed to get image")
+        )
+        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_context_manager)
+
         with (
-            unittest.mock.patch.object(llm_bot._session, "get", side_effect=RequestException("Failed to get image")),
+            unittest.mock.patch.object(
+                llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
+            ),
             unittest.mock.patch("logging.error") as mock_logger,
             unittest.mock.patch("logging.exception") as mock_exception_logger,
         ):
             # Act
-            response = llm_bot.answer_image_message(1, text, image_url)
+            response = await llm_bot.answer_image_message(1, text, image_url)
 
             # Assert
             mock_logger.assert_called_once_with(f"Failed to get image: {image_url}")
             mock_exception_logger.assert_called_once()
             self.assertEqual(response.content, "NO_ANSWER")
             self.assertEqual(response.type, "text")
-            mock_logger.assert_called_once_with(f"Failed to get image: {image_url}")
-            mock_exception_logger.assert_called_once()
 
-    def test_generate_image__success(self):
+    async def test_generate_image__success(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         mock_response = {"images": ["base64_encoded_image_data"]}
         with unittest.mock.patch.object(llm_bot, "call_sdapi", return_value=mock_response) as mock_call_sdapi:
             # Act
-            result = llm_bot.generate_image("a beautiful landscape")
+            result = await llm_bot.generate_image("a beautiful landscape")
 
             # Assert
             self.assertEqual(result, "base64_encoded_image_data")
             mock_call_sdapi.assert_called_once_with("a beautiful landscape")
 
-    def test_generate_image__returns_none(self):
+    async def test_generate_image__returns_none(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
         with unittest.mock.patch.object(llm_bot, "call_sdapi", return_value=None) as mock_call_sdapi:
             # Act
-            result = llm_bot.generate_image("a beautiful landscape")
+            result = await llm_bot.generate_image("a beautiful landscape")
 
             # Assert
             self.assertIsNone(result)
@@ -359,7 +394,7 @@ class TestLlmBot(unittest.TestCase):
         self.assertEqual(result, 258 + 3)
         mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
 
-    def test_generate_feedback_message__success_message(self):
+    async def test_generate_feedback_message__success_message(self):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "Spanish"
@@ -369,16 +404,16 @@ class TestLlmBot(unittest.TestCase):
 
         expected_response = AIMessage(content="¡Contexto de chat borrado con éxito!")
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Act
-        result = llm_bot.generate_feedback_message("some prompt")
+        result = await llm_bot.generate_feedback_message("some prompt")
 
         # Assert
         self.assertEqual(result, "¡Contexto de chat borrado con éxito!")
-        llm_bot.llm.invoke.assert_called_once()
+        llm_bot.llm.ainvoke.assert_called_once()
 
-    def test_generate_feedback_message__truncates_long_messages(self):
+    async def test_generate_feedback_message__truncates_long_messages(self):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.preferred_language = "English"
@@ -390,17 +425,17 @@ class TestLlmBot(unittest.TestCase):
         long_message = "This is a very long message that exceeds the 200 character limit. " * 5
         expected_response = AIMessage(content=long_message)
         llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.invoke.return_value = expected_response
+        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
 
         # Act
-        result = llm_bot.generate_feedback_message("success")
+        result = await llm_bot.generate_feedback_message("success")
 
         # Assert
         self.assertEqual(len(result), 200)  # 197 chars + 3 for "..."
         self.assertTrue(result.endswith("..."))
         self.assertEqual(result, long_message[:197] + "...")
 
-    def test_answer_webcontent__no_url_found_returns_none(self):
+    async def test_answer_webcontent__no_url_found_returns_none(self):
         # Arrange
         llm_bot = self.get_basic_llm_bot()
 
@@ -414,7 +449,7 @@ class TestLlmBot(unittest.TestCase):
             unittest.mock.patch.object(llm_bot, "_remove_urls") as _remove_urls_mock,
         ):
             # Act
-            result = llm_bot.answer_webcontent(message_text, response_content, 1)
+            result = await llm_bot.answer_webcontent(message_text, response_content, 1)
 
             # Assert
             self.assertIsNone(result)

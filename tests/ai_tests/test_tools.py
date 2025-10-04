@@ -2,7 +2,7 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, patch
 
-from requests import ConnectTimeout
+import aiohttp
 
 from ai.tools import (
     ddgs_search,
@@ -14,7 +14,7 @@ from ai.tools import (
 )
 
 
-class TestLlmBot(unittest.TestCase):
+class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Mock the Config class for all tests
         self.config_patcher = patch("ai.tools.Config")
@@ -38,29 +38,53 @@ class TestLlmBot(unittest.TestCase):
         # Assert
         self.assertEqual(result, expected_result)
 
-    @patch("ai.tools.WebBaseLoader")
-    def test_get_website_content__successful_content_retrieval(self, mock_loader):
+    @patch("ai.tools.aiohttp.ClientSession")
+    async def test_get_website_content__successful_content_retrieval(self, mock_session_class):
         # Arrange
-        mock_instance = mock_loader.return_value
-        mock_instance.load.return_value = [unittest.mock.Mock(page_content="Test content")]
+        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, as the session itself is not async
+        mock_response = unittest.mock.AsyncMock()
+        mock_response.text = unittest.mock.AsyncMock(return_value="<html><body>Test content</body></html>")
+
+        # Mock the response context manager
+        mock_response_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_response_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
+        mock_response_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(
+            return_value=mock_response_context_manager
+        )  # get() returns CM, not a coroutine
+
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
-        result = get_website_content.invoke({"url": "https://example.com"})
+        result = await get_website_content.ainvoke({"url": "https://example.com"})
 
         # Assert
-        mock_loader.assert_called_once_with("https://example.com")
-        mock_instance.load.assert_called_once()
-        self.assertEqual(result, "Test content")
+        mock_session.get.assert_called_once_with("https://example.com")
+        self.assertIn("Test content", result)
 
-    @patch("ai.tools.WebBaseLoader")
+    @patch("ai.tools.aiohttp.ClientSession")
     @patch("ai.tools.logging")
-    def test_get_website_content__connection_error_handling(self, mock_logging, mock_loader):
+    async def test_get_website_content__connection_error_handling(self, mock_logging, mock_session_class):
         # Arrange
-        mock_instance = mock_loader.return_value
-        mock_instance.load.side_effect = ConnectionError("Connection refused")
+        mock_session = unittest.mock.MagicMock()
+        # Create a context manager that raises aiohttp.ClientError on __aenter__
+        mock_response_cm = unittest.mock.MagicMock()
+        mock_response_cm.__aenter__ = unittest.mock.AsyncMock(side_effect=aiohttp.ClientError("Connection refused"))
+        mock_response_cm.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_response_cm)
+
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
-        result = get_website_content.invoke({"url": "https://example.com"})
+        result = await get_website_content.ainvoke({"url": "https://example.com"})
 
         # Assert
         mock_logging.error.assert_called_with("Connection error connecting to web content")
@@ -69,15 +93,26 @@ class TestLlmBot(unittest.TestCase):
             result, "Failed to connect to the website https://example.com. Please check the URL or try again later."
         )
 
-    @patch("ai.tools.WebBaseLoader")
+    @patch("ai.tools.aiohttp.ClientSession")
     @patch("ai.tools.logging")
-    def test_get_website_content__timeout_error_handling(self, mock_logging, mock_loader):
+    async def test_get_website_content__timeout_error_handling(self, mock_logging, mock_session_class):
         # Arrange
-        mock_instance = mock_loader.return_value
-        mock_instance.load.side_effect = ConnectTimeout("Connection timed out")
+
+        mock_session = unittest.mock.MagicMock()
+        # Create a context manager that raises TimeoutError on __aenter__
+        mock_response_cm = unittest.mock.MagicMock()
+        mock_response_cm.__aenter__ = unittest.mock.AsyncMock(side_effect=TimeoutError("Connection timed out"))
+        mock_response_cm.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session.get = unittest.mock.MagicMock(return_value=mock_response_cm)
+
+        # Mock the session context manager
+        mock_session_context_manager = unittest.mock.MagicMock()
+        mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+        mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+        mock_session_class.return_value = mock_session_context_manager
 
         # Act
-        result = get_website_content.invoke({"url": "https://example.com"})
+        result = await get_website_content.ainvoke({"url": "https://example.com"})
 
         # Assert
         mock_logging.error.assert_called_with("Timeout error connecting to web content")
@@ -121,12 +156,15 @@ class TestLlmBot(unittest.TestCase):
         self.assertIsNone(mixed_case_result)
 
 
-class TestDDGSSearchTool(unittest.TestCase):
+class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.ddgs_patcher = patch("ai.tools.DDGS")
         self.mock_ddgs = self.ddgs_patcher.start()
         self.mock_ddgs_instance = MagicMock()
-        self.mock_ddgs.return_value = self.mock_ddgs_instance
+
+        # Mock the context manager behavior
+        self.mock_ddgs.return_value.__enter__ = MagicMock(return_value=self.mock_ddgs_instance)
+        self.mock_ddgs.return_value.__exit__ = MagicMock(return_value=None)
 
         # Set up default return value for text()
         self.mock_ddgs_instance.text.return_value = []
@@ -134,7 +172,7 @@ class TestDDGSSearchTool(unittest.TestCase):
     def tearDown(self):
         self.ddgs_patcher.stop()
 
-    def test_ddgs_search_successful(self):
+    async def test_ddgs_search_successful(self):
         # Arrange
         expected_results = [
             {"title": "Test Result 1", "link": "https://example.com/1", "snippet": "Test snippet 1"},
@@ -144,29 +182,29 @@ class TestDDGSSearchTool(unittest.TestCase):
         query = "test query"
 
         # Act
-        result = ddgs_search.invoke({"query": query})
+        result = await ddgs_search.ainvoke({"query": query})
 
         # Assert
         self.mock_ddgs.assert_called_once()
         self.mock_ddgs_instance.text.assert_called_once_with(query, max_results=5)
         self.assertEqual(result, expected_results)
 
-    def test_ddgs_search_empty_query(self):
+    async def test_ddgs_search_empty_query(self):
         # Act
-        result = ddgs_search.invoke({"query": ""})
+        result = await ddgs_search.ainvoke({"query": ""})
 
         # Assert
         self.mock_ddgs.assert_called_once()
         self.mock_ddgs_instance.text.assert_called_once_with("", max_results=5)
         self.assertEqual(result, [])
 
-    def test_ddgs_search_handles_api_error(self):
+    async def test_ddgs_search_handles_api_error(self):
         # Arrange
         self.mock_ddgs_instance.text.side_effect = Exception("API error")
 
         # Act
         with self.assertRaises(Exception) as context:
-            ddgs_search.invoke({"query": "test query"})
+            await ddgs_search.ainvoke({"query": "test query"})
 
         # Assert
         self.assertEqual(str(context.exception), "API error")
@@ -174,7 +212,7 @@ class TestDDGSSearchTool(unittest.TestCase):
         self.mock_ddgs_instance.text.assert_called_once_with("test query", max_results=5)
 
 
-class TestYouTubeTranscriptTool(unittest.TestCase):
+class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Mock the Config class for all tests
         self.config_patcher = patch("ai.tools.Config")
@@ -230,7 +268,7 @@ class TestYouTubeTranscriptTool(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("ai.tools.YouTubeTranscriptApi")
-    def test_get_youtube_transcript__successful_transcript_retrieval(self, mock_transcript_api):
+    async def test_get_youtube_transcript__successful_transcript_retrieval(self, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         mock_transcript = unittest.mock.Mock()
@@ -242,7 +280,7 @@ class TestYouTubeTranscriptTool(unittest.TestCase):
         expected_result = "This is the first part of the transcript. This is the second part of the transcript. "
 
         # Act
-        result = get_youtube_transcript.invoke({"url": url})
+        result = await get_youtube_transcript.ainvoke({"url": url})
 
         # Assert
         mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
@@ -250,13 +288,13 @@ class TestYouTubeTranscriptTool(unittest.TestCase):
 
     @patch("ai.tools.YouTubeTranscriptApi")
     @patch("ai.tools.logging")
-    def test_get_youtube_transcript__no_transcript_found(self, mock_logging, mock_transcript_api):
+    async def test_get_youtube_transcript__no_transcript_found(self, mock_logging, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         mock_transcript_api.return_value.list.return_value = []
 
         # Act
-        result = get_youtube_transcript.invoke({"url": url})
+        result = await get_youtube_transcript.ainvoke({"url": url})
 
         # Assert
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
@@ -264,34 +302,34 @@ class TestYouTubeTranscriptTool(unittest.TestCase):
 
     @patch("ai.tools.YouTubeTranscriptApi")
     @patch("ai.tools.logging")
-    def test_get_youtube_transcript__transcripts_disabled(self, mock_logging, mock_transcript_api):
+    async def test_get_youtube_transcript__transcripts_disabled(self, mock_logging, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         # The implementation raises IndexError when no transcript is found
         mock_transcript_api.return_value.list.return_value = []
 
         # Act
-        result = get_youtube_transcript.invoke({"url": url})
+        result = await get_youtube_transcript.ainvoke({"url": url})
 
         # Assert
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
         self.assertIn("No transcript is available for this YouTube video", result)
 
     @patch("ai.tools.extract_youtube_video_id")
-    def test_get_youtube_transcript__invalid_youtube_url(self, mock_extract_id):
+    async def test_get_youtube_transcript__invalid_youtube_url(self, mock_extract_id):
         # Arrange
         url = "https://example.com/not-a-youtube-url"
         mock_extract_id.return_value = None
 
         # Act
-        result = get_youtube_transcript.invoke({"url": url})
+        result = await get_youtube_transcript.ainvoke({"url": url})
 
         # Assert
         self.assertIn("Could not extract a valid YouTube video ID", result)
 
     @patch("ai.tools.YouTubeTranscriptApi")
     @patch("ai.tools.Config")
-    def test_get_youtube_transcript__truncates_long_transcripts(self, mock_config, mock_transcript_api):
+    async def test_get_youtube_transcript__truncates_long_transcripts(self, mock_config, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         # Create a very long transcript
@@ -304,7 +342,7 @@ class TestYouTubeTranscriptTool(unittest.TestCase):
         mock_config.return_value.context_max_tokens = 100
 
         # Act
-        result = get_youtube_transcript.invoke({"url": url})
+        result = await get_youtube_transcript.ainvoke({"url": url})
 
         # Assert
         self.assertLess(len(result), len(long_text))

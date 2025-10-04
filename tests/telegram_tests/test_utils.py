@@ -2,9 +2,7 @@ import datetime
 import unittest
 import unittest.mock
 
-import telebot
-
-from telegram.utils import (
+from telegram.async_utils import (
     _get_time_from_wpm,
     clean_standard_message,
     convert_markdown_to_telegram_format,
@@ -20,7 +18,7 @@ from telegram.utils import (
 )
 
 
-class TestTelegramUtils(unittest.TestCase):
+class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
     def test_get_telegram_file_url__returns_correct_url_format(self):
         # Arrange
         bot_token = "test_token_123"
@@ -57,36 +55,38 @@ class TestTelegramUtils(unittest.TestCase):
         # Assert
         self.assertEqual(result, expected_url)
 
-    def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
+    async def test_fallback_telegram_call__successful_reply_to_telegram_message(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Test response"
 
         # Act
-        result = fallback_telegram_call(mock_bot, mock_message, response_content)
+        result = await fallback_telegram_call(mock_bot, mock_message, response_content)
 
         # Assert
         self.assertTrue(result)
-        mock_bot.reply_to.assert_called_once_with(mock_message, response_content)
+        mock_message.reply.assert_called_once_with(response_content)
 
-    def test_fallback_telegram_call__return_false_when_exception_raised(self):
+    async def test_fallback_telegram_call__return_false_when_exception_raised(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Test response"
-        mock_bot.reply_to.side_effect = Exception("API Error")
+        mock_message.reply.side_effect = Exception("API Error")
 
         # Act
-        result = fallback_telegram_call(mock_bot, mock_message, response_content)
+        result = await fallback_telegram_call(mock_bot, mock_message, response_content)
 
         # Assert
         self.assertFalse(result)
-        mock_bot.reply_to.assert_called_once_with(mock_message, response_content)
+        mock_message.reply.assert_called_once_with(response_content)
 
-    def test_user_is_admin__when_user_in_admin_list(self):
+    async def test_user_is_admin__when_user_in_admin_list(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
         user_id = 12345
         chat_id = 67890
 
@@ -94,27 +94,27 @@ class TestTelegramUtils(unittest.TestCase):
         mock_admin = unittest.mock.Mock()
         mock_admin.user.id = user_id
 
-        # Configure the mock telegram_bot to return a list with our admin
+        # Configure the mock bot to return a list with our admin
         mock_bot.get_chat_administrators.return_value = [mock_admin]
 
         # Act
-        result = user_is_admin(mock_bot, user_id, chat_id)
+        result = await user_is_admin(mock_bot, user_id, chat_id)
 
         # Assert
         self.assertTrue(result)
         mock_bot.get_chat_administrators.assert_called_once_with(chat_id)
 
-    def test_user_is_admin__when_admin_list_empty(self):
+    async def test_user_is_admin__when_admin_list_empty(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
         user_id = 12345
         chat_id = 67890
 
-        # Configure the mock telegram_bot to return an empty list
+        # Configure the mock bot to return an empty list
         mock_bot.get_chat_administrators.return_value = []
 
         # Act
-        result = user_is_admin(mock_bot, user_id, chat_id)
+        result = await user_is_admin(mock_bot, user_id, chat_id)
 
         # Assert
         self.assertFalse(result)
@@ -123,24 +123,18 @@ class TestTelegramUtils(unittest.TestCase):
     def test_is_bot_reply__message_is_reply_to_bot_with_matching_username(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
-            message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
-        message.reply_to_message = telebot.types.Message(
-            message_id=2,
-            from_user=telebot.types.User(id=456, is_bot=True, first_name="Bot", username=bot_username),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+
+        # Mock the reply_to_message with a bot user
+        mock_bot_user = unittest.mock.Mock()
+        mock_bot_user.username = bot_username
+        mock_bot_user.is_bot = True
+
+        mock_reply_message = unittest.mock.Mock()
+        mock_reply_message.from_user = mock_bot_user
+
+        # Mock the main message
+        message = unittest.mock.Mock()
+        message.reply_to_message = mock_reply_message
 
         # Act
         result = is_bot_reply(bot_username, message)
@@ -151,15 +145,9 @@ class TestTelegramUtils(unittest.TestCase):
     def test_is_bot_reply__message_has_no_reply_to_bot(self):
         # Arrange
         bot_username = "test_bot"
-        message = telebot.types.Message(
-            message_id=1,
-            from_user=telebot.types.User(id=123, is_bot=False, first_name="User"),
-            date=0,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+
+        # Mock the main message with no reply
+        message = unittest.mock.Mock()
         message.reply_to_message = None
 
         # Act
@@ -169,8 +157,9 @@ class TestTelegramUtils(unittest.TestCase):
         self.assertFalse(result)
 
     def test_is_image__returns_true_when_content_type_is_photo(self):
-        # Create a mock message with content_type 'photo'
-        mock_message = type("obj", (object,), {"content_type": "photo"})
+        # Create a mock message with photo attribute
+        mock_message = unittest.mock.Mock()
+        mock_message.photo = [unittest.mock.Mock()]  # Non-empty photo list
 
         # Act
         result = is_image(mock_message)
@@ -187,7 +176,7 @@ class TestTelegramUtils(unittest.TestCase):
         # Arrange
         message = unittest.mock.Mock()
         message.text = "Hello, world!"
-        message.content_type = "text"
+        message.photo = None  # Not an image
 
         # Act
         result = get_message_text(message)
@@ -210,16 +199,11 @@ class TestTelegramUtils(unittest.TestCase):
 
     def test_get_message_from__returns_username_when_valid(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username="test_user")
-        mock_message = telebot.types.Message(
-            message_id=1,
-            from_user=mock_user,
-            date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+        mock_user = unittest.mock.Mock()
+        mock_user.username = "test_user"
+
+        mock_message = unittest.mock.Mock()
+        mock_message.from_user = mock_user
 
         # Act
         result = get_message_from(mock_message)
@@ -229,16 +213,8 @@ class TestTelegramUtils(unittest.TestCase):
 
     def test_get_message_from__handles_none_username(self):
         # Arrange
-        mock_user = telebot.types.User(id=123, is_bot=False, first_name="Test", username=None)
-        mock_message = telebot.types.Message(
-            message_id=1,
-            from_user=mock_user,
-            date=1234567890,
-            chat=telebot.types.Chat(id=1, type="private"),
-            content_type="text",
-            options={},
-            json_string="",
-        )
+        mock_message = unittest.mock.Mock()
+        mock_message.from_user = None
 
         # Act
         result = get_message_from(mock_message)
@@ -246,38 +222,40 @@ class TestTelegramUtils(unittest.TestCase):
         # Assert
         self.assertIsNone(result)
 
-    def test_reply_to_telegram_message__successful_reply_with_markdown(self):
+    async def test_reply_to_telegram_message__successful_reply_with_markdown(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
         mock_message.chat.id = 123456
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = "Hello @username, this is a *markdown* message"
 
         # Mock the logging
         with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
-            reply_to_telegram_message(mock_bot, mock_message, response_content)
+            await reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(
-                mock_message, "Hello @username, this is a _markdown_ message\n", parse_mode="MarkdownV2"
+            mock_message.reply.assert_called_once_with(
+                "Hello @username, this is a _markdown_ message\n", parse_mode="MarkdownV2"
             )
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
-    def test_reply_to_telegram_message__empty_response_content(self):
+    async def test_reply_to_telegram_message__empty_response_content(self):
         # Arrange
-        mock_bot = unittest.mock.Mock()
-        mock_message = unittest.mock.Mock()
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
         mock_message.chat.id = 123456
+        mock_message.reply = unittest.mock.AsyncMock()
         response_content = ""
 
         # Mock logging
         with unittest.mock.patch("logging.debug") as mock_logging:
             # Act
-            reply_to_telegram_message(mock_bot, mock_message, response_content)
+            await reply_to_telegram_message(mock_bot, mock_message, response_content)
 
             # Assert
-            mock_bot.reply_to.assert_called_once_with(mock_message, "", parse_mode="MarkdownV2")
+            mock_message.reply.assert_called_once_with("", parse_mode="MarkdownV2")
             mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
@@ -337,17 +315,16 @@ class TestTelegramUtils(unittest.TestCase):
         # Assert
         self.assertEqual(actual_time, expected_time)
 
-    def test_simulate_typing_with_default_parameters(self):
+    async def test_simulate_typing_with_default_parameters(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         text = "Hello, this is a test message"
         start_time = datetime.datetime.now() - datetime.timedelta(seconds=2)
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time)
 
         # Assert
         # For a short text with default parameters (wpm=50), typing should be simulated
@@ -356,17 +333,16 @@ class TestTelegramUtils(unittest.TestCase):
         # Sleep should be called at least once
         mock_sleep.assert_called_with(1)
 
-    def test_simulate_typing_with_empty_text(self):
+    async def test_simulate_typing_with_empty_text(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         text = ""
         start_time = datetime.datetime.now()
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time)
 
         # Assert
         # For empty text, typing time should be minimal
@@ -374,10 +350,9 @@ class TestTelegramUtils(unittest.TestCase):
         mock_bot.send_chat_action.assert_not_called()
         mock_sleep.assert_not_called()
 
-    def test_simulate_typing_capped_at_max_time(self):
+    async def test_simulate_typing_capped_at_max_time(self):
         # Arrange
-        mock_bot = telebot.TeleBot("234234:test_token")
-        mock_bot.send_chat_action = unittest.mock.MagicMock()
+        mock_bot = unittest.mock.AsyncMock()
         chat_id = 123456
         # Create a very long text (100 words)
         text = "word " * 100
@@ -386,8 +361,8 @@ class TestTelegramUtils(unittest.TestCase):
         wpm = 10  # Very slow typing speed
 
         # Act
-        with unittest.mock.patch("time.sleep") as mock_sleep:
-            simulate_typing(mock_bot, chat_id, text, start_time, max_typing_time, wpm)
+        with unittest.mock.patch("asyncio.sleep") as mock_sleep:
+            await simulate_typing(mock_bot, chat_id, text, start_time, max_typing_time, wpm)
 
         # Assert
         # For a long text with low WPM, typing time should be capped at max_typing_time
