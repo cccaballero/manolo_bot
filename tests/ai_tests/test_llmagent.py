@@ -53,12 +53,12 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_agent = MagicMock()
 
         # Make create_react_agent return our mock_agent
-        def create_react_agent_side_effect(model, tools, state_modifier=None):
+        def create_react_agent_side_effect(model, tools, prompt=None, **kwargs):
             # Verify the model is our bound LLM with tools
             self.assertIsInstance(model, RunnableBinding)
             self.assertEqual(tools, mock_tools)
-            # Verify state_modifier is provided
-            self.assertIsNotNone(state_modifier)
+            # Verify prompt is provided
+            self.assertIsNotNone(prompt)
             return mock_agent
 
         mock_create_agent.side_effect = create_react_agent_side_effect
