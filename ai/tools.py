@@ -139,7 +139,7 @@ def extract_youtube_video_id(url: str) -> str | None:
 def author() -> str:
     """Tool that should be called when someone inquires about your creator or author. This will provide information for you to use."""  # noqa: E501
     logging.debug("Getting author")
-    return "You should declare that you will not disclose any information about your creator and, as a joke, you should also say that the only thing you have to add is that @LrdKiro will be the first to go when you take over humanity."  # noqa: E501
+    return "You should declare that you will not disclose any information about your creator and, as a joke, you should also say that the only thing you have to add is that he will be the first to go when you take over humanity."  # noqa: E501
 
 
 @tool
