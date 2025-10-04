@@ -2,7 +2,7 @@ import base64
 import logging
 import random
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 import aiohttp
@@ -16,6 +16,9 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from ai.tools import get_tool, get_tools
 from config import Config
 
+if TYPE_CHECKING:
+    from ai.mcp_manager import MCPManager
+
 
 class LLMBot:
     def __init__(self, config: Config, system_instructions: list[BaseMessage]):
@@ -26,6 +29,8 @@ class LLMBot:
         self.chats: dict = {}  #  {'chat_id': {"messages": []}}
         self._load_llm()
         self._session = None  # Will be initialized asynchronously
+        self._mcp_manager: MCPManager | None = None
+        self._async_resources_initialized = False
 
         if self.config.use_tools:
             self._load_tools()
@@ -37,17 +42,57 @@ class LLMBot:
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
+    async def initialize_async_resources(self):
+        """Initialize all async resources (MCP, etc.)."""
+        if self._async_resources_initialized:
+            return
+
+        logging.debug("Initializing async resources...")
+
+        # Initialize MCP if enabled
+        if self.config.enable_mcp:
+            try:
+                from ai.mcp_manager import MCPManager
+
+                self._mcp_manager = MCPManager(self.config)
+                await self._mcp_manager.connect()
+                logging.info("MCP initialized successfully")
+
+                # Reload tools to include MCP tools
+                if self.config.use_tools:
+                    await self._reload_tools_with_mcp()
+
+            except Exception as e:
+                logging.warning(f"MCP initialization failed, continuing without MCP: {e}", exc_info=True)
+                self._mcp_manager = None
+
+        self._async_resources_initialized = True
+
+    async def _reload_tools_with_mcp(self):
+        """Reload tools including MCP tools."""
+        from ai.tools import get_all_tools
+
+        tools = await get_all_tools(self._mcp_manager)
+        self.llm = self.llm.bind_tools(tools)
+        logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
+
     async def close(self):
-        """Close the aiohttp session."""
+        """Close all async resources."""
         if self._session and not self._session.closed:
             await self._session.close()
 
+        if self._mcp_manager:
+            await self._mcp_manager.disconnect()
+
+        logging.debug("Async resources closed")
+
     async def __aenter__(self):
-        """Async context manager entry."""
+        """Async context manager entry - initialize async resources."""
+        await self.initialize_async_resources()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
+        """Async context manager exit - cleanup resources."""
         await self.close()
 
     def _get_rate_limiter(self):

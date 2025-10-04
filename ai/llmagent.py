@@ -6,20 +6,30 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from ai.llmbot import LLMBot
-from ai.tools import get_tools
 from config import Config
 
 
 class LLMAgent(LLMBot):
     def __init__(self, config: Config, system_instructions: list[BaseMessage]):
         super().__init__(config, system_instructions)
+        # Don't create agent yet - wait for async initialization
+        self.agent = None
 
+    async def initialize_async_resources(self):
+        """Initialize async resources and create agent with all tools."""
+        await super().initialize_async_resources()
+
+        # Create agent with all tools (custom + MCP)
+        from ai.tools import get_all_tools
+
+        tools = await get_all_tools(self._mcp_manager)
         self.agent = create_react_agent(
             model=self.llm,
-            tools=get_tools(),
+            tools=tools,
             # A static prompt that never changes
             # prompt=self.system_instructions[0],
         )
+        logging.debug(f"Agent created with {len(tools)} tools")
 
     # is probably better to not use the agent for this
     # def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:

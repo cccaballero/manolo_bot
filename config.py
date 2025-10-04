@@ -58,6 +58,14 @@ class Config(EnvModel):
 
     use_tools = BooleanField("USE_TOOLS", default=False)
 
+    # MCP Configuration
+    enable_mcp = BooleanField("ENABLE_MCP", default=False)
+    mcp_servers_config = StringField(
+        "MCP_SERVERS_CONFIG",
+        default="{}",
+        warning="MCP_SERVERS_CONFIG not set. MCP will be disabled.",
+    )
+
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )
