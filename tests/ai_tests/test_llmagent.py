@@ -20,6 +20,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.context_max_tokens = 4000
         mock_config.web_content_request_timeout = 30
         mock_config.use_tools = False
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Create a mock LLM for the agent
@@ -45,6 +48,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.use_tools = True
         mock_config.context_max_tokens = 4000
         mock_config.web_content_request_timeout = 30
+        # MCP configuration
+        mock_config.enable_mcp = False
+        mock_config.mcp_servers_config = "{}"
 
         mock_tools = ["tool1", "tool2"]
         mock_get_all_tools.return_value = mock_tools
