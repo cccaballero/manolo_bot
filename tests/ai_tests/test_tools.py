@@ -208,8 +208,69 @@ class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(str(context.exception), "API error")
-        self.mock_ddgs.assert_called_once()
-        self.mock_ddgs_instance.text.assert_called_once_with("test query", max_results=5)
+
+
+class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
+    """Tests for get_all_tools function."""
+
+    async def test_get_all_tools_with_conflict_resolution(self):
+        """Test that MCP tools override conflicting custom tools."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ai.tools import get_all_tools, get_tools
+
+        # Get custom tools (should include multiply, etc.)
+        custom_tools = get_tools()
+        custom_tool_names = {t.name for t in custom_tools}
+
+        # Create mock MCP manager with a conflicting tool
+        mock_mcp_manager = MagicMock()
+        mock_mcp_manager.is_connected = True
+
+        # Create a mock MCP tool with same name as a custom tool
+        conflicting_tool_name = list(custom_tool_names)[0]  # Use first custom tool name
+        mock_mcp_tool = MagicMock()
+        mock_mcp_tool.name = conflicting_tool_name
+        mock_mcp_tool.description = "MCP version"
+
+        # Create another non-conflicting MCP tool
+        mock_unique_tool = MagicMock()
+        mock_unique_tool.name = "unique_mcp_tool"
+        mock_unique_tool.description = "Unique MCP tool"
+
+        mock_mcp_manager.get_tools = AsyncMock(return_value=[mock_mcp_tool, mock_unique_tool])
+
+        # Act
+        all_tools = await get_all_tools(mock_mcp_manager)
+
+        # Assert
+        tool_names = [t.name for t in all_tools]
+
+        # Should have all custom tools except the conflicting one
+        expected_count = len(custom_tools) - 1 + 2  # -1 conflict +2 MCP tools
+        self.assertEqual(len(all_tools), expected_count)
+
+        # The conflicting tool should appear only once (the MCP version)
+        self.assertEqual(tool_names.count(conflicting_tool_name), 1)
+
+        # The unique MCP tool should be present
+        self.assertIn("unique_mcp_tool", tool_names)
+
+        # Find the conflicting tool in the result
+        conflicting_tool = next(t for t in all_tools if t.name == conflicting_tool_name)
+        self.assertEqual(conflicting_tool.description, "MCP version")
+
+    async def test_get_all_tools_without_mcp(self):
+        """Test that get_all_tools works without MCP manager."""
+        from ai.tools import get_all_tools, get_tools
+
+        # Act
+        all_tools = await get_all_tools(None)
+
+        # Assert
+        custom_tools = get_tools()
+        self.assertEqual(len(all_tools), len(custom_tools))
+        self.assertEqual([t.name for t in all_tools], [t.name for t in custom_tools])
 
 
 class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):

@@ -185,16 +185,18 @@ async def get_all_tools(mcp_manager=None) -> list:
         try:
             mcp_tools = await mcp_manager.get_tools()
 
-            # Detect name conflicts
+            # Detect name conflicts and remove conflicting custom tools
             custom_names = {t.name for t in tools}
             mcp_names = {t.name for t in mcp_tools}
             conflicts = custom_names & mcp_names
 
             if conflicts:
                 logging.warning(f"Tool name conflicts detected: {conflicts}. MCP tools will override custom tools.")
+                # Remove conflicting custom tools
+                tools = [t for t in tools if t.name not in conflicts]
 
             tools.extend(mcp_tools)
-            logging.info(f"Loaded {len(mcp_tools)} MCP tools")
+            logging.info(f"Loaded {len(mcp_tools)} MCP tools, total tools: {len(tools)}")
 
         except Exception as e:
             logging.error(f"Failed to load MCP tools: {e}", exc_info=True)
