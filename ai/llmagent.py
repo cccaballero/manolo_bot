@@ -23,11 +23,30 @@ class LLMAgent(LLMBot):
         from ai.tools import get_all_tools
 
         tools = await get_all_tools(self._mcp_manager)
+
+        # Create a state modifier that adds tool usage instructions
+        # This prepends instructions before the user's system instructions
+        from langchain_core.messages import SystemMessage
+
+        def add_tool_instructions(state):
+            """Add tool usage instructions to the state."""
+            messages = state.get("messages", [])
+
+            # Add a system message emphasizing tool usage if not already present
+            tool_instruction = SystemMessage(
+                content="CRITICAL: You have access to tools. When a user asks a question that requires "
+                "information you don't have, you MUST use the appropriate tool. "
+                "Do NOT respond without using tools when tools are needed. "
+                "After receiving tool results, synthesize them into a helpful response."
+            )
+
+            # Prepend the tool instruction before other messages
+            return [tool_instruction] + messages
+
         self.agent = create_react_agent(
             model=self.llm,
             tools=tools,
-            # A static prompt that never changes
-            # prompt=self.system_instructions[0],
+            state_modifier=add_tool_instructions,
         )
         logging.debug(f"Agent created with {len(tools)} tools")
 
