@@ -270,9 +270,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         llm_bot.count_tokens.return_value = 100
 
         # Mock aiohttp response
-        mock_response = unittest.mock.AsyncMock()
+        mock_response = unittest.mock.MagicMock()
         mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.raise_for_status = unittest.mock.MagicMock()  # This is synchronous, not async
         mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock LLM response

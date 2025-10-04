@@ -1,6 +1,6 @@
 import unittest
 import unittest.mock
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -37,8 +37,8 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         return agent
 
     @unittest.mock.patch("ai.llmagent.create_react_agent")
-    @unittest.mock.patch("ai.llmagent.get_tools")
-    def test_llm_agent_initialization(self, mock_get_tools, mock_create_agent):
+    @unittest.mock.patch("ai.tools.get_all_tools", new_callable=AsyncMock)
+    async def test_llm_agent_initialization(self, mock_get_all_tools, mock_create_agent):
         # Arrange
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
@@ -47,7 +47,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.web_content_request_timeout = 30
 
         mock_tools = ["tool1", "tool2"]
-        mock_get_tools.return_value = mock_tools
+        mock_get_all_tools.return_value = mock_tools
 
         # Create a mock agent that will be returned by create_react_agent
         mock_agent = MagicMock()
@@ -65,9 +65,10 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Act
         agent = LLMAgent(mock_config, system_instructions)
+        await agent.initialize_async_resources()
 
         # Assert
-        mock_get_tools.assert_called_once()
+        mock_get_all_tools.assert_called_once()
         mock_create_agent.assert_called_once()
         self.assertEqual(agent.agent, mock_agent)
         self.assertEqual(agent.system_instructions, system_instructions)
@@ -105,9 +106,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         image_url = "http://example.com/image.jpg"
 
         # Mock the aiohttp response
-        mock_response = unittest.mock.AsyncMock()
+        mock_response = unittest.mock.MagicMock()
         mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.AsyncMock()
+        mock_response.raise_for_status = unittest.mock.MagicMock()  # This is synchronous, not async
         mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
 
         # Mock the session
