@@ -11,11 +11,32 @@ from ai.tools import (
     ddgs_search,
     extract_youtube_video_id,
     get_current_time,
+    get_search_instructions,
     get_tool,
     get_website_content,
     get_youtube_transcript,
     multiply,
 )
+
+
+class TestSearchInstructionsTool(unittest.TestCase):
+    def test_get_search_instructions_returns_expected_format(self):
+        # Act
+        result = get_search_instructions.invoke({})
+
+        # Assert
+        self.assertIsInstance(result, str)
+        self.assertIn("search tools", result.lower())
+        self.assertIn("web content", result.lower())
+
+    def test_get_search_instructions_registered_correctly(self):
+        # Act
+        tool = get_tool("get_search_instructions")
+
+        # Assert
+        self.assertIsNotNone(tool)
+        self.assertEqual(tool.name, "get_search_instructions")
+        self.assertIn("search instructions", tool.description.lower())
 
 
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):
