@@ -1,12 +1,16 @@
 import unittest
 import unittest.mock
+from datetime import datetime
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import aiohttp
 
 from ai.tools import (
+    TimeResult,
     ddgs_search,
     extract_youtube_video_id,
+    get_current_time,
     get_tool,
     get_website_content,
     get_youtube_transcript,
@@ -150,10 +154,58 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Act
         uppercase_result = get_tool(uppercase_name)
         mixed_case_result = get_tool(mixed_case_name)
-
         # Assert
         self.assertIsNone(uppercase_result)
         self.assertIsNone(mixed_case_result)
+
+
+class TestGetCurrentTimeTool(unittest.IsolatedAsyncioTestCase):
+    async def test_get_current_time_valid_timezone(self):
+        # Test with a known timezone
+        timezone = "America/New_York"
+        result = await get_current_time.ainvoke({"timezone_name": timezone})
+
+        # Verify the result is a TimeResult object
+        self.assertIsInstance(result, TimeResult)
+
+        # Verify the timezone matches the input
+        self.assertEqual(result.timezone, timezone)
+
+        # Verify the datetime string can be parsed and is in the correct timezone
+        dt = datetime.fromisoformat(result.datetime)
+        # Get the timezone offset for comparison
+        expected_tz = ZoneInfo(timezone)
+        expected_offset = datetime.now(expected_tz).utcoffset()
+        actual_offset = dt.utcoffset()
+        self.assertEqual(actual_offset, expected_offset, f"Expected offset {expected_offset} but got {actual_offset}")
+
+        # Verify day_of_week is a valid day name
+        self.assertIn(
+            result.day_of_week, ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        )
+
+        # Verify is_dst is a boolean
+        self.assertIsInstance(result.is_dst, bool)
+
+    async def test_get_current_time_invalid_timezone(self):
+        # Test with an invalid timezone
+        with self.assertRaises(Exception) as context:
+            await get_current_time.ainvoke({"timezone_name": "Invalid/Timezone"})
+
+        self.assertIn("Invalid timezone", str(context.exception))
+
+    async def test_get_current_time_with_etc_greenwich(self):
+        # Test with the default timezone mentioned in the docstring
+        timezone = "Etc/Greenwich"
+        result = await get_current_time.ainvoke({"timezone_name": timezone})
+
+        self.assertEqual(result.timezone, timezone)
+        dt = datetime.fromisoformat(result.datetime)
+        # Get the timezone offset for comparison
+        expected_tz = ZoneInfo(timezone)
+        expected_offset = datetime.now(expected_tz).utcoffset()
+        actual_offset = dt.utcoffset()
+        self.assertEqual(actual_offset, expected_offset, f"Expected offset {expected_offset} but got {actual_offset}")
 
 
 class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):

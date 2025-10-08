@@ -1,12 +1,46 @@
 import logging
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from ddgs import DDGS
 from langchain_core.tools import tool
+from pydantic import BaseModel
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
 from config import Config
+
+
+class TimeResult(BaseModel):
+    timezone: str
+    datetime: str
+    day_of_week: str
+    is_dst: bool
+
+
+def _get_zoneinfo(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except Exception as e:
+        raise Exception(f"Invalid timezone: {str(e)}")
+
+
+@tool
+def get_current_time(timezone_name: str) -> TimeResult:
+    """
+    Get current time in specified IANA timezone name (e.g., 'America/New_York', 'Europe/London').
+    Use 'Etc/Greenwich' as local timezone if no timezone provided by the user.
+    """
+    timezone = _get_zoneinfo(timezone_name)
+    current_time = datetime.now(timezone)
+
+    return TimeResult(
+        timezone=timezone_name,
+        datetime=current_time.isoformat(timespec="seconds"),
+        day_of_week=current_time.strftime("%A"),
+        is_dst=bool(current_time.dst()),
+    )
 
 
 @tool
@@ -144,9 +178,11 @@ def author() -> str:
 
 @tool
 async def ddgs_search(query: str) -> list:
-    """A wrapper around Duck Duck Go Search.
+    """
+    A wrapper around Duck Duck Go Search.
     Useful for when you need to answer questions about current events.
-    Input should be a search query."""
+    Input should be a search query.
+    """
     # DDGS doesn't provide async API, use run_in_executor
     import asyncio
 
@@ -160,7 +196,7 @@ async def ddgs_search(query: str) -> list:
 
 
 def get_tools():
-    return [multiply, get_website_content, author, get_youtube_transcript, ddgs_search]
+    return [get_current_time, multiply, get_website_content, author, get_youtube_transcript, ddgs_search]
 
 
 def get_tool(name: str):
