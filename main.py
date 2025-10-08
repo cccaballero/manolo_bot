@@ -71,6 +71,12 @@ When using a internet search tool, you can query the tool using the english lang
 After using a internet search tool, you can use the get website content tool to get the content of the websites that you found.
 """  # noqa: E501
 
+agent_instructions = config.agent_instructions or (
+    """
+    If you are asked to look for information use a search instructions tool to get instructions for a comprehensive search.
+    """  # noqa: E501
+)
+
 language_instructions = f"""Try to answer in the {config.preferred_language} language unless the user asks you to talk in a different one."""  # noqa: E501
 
 bot_character_instructions = config.bot_instructions_character or (
@@ -101,6 +107,7 @@ Instructions:
 {newline + no_answer_instructions + newline if config.add_no_answer else ""}
 You should not include your user name or identifier at the beginning of your response, like "@{config.bot_username}:".
 
+{agent_instructions if config.agent_mode else ""}
 {pseudotools_instructions if not (config.use_tools or config.agent_mode) else tools_instructions}
 {generate_image_instructions if config.sdapi_url else ""}
 

@@ -46,6 +46,8 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 `AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use agentic capabilities.
 
+`AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior when in agent mode. This allows you to specify how the agent should behave, what tools it can use, and any specific guidelines for its operation. If not provided, default agent behavior will be used.
+
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the bot will answer image generation requests using Stable Diffusion generated images.

@@ -195,8 +195,29 @@ async def ddgs_search(query: str) -> list:
     return await loop.run_in_executor(None, search)
 
 
+@tool
+def get_search_instructions() -> str:
+    """
+    Search instructions tool. Get instructions before starting a search.
+    This will return instructions for you, for a comprehensive search.
+    """
+    return """
+    - Use the existent search tools to search for information on the internet.
+    - Do not less than 3 search using similar terms.
+    - Use a retrieve web content tool to get the content of the relevant websites that you found.
+    """
+
+
 def get_tools():
-    return [get_current_time, multiply, get_website_content, author, get_youtube_transcript, ddgs_search]
+    return [
+        get_current_time,
+        multiply,
+        get_website_content,
+        author,
+        get_youtube_transcript,
+        ddgs_search,
+        get_search_instructions,
+    ]
 
 
 def get_tool(name: str):
