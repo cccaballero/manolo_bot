@@ -2,48 +2,40 @@ import base64
 import logging
 
 import aiohttp
+from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.prebuilt import create_react_agent
 
+from ai.config import BotConfig
 from ai.llmbot import LLMBot
-from config import Config
+from storage.base import BaseMessagesStorage
 
 
 class LLMAgent(LLMBot):
-    def __init__(self, config: Config, system_instructions: list[BaseMessage]):
-        super().__init__(config, system_instructions)
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        bot_config: BotConfig,
+        system_instructions: list[BaseMessage],
+        messages_storage: BaseMessagesStorage,
+    ) -> None:
+        super().__init__(llm, bot_config, system_instructions, messages_storage)
         # Don't create agent yet - wait for async initialization
         self.agent = None
 
-    async def initialize_async_resources(self):
+    async def initialize_async_resources(self) -> None:
         """Initialize async resources and create agent with all tools."""
         await super().initialize_async_resources()
 
         # Create agent with all tools (custom + MCP)
         from ai.tools import get_all_tools
 
-        tools = await get_all_tools(self._mcp_manager)
+        # TODO: We probably don't want to call "mcp_manager.get_tools()" in each call, maybe we can cache this somehow?
+        tools = await get_all_tools(self._mcp_manager, self.bot_config)
 
-        # Create a prompt that emphasizes tool usage
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "CRITICAL: You have access to tools. When a user asks a question that requires "
-                    "information you don't have, you MUST use the appropriate tool. "
-                    "Do NOT respond without using tools when tools are needed. "
-                    "After receiving tool results, synthesize them into a helpful response.",
-                ),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
-
-        self.agent = create_react_agent(
+        self.agent = create_agent(
             model=self.llm,
             tools=tools,
-            prompt=prompt,
         )
         logging.debug(f"Agent created with {len(tools)} tools")
 
@@ -64,10 +56,14 @@ class LLMAgent(LLMBot):
     #     return feedback_message
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
-        self.chats[chat_id]["messages"].append(HumanMessage(content=message))
-        self.truncate_chat_context(chat_id)
+        self.messages_storage.add_message(HumanMessage(content=message))
+        self.truncate_chat_context()
 
-        ai_msg = await self.agent.ainvoke({"messages": self.system_instructions + self.chats[chat_id]["messages"]})
+        config = self._get_langchain_config(chat_id)
+        ai_msg = await self.agent.ainvoke(
+            {"messages": self.system_instructions + self.messages_storage.messages},
+            config=config,
+        )
         return ai_msg["messages"][-1]
 
     async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
@@ -81,25 +77,32 @@ class LLMAgent(LLMBot):
         logging.debug(f"Image message: {text}")
 
         try:
-            # Use aiohttp to download the image
-            session = await self._get_session()
-            async with session.get(image) as response:
-                response.raise_for_status()
-                image_bytes = await response.read()
-                image_data = base64.b64encode(image_bytes).decode("utf-8")
+            async with aiohttp.ClientSession() as session:
+                timeout = self._get_session_timeout()
 
-            llm_message = HumanMessage(
-                content=[
-                    {
-                        "type": "text",
-                        "text": text,
-                    },
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
-                ]
-            )
-            self.chats[chat_id]["messages"].append(llm_message)
-            self.truncate_chat_context(chat_id)
-            response = (await self.agent.ainvoke({"messages": self.chats[chat_id]["messages"]}))["messages"][-1]
+                async with session.get(image, timeout=timeout) as response:
+                    response.raise_for_status()
+                    image_bytes = await response.read()
+                    image_data = base64.b64encode(image_bytes).decode("utf-8")
+
+                llm_message = HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": text,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                        },
+                    ]
+                )
+                self.messages_storage.add_message(llm_message)
+                self.truncate_chat_context()
+                config = self._get_langchain_config(chat_id)
+                response = (await self.agent.ainvoke({"messages": self.messages_storage.messages}, config=config))[
+                    "messages"
+                ][-1]
         except (aiohttp.ClientError, Exception) as e:
             if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get image: {image}")

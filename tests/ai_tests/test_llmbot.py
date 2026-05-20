@@ -1,7 +1,6 @@
 import unittest
 import unittest.mock
 
-import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai.llmbot import LLMBot
@@ -10,6 +9,8 @@ from config import Config
 
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_bot(self):
+        mock_llm = unittest.mock.MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
         mock_config = unittest.mock.MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
         mock_config.google_api_key = None
@@ -18,134 +19,77 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.context_max_tokens = 4000
         # MCP configuration
         mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
+        mock_config.mcp_servers_config = {}
         mock_config.use_tools = False
+        mock_config.can_use_tavily_search = False
+        mock_messages_storage = unittest.mock.MagicMock()
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
-        llm_bot = LLMBot(mock_config, system_instructions)  # Initialize the bot
+        llm_bot = LLMBot(mock_llm, mock_config, system_instructions, mock_messages_storage)  # Initialize the bot
         llm_bot.chats = {1: {"messages": []}}
         return llm_bot
 
-    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
-    def test_llm_bot__init_with_ollama_ai(self, mock_openai, mock_google, mock_ollama):
+    def test_llm_bot__init_with_ollama_ai(self):
         # Arrange
-        mock_config = unittest.mock.MagicMock(spec=Config)
-        mock_config.ollama_model = "ollama_model"
-        mock_config.google_api_key = None
-        mock_config.google_api_model = None
-        mock_config.openai_api_key = None
-        mock_config.openai_api_base_url = None
-        mock_config.use_tools = False  # Disable tools for this test
-        # MCP configuration
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
-
-        # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
-        mock_ollama.return_value = mock_llm
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_bot_config = unittest.mock.MagicMock()
+        mock_bot_config.enable_mcp = False
+        mock_bot_config.use_tools = False
+        mock_bot_config.can_use_tavily_search = False
+        mock_messages_storage = unittest.mock.MagicMock()
 
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
-        bot = LLMBot(mock_config, system_instructions)
+        bot = LLMBot(mock_llm, mock_bot_config, system_instructions, mock_messages_storage)
 
         # Assert
-        mock_ollama.assert_called_once()
-        mock_google.assert_not_called()
-        mock_openai.assert_not_called()
-        self.assertEqual(bot.system_instructions, system_instructions)
-        self.assertEqual(bot.config, mock_config)
         self.assertEqual(bot.llm, mock_llm)
+        self.assertEqual(bot.bot_config, mock_bot_config)
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.messages_storage, mock_messages_storage)
 
-    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
-    def test_llm_bot__init_with_google_ai(self, mock_openai, mock_google, mock_ollama):
+    def test_llm_bot__init_with_google_ai(self):
         # Arrange
-        mock_config = unittest.mock.MagicMock(spec=Config)
-        mock_config.ollama_model = None
-        mock_config.google_api_key = "fake_google_key"
-        mock_config.google_api_model = "gemini-2.0-flash"
-        mock_config.openai_api_key = None
-        mock_config.openai_api_base_url = None
-        mock_config.use_tools = False  # Disable tools for this test
-        # MCP configuration
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
-
-        # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
-        mock_google.return_value = mock_llm
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_bot_config = unittest.mock.MagicMock()
+        mock_bot_config.enable_mcp = False
+        mock_bot_config.use_tools = False
+        mock_bot_config.can_use_tavily_search = False
+        mock_messages_storage = unittest.mock.MagicMock()
 
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
-        bot = LLMBot(mock_config, system_instructions)
+        bot = LLMBot(mock_llm, mock_bot_config, system_instructions, mock_messages_storage)
 
         # Assert
-        mock_google.assert_called_once()
-        mock_ollama.assert_not_called()
-        mock_openai.assert_not_called()
-        self.assertEqual(bot.system_instructions, system_instructions)
-        self.assertEqual(bot.config, mock_config)
         self.assertEqual(bot.llm, mock_llm)
+        self.assertEqual(bot.bot_config, mock_bot_config)
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.messages_storage, mock_messages_storage)
 
-    @unittest.mock.patch.object(LLMBot, "_get_chat_ollama")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_google_generativeai")
-    @unittest.mock.patch.object(LLMBot, "_get_chat_openai")
-    def test_llm_bot__init_with_openai_ai(self, mock_openai, mock_google, mock_ollama):
+    def test_llm_bot__init_with_openai_ai(self):
         # Arrange
-        mock_config = unittest.mock.MagicMock(spec=Config)
-        mock_config.ollama_model = None
-        mock_config.google_api_key = None
-        mock_config.google_api_model = None
-        mock_config.openai_api_key = "fake_openai_key"
-        mock_config.openai_api_base_url = None
-        mock_config.use_tools = False  # Disable tools for this test
-        # MCP configuration
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
-
-        # Create a mock LLM with bind_tools method
         mock_llm = unittest.mock.MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm  # Return self for chaining
-        mock_openai.return_value = mock_llm
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_bot_config = unittest.mock.MagicMock()
+        mock_bot_config.enable_mcp = False
+        mock_bot_config.use_tools = False
+        mock_bot_config.can_use_tavily_search = False
+        mock_messages_storage = unittest.mock.MagicMock()
 
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
-        bot = LLMBot(mock_config, system_instructions)
+        bot = LLMBot(mock_llm, mock_bot_config, system_instructions, mock_messages_storage)
 
         # Assert
-        mock_openai.assert_called_once()
-        mock_ollama.assert_not_called()
-        mock_google.assert_not_called()
-        self.assertEqual(bot.system_instructions, system_instructions)
-        self.assertEqual(bot.config, mock_config)
         self.assertEqual(bot.llm, mock_llm)
-
-    def test_llm_bot__init_raises_exception_with_no_llm_backend(self):
-        # Arrange
-        mock_config = unittest.mock.MagicMock(spec=Config)
-        mock_config.ollama_model = None
-        mock_config.google_api_key = None
-        mock_config.openai_api_key = None
-        mock_config.openai_api_base_url = None
-        # MCP configuration
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
-        mock_config.use_tools = False
-
-        system_instructions = [SystemMessage(content="Hello")]
-
-        # Act & Assert
-        with self.assertRaises(Exception) as context:
-            LLMBot(mock_config, system_instructions)
-
-        self.assertEqual(str(context.exception), "No LLM backend data found")
+        self.assertEqual(bot.bot_config, mock_bot_config)
+        self.assertEqual(bot.system_instructions, system_instructions)
+        self.assertEqual(bot.messages_storage, mock_messages_storage)
 
     def test_extract_url__extract_valid_url(self):
         # Arrange
@@ -190,188 +134,6 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual("", result)
-
-    async def test_call_sdapi__successful_api_call(self):
-        # Arrange
-        config_mock = unittest.mock.MagicMock()
-        config_mock.sdapi_url = "http://test-sd-api.com"
-        config_mock.sdapi_params = {
-            "steps": 1,
-            "cfg_scale": 1,
-            "width": 512,
-            "height": 512,
-            "timestep_spacing": "trailing",
-        }
-        config_mock.sdapi_negative_prompt = None
-
-        llm_bot = self.get_basic_llm_bot()
-        llm_bot.config = config_mock
-
-        prompt = "a beautiful landscape"
-        expected_response = {"images": ["base64_image_data"]}
-
-        # Mock the response
-        mock_response = unittest.mock.MagicMock()
-        mock_response.status = 200
-        mock_response.json = unittest.mock.AsyncMock(return_value=expected_response)
-
-        # Mock the session's post method
-        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
-        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
-        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.post = unittest.mock.MagicMock(return_value=mock_context_manager)
-
-        with unittest.mock.patch.object(
-            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-        ):
-            # Act
-            result = await llm_bot.call_sdapi(prompt)
-
-            # Assert
-            mock_session.post.assert_called_once()
-            call_args, call_kwargs = mock_session.post.call_args
-            self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
-            self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
-            self.assertEqual(result, expected_response)
-
-    async def test_call_sdapi__non_200_response(self):
-        # Arrange
-        config_mock = unittest.mock.MagicMock()
-        config_mock.sdapi_url = "http://test-sd-api.com"
-        config_mock.sdapi_params = {
-            "steps": 1,
-            "cfg_scale": 1,
-            "width": 512,
-            "height": 512,
-            "timestep_spacing": "trailing",
-        }
-        config_mock.sdapi_negative_prompt = None
-
-        llm_bot = self.get_basic_llm_bot()
-        llm_bot.config = config_mock
-
-        prompt = "a beautiful landscape"
-
-        # Mock the response with non-200 status
-        mock_response = unittest.mock.MagicMock()
-        mock_response.status = 500
-        mock_response.text = "Internal Server Error"
-
-        # Mock the session's post method
-        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
-        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
-        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.post = unittest.mock.MagicMock(return_value=mock_context_manager)
-
-        with unittest.mock.patch.object(
-            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-        ):
-            # Act
-            result = await llm_bot.call_sdapi(prompt)
-
-            # Assert
-            mock_session.post.assert_called_once()
-            call_args, call_kwargs = mock_session.post.call_args
-            self.assertEqual(call_args[0], "http://test-sd-api.com/sdapi/v1/txt2img")
-            self.assertEqual(call_kwargs["json"], {**config_mock.sdapi_params, "prompt": prompt})
-            self.assertIsNone(result)
-
-    async def test_answer_image_message__successful_image_message_processing(self):
-        # Arrange
-        llm_bot = self.get_basic_llm_bot()
-        text = "What's in this image?"
-        image_url = "https://example.com/image.jpg"
-        llm_bot.count_tokens = unittest.mock.Mock()
-        llm_bot.count_tokens.return_value = 100
-
-        # Mock aiohttp response
-        mock_response = unittest.mock.MagicMock()
-        mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.MagicMock()  # This is synchronous, not async
-        mock_response.read = unittest.mock.AsyncMock(return_value=b"fake_image_data")
-
-        # Mock LLM response
-        expected_response = AIMessage(content="This is an image of a cat")
-        llm_bot.llm = unittest.mock.Mock()
-        llm_bot.llm.ainvoke = unittest.mock.AsyncMock(return_value=expected_response)
-
-        # Mock the session's get method
-        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
-        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
-        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get = unittest.mock.MagicMock(
-            return_value=mock_context_manager
-        )  # get() returns CM, not a coroutine
-
-        with unittest.mock.patch.object(
-            llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-        ):
-            # Act
-            response = await llm_bot.answer_image_message(1, text, image_url)
-
-            # Assert
-            mock_session.get.assert_called_once_with(image_url)
-            self.assertEqual(response, expected_response)
-            self.assertEqual(len(llm_bot.chats[1]["messages"]), 1)
-            llm_bot.llm.ainvoke.assert_called_once_with(llm_bot.chats[1]["messages"])
-
-    async def test_answer_image_message__handles_request_exception(self):
-        # Arrange
-        llm_bot = self.get_basic_llm_bot()
-        text = "What's in this image?"
-        image_url = "https://invalid-url.com/image.jpg"
-
-        # Mock the session's get method to raise aiohttp.ClientError in __aenter__
-        mock_session = unittest.mock.MagicMock()  # Not AsyncMock, session itself is not async
-        mock_context_manager = unittest.mock.MagicMock()  # Not AsyncMock for the CM object itself
-        # Raise the exception in __aenter__ to simulate network error during request
-        mock_context_manager.__aenter__ = unittest.mock.AsyncMock(
-            side_effect=aiohttp.ClientError("Failed to get image")
-        )
-        mock_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
-        mock_session.get = unittest.mock.MagicMock(return_value=mock_context_manager)
-
-        with (
-            unittest.mock.patch.object(
-                llm_bot, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-            ),
-            unittest.mock.patch("logging.error") as mock_logger,
-            unittest.mock.patch("logging.exception") as mock_exception_logger,
-        ):
-            # Act
-            response = await llm_bot.answer_image_message(1, text, image_url)
-
-            # Assert
-            mock_logger.assert_called_once_with(f"Failed to get image: {image_url}")
-            mock_exception_logger.assert_called_once()
-            self.assertEqual(response.content, "NO_ANSWER")
-            self.assertEqual(response.type, "text")
-
-    async def test_generate_image__success(self):
-        # Arrange
-        llm_bot = self.get_basic_llm_bot()
-        mock_response = {"images": ["base64_encoded_image_data"]}
-        with unittest.mock.patch.object(llm_bot, "call_sdapi", return_value=mock_response) as mock_call_sdapi:
-            # Act
-            result = await llm_bot.generate_image("a beautiful landscape")
-
-            # Assert
-            self.assertEqual(result, "base64_encoded_image_data")
-            mock_call_sdapi.assert_called_once_with("a beautiful landscape")
-
-    async def test_generate_image__returns_none(self):
-        # Arrange
-        llm_bot = self.get_basic_llm_bot()
-        with unittest.mock.patch.object(llm_bot, "call_sdapi", return_value=None) as mock_call_sdapi:
-            # Act
-            result = await llm_bot.generate_image("a beautiful landscape")
-
-            # Assert
-            self.assertIsNone(result)
-            mock_call_sdapi.assert_called_once_with("a beautiful landscape")
 
     def test_count_tokens__with_string_content(self):
         # Arrange
@@ -459,28 +221,6 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result), 200)  # 197 chars + 3 for "..."
         self.assertTrue(result.endswith("..."))
         self.assertEqual(result, long_message[:197] + "...")
-
-    async def test_answer_webcontent__no_url_found_returns_none(self):
-        # Arrange
-        llm_bot = self.get_basic_llm_bot()
-
-        message_text = "Summarize this webpage"
-        response_content = "There is no URL in this content"
-
-        # Mock _extract_url to return None (no URL found)
-        unittest.mock.patch.object(llm_bot, "_extract_url", return_value=None)
-        with (
-            unittest.mock.patch.object(llm_bot, "_extract_url", return_value=None) as _extract_url_mock,
-            unittest.mock.patch.object(llm_bot, "_remove_urls") as _remove_urls_mock,
-        ):
-            # Act
-            result = await llm_bot.answer_webcontent(message_text, response_content, 1)
-
-            # Assert
-            self.assertIsNone(result)
-            _extract_url_mock.assert_called_once_with(response_content)
-            # Verify that _remove_urls was not called since no URL was found
-            _remove_urls_mock.assert_not_called()
 
     # TODO: find a way to test process_message_buffer logic, probably the function needs a refactor to make it more
     #  testable

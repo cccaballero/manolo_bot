@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.runnables.base import RunnableBinding
 
 from ai.llmagent import LLMAgent
 from config import Config
@@ -12,6 +11,7 @@ from config import Config
 
 class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_agent(self):
+        mock_llm = MagicMock()
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
         mock_config.google_api_key = None
@@ -20,26 +20,28 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.context_max_tokens = 4000
         mock_config.web_content_request_timeout = 30
         mock_config.use_tools = False
+        mock_config.can_use_tavily_search = False
         # MCP configuration
         mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
+        mock_config.mcp_servers_config = {}
+        mock_messages_storage = MagicMock()
+        # Make messages_storage actually store messages
+        mock_messages_storage.messages = []
+        mock_messages_storage.add_message = lambda msg: mock_messages_storage.messages.append(msg)
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
-        # Create a mock LLM for the agent
-        mock_llm = MagicMock()
+        # Create the agent with the mock LLM
+        agent = LLMAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
+        agent.chats = {1: {"messages": []}}
 
         # Mock the count_tokens method to return a fixed value
         def mock_count_tokens(messages):
             return 100  # Return a fixed token count that's less than context_max_tokens
 
-        # Create the agent with the mock LLM
-        agent = LLMAgent(mock_config, system_instructions)
-        agent.llm = mock_llm
-        agent.chats = {1: {"messages": []}}
         agent.count_tokens = mock_count_tokens
         return agent
 
-    @unittest.mock.patch("ai.llmagent.create_react_agent")
+    @unittest.mock.patch("ai.llmagent.create_agent")
     @unittest.mock.patch("ai.tools.get_all_tools", new_callable=AsyncMock)
     async def test_llm_agent_initialization(self, mock_get_all_tools, mock_create_agent):
         # Arrange
@@ -50,29 +52,30 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.web_content_request_timeout = 30
         # MCP configuration
         mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = "{}"
+        mock_config.mcp_servers_config = {}
+        mock_config.can_use_tavily_search = False
+        mock_messages_storage = MagicMock()
 
         mock_tools = ["tool1", "tool2"]
         mock_get_all_tools.return_value = mock_tools
 
-        # Create a mock agent that will be returned by create_react_agent
+        # Make create_agent return our mock_agent
         mock_agent = MagicMock()
 
-        # Make create_react_agent return our mock_agent
-        def create_react_agent_side_effect(model, tools, prompt=None, **kwargs):
-            # Verify the model is our bound LLM with tools
-            self.assertIsInstance(model, RunnableBinding)
+        def create_agent_side_effect(model, tools):
+            # Verify the model is our LLM (bound with tools)
+            # The LLM gets bound with tools in LLMBot.__init__
+            self.assertIsNotNone(model)
             self.assertEqual(tools, mock_tools)
-            # Verify prompt is provided
-            self.assertIsNotNone(prompt)
             return mock_agent
 
-        mock_create_agent.side_effect = create_react_agent_side_effect
+        mock_create_agent.side_effect = create_agent_side_effect
 
+        mock_llm = MagicMock()
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
-        agent = LLMAgent(mock_config, system_instructions)
+        agent = LLMAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
         await agent.initialize_async_resources()
 
         # Assert
@@ -80,7 +83,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_create_agent.assert_called_once()
         self.assertEqual(agent.agent, mock_agent)
         self.assertEqual(agent.system_instructions, system_instructions)
-        self.assertEqual(agent.config, mock_config)
+        self.assertEqual(agent.bot_config, mock_config)
 
     async def test_answer_message(self):
         # Arrange
@@ -101,10 +104,9 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, mock_ai_message)
         mock_agent.ainvoke.assert_called_once()
 
-        # Check that the chat history was updated
-        self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)
-        self.assertIsInstance(agent.chats[chat_id]["messages"][0], HumanMessage)
-        self.assertEqual(agent.chats[chat_id]["messages"][0].content, user_message)
+        # Check that the message history was updated
+        self.assertEqual(len(agent.messages_storage.messages), 1)
+        self.assertEqual(agent.messages_storage.messages[0].content, user_message)
 
     async def test_answer_image_message_success(self):
         # Arrange
@@ -132,23 +134,27 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_agent.ainvoke = unittest.mock.AsyncMock(return_value={"messages": [mock_ai_message]})
         agent.agent = mock_agent
 
-        with unittest.mock.patch.object(
-            agent, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-        ):
+        with unittest.mock.patch("aiohttp.ClientSession") as mock_session_class:
+            # Mock the session context manager
+            mock_session_context_manager = unittest.mock.MagicMock()
+            mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(return_value=mock_session)
+            mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+            mock_session_class.return_value = mock_session_context_manager
+
             # Act
             response = await agent.answer_image_message(chat_id, text, image_url)
 
             # Assert
             self.assertEqual(response, mock_ai_message)
-            mock_session.get.assert_called_once_with(image_url)
+            mock_session.get.assert_called_once_with(image_url, timeout=unittest.mock.ANY)
             mock_agent.ainvoke.assert_called_once()
 
-            # Check that the chat history was updated with the image message
-            self.assertEqual(len(agent.chats[chat_id]["messages"]), 1)
-            self.assertIsInstance(agent.chats[chat_id]["messages"][0], HumanMessage)
+            # Check that the message history was updated with the image message
+            self.assertEqual(len(agent.messages_storage.messages), 1)
+            self.assertIsInstance(agent.messages_storage.messages[0], HumanMessage)
 
             # Check the image content in the message
-            content = agent.chats[chat_id]["messages"][0].content
+            content = agent.messages_storage.messages[0].content
             self.assertEqual(len(content), 2)
             self.assertEqual(content[0]["text"], text)
             self.assertIn("data:image/jpeg;base64,", content[1]["image_url"]["url"])
@@ -172,21 +178,27 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Act
         with (
-            unittest.mock.patch.object(
-                agent, "_get_session", new_callable=unittest.mock.AsyncMock, return_value=mock_session
-            ),
+            unittest.mock.patch("aiohttp.ClientSession") as mock_session_class,
             self.assertLogs(level="ERROR") as log_context,
         ):
+            # Mock the session context manager
+            mock_session_context_manager = unittest.mock.MagicMock()
+            mock_session_context_manager.__aenter__ = unittest.mock.AsyncMock(
+                side_effect=aiohttp.ClientError("Failed to fetch image")
+            )
+            mock_session_context_manager.__aexit__ = unittest.mock.AsyncMock(return_value=None)
+            mock_session_class.return_value = mock_session_context_manager
+
             response = await agent.answer_image_message(chat_id, text, image_url)
 
         # Assert
         self.assertIsInstance(response, BaseMessage)
         self.assertEqual(response.content, "NO_ANSWER")
         self.assertEqual(response.type, "text")
-        mock_session.get.assert_called_once_with(image_url)
+        # Note: mock_session.get is not called because the error happens in __aenter__
 
         # Verify error was logged
         self.assertTrue(any("Failed to get image" in log for log in log_context.output))
 
-        # Check that no messages were added to chat on failure
-        self.assertEqual(len(agent.chats[chat_id]["messages"]), 0)
+        # Check that no messages were added to storage on failure
+        self.assertEqual(len(agent.messages_storage.messages), 0)

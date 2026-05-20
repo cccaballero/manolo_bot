@@ -1,15 +1,18 @@
 import logging
+import os
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import aiohttp
 from ddgs import DDGS
-from langchain_core.tools import tool
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.tools import BaseTool, tool
+from langchain_tavily import TavilySearch
 from pydantic import BaseModel
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
-from config import Config
+from ai.config import BotConfig
+from ai.mcp_manager import MCPManager
 
 
 class TimeResult(BaseModel):
@@ -23,7 +26,7 @@ def _get_zoneinfo(timezone_name: str) -> ZoneInfo:
     try:
         return ZoneInfo(timezone_name)
     except Exception as e:
-        raise Exception(f"Invalid timezone: {str(e)}")
+        raise Exception(f"Invalid timezone: {str(e)}") from e
 
 
 @tool
@@ -44,13 +47,6 @@ def get_current_time(timezone_name: str) -> TimeResult:
 
 
 @tool
-def multiply(first_int: int, second_int: int) -> int:
-    """Tool for multiply two integers together."""
-    logging.debug(f"Multiplying {first_int} * {second_int}")
-    return first_int * second_int
-
-
-@tool
 async def get_website_content(url: str) -> str:
     """
     Tool for obtaining the content of a website.
@@ -59,30 +55,19 @@ async def get_website_content(url: str) -> str:
     """
     try:
         logging.debug(f"Obtaining web content for {url}")
-        config = Config()
-        request_timeout = config.web_content_request_timeout
+        loader = WebBaseLoader(web_path=url)
 
-        # Use aiohttp for async HTTP requests
-        timeout = aiohttp.ClientTimeout(total=request_timeout)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
-                html_content = await response.text()
-                # Use WebBaseLoader for parsing (synchronous parsing is fine)
-                from bs4 import BeautifulSoup
+        # alazy_load returns an async iterator of Document objects
+        docs = []
+        async for doc in loader.alazy_load():
+            docs.append(doc)
 
-                soup = BeautifulSoup(html_content, "html.parser")
-                # Extract text content similar to WebBaseLoader
-                return soup.get_text(separator=" ", strip=True)
-    except aiohttp.ClientError as e:
-        logging.error("Connection error connecting to web content")
-        logging.exception(e)
-        return f"Failed to connect to the website {url}. Please check the URL or try again later."
-    except TimeoutError as e:
-        logging.error("Timeout error connecting to web content")
-        logging.exception(e)
-        return f"The website {url} took too long to respond. It might be unavailable or too large."
+        # Combine content from all loaded documents
+        content = " ".join([doc.page_content for doc in docs])
+        return content.strip()
+
     except Exception as e:
-        logging.error("Error connecting to web content")
+        logging.error(f"Error connecting to web content for {url}")
         logging.exception(e)
         return f"Failed to get content of the website {url}. Please try again later or try a different URL."
 
@@ -125,8 +110,11 @@ async def get_youtube_transcript(url: str) -> str:
         full_transcript = " ".join(segment.text for segment in transcript_segments)
 
         # Truncate if too long (to avoid token limits)
-        config = Config()
-        max_chars = config.context_max_tokens * 4  # Rough estimate of chars per token
+        # TODO: Use config for max tokens
+        # config = BotConfig()
+        # max_chars = config.context_max_tokens * 4  # Rough estimate of chars per token
+        max_chars = 6000 * 4
+
         if len(full_transcript) > max_chars:
             full_transcript = full_transcript[:max_chars] + "... [Transcript truncated due to length]"
 
@@ -170,6 +158,14 @@ def extract_youtube_video_id(url: str) -> str | None:
 
 
 @tool
+def multiply(first_int: int, second_int: int) -> int:
+    """
+    Multiply two integers together.
+    """
+    return first_int * second_int
+
+
+@tool
 def author() -> str:
     """Tool that should be called when someone inquires about your creator or author. This will provide information for you to use."""  # noqa: E501
     logging.debug("Getting author")
@@ -188,7 +184,7 @@ async def ddgs_search(query: str) -> list:
 
     loop = asyncio.get_event_loop()
 
-    def search():
+    def search() -> list:
         with DDGS() as ddgs:
             return list(ddgs.text(query, max_results=5))
 
@@ -208,34 +204,43 @@ def get_search_instructions() -> str:
     """
 
 
-def get_tools():
+def get_tools(bot_config: BotConfig | None = None) -> list:
+    TAVILY_SEARCH_KEY = os.environ.get("TAVILY_SEARCH_KEY")
+    if (bot_config and bot_config.can_use_tavily_search) and TAVILY_SEARCH_KEY:
+        logging.debug("Using Tavily search")
+        search_tool = TavilySearch(tavily_api_key=TAVILY_SEARCH_KEY, max_results=5)
+    else:
+        logging.debug("Using ddgs search")
+        search_tool = ddgs_search
+
     return [
         get_current_time,
-        multiply,
         get_website_content,
         author,
         get_youtube_transcript,
-        ddgs_search,
+        search_tool,
         get_search_instructions,
+        multiply,
     ]
 
 
-def get_tool(name: str):
+def get_tool(name: str) -> BaseTool | None:
     for tool_function in get_tools():
         if tool_function.name == name:
             return tool_function
     return None
 
 
-async def get_all_tools(mcp_manager=None) -> list:
+async def get_all_tools(mcp_manager: MCPManager = None, bot_config: BotConfig = None) -> list:
     """
     Get all available tools (custom + MCP).
 
     :param mcp_manager: Optional MCP manager to load MCP tools from
+    :param bot_config: Optional bot config
     :return: List of all available tools
     """
     # Start with custom tools
-    tools = get_tools()
+    tools = get_tools(bot_config)
 
     # Add MCP tools if available
     if mcp_manager and mcp_manager.is_connected:

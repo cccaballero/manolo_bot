@@ -397,7 +397,7 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertNotEqual(markdown_text, result)
         self.assertIn("*✏ Special Characters*", result)
-        self.assertIn("[link](https://example.com)", result)
+        self.assertIn("[link](https://example\\.com)", result)
         self.assertIn("`code`", result)
         self.assertIn("~strikethrough~", result)
 

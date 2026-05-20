@@ -1,117 +1,44 @@
 import base64
 import logging
-import random
 import re
-from typing import TYPE_CHECKING, Any
-from urllib.parse import urljoin
+import secrets
+from types import TracebackType
+from typing import TYPE_CHECKING
 
 import aiohttp
-from google.generativeai.types import HarmBlockThreshold, HarmCategory
-from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+from google.genai.types import HarmBlockThreshold, HarmCategory
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
+from ai.config import BotConfig, LLMConfig
 from ai.tools import get_tool, get_tools
-from config import Config
+from storage.base import BaseMessagesStorage
 
 if TYPE_CHECKING:
     from ai.mcp_manager import MCPManager
 
 
-class LLMBot:
-    def __init__(self, config: Config, system_instructions: list[BaseMessage]):
-        self.config = config
-        self.system_instructions = system_instructions
-        # self.messages_buffer = messages_buffer
-        self.llm = None
-        self.chats: dict = {}  #  {'chat_id': {"messages": []}}
-        self._load_llm()
-        self._session = None  # Will be initialized asynchronously
-        self._mcp_manager: MCPManager | None = None
-        self._async_resources_initialized = False
+class LLMBuilder:
+    def __init__(self, llm_config: LLMConfig) -> None:
+        self.llm_config = llm_config
 
-        if self.config.use_tools:
-            self._load_tools()
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create the aiohttp session."""
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=self.config.web_content_request_timeout)
-            self._session = aiohttp.ClientSession(timeout=timeout)
-        return self._session
-
-    async def initialize_async_resources(self):
-        """Initialize all async resources (MCP, etc.)."""
-        if self._async_resources_initialized:
-            return
-
-        logging.debug("Initializing async resources...")
-
-        # Initialize MCP if enabled
-        if self.config.enable_mcp:
-            try:
-                from ai.mcp_manager import MCPManager
-
-                self._mcp_manager = MCPManager(self.config)
-                await self._mcp_manager.connect()
-                logging.info("MCP initialized successfully")
-
-                # Reload tools to include MCP tools
-                if self.config.use_tools:
-                    await self._reload_tools_with_mcp()
-
-            except Exception as e:
-                logging.warning(f"MCP initialization failed, continuing without MCP: {e}", exc_info=True)
-                self._mcp_manager = None
-
-        self._async_resources_initialized = True
-
-    async def _reload_tools_with_mcp(self):
-        """Reload tools including MCP tools."""
-        from ai.tools import get_all_tools
-
-        tools = await get_all_tools(self._mcp_manager)
-        self.llm = self.llm.bind_tools(tools)
-        logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
-
-    async def close(self):
-        """Close all async resources."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-
-        if self._mcp_manager:
-            await self._mcp_manager.disconnect()
-
-        logging.debug("Async resources closed")
-
-    async def __aenter__(self):
-        """Async context manager entry - initialize async resources."""
-        await self.initialize_async_resources()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit - cleanup resources."""
-        await self.close()
-
-    def _get_rate_limiter(self):
+    def _get_rate_limiter(self) -> InMemoryRateLimiter:
         return InMemoryRateLimiter(
-            requests_per_second=self.config.rate_limiter_requests_per_second,
-            check_every_n_seconds=self.config.rate_limiter_check_every_n_seconds,
-            max_bucket_size=self.config.rate_limiter_max_bucket_size,
+            requests_per_second=self.llm_config.rate_limiter_requests_per_second,
+            check_every_n_seconds=self.llm_config.rate_limiter_check_every_n_seconds,
+            max_bucket_size=self.llm_config.rate_limiter_max_bucket_size,
         )
 
-    def _get_chat_ollama(self):
-        from langchain_ollama import ChatOllama
+    def _get_chat_ollama(self) -> ChatOllama:
+        return ChatOllama(model=self.llm_config.ollama_model)
 
-        return ChatOllama(model=self.config.ollama_model)
-
-    def _get_chat_google_generativeai(self):
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
+    def _get_chat_google_generativeai(self) -> ChatGoogleGenerativeAI:
         return ChatGoogleGenerativeAI(
-            model=self.config.google_api_model,
+            model=self.llm_config.google_api_model,
             safety_settings={
                 HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -121,12 +48,10 @@ class LLMBot:
             rate_limiter=self._get_rate_limiter(),
         )
 
-    def _get_chat_openai(self):
-        from langchain_openai import ChatOpenAI
-
-        api_key = self.config.openai_api_key if self.config.openai_api_key else "not-needed"
-        base_url = self.config.openai_api_base_url
-        model = self.config.openai_api_model
+    def _get_chat_openai(self) -> ChatOpenAI:
+        api_key = self.llm_config.openai_api_key if self.llm_config.openai_api_key else "not-needed"
+        base_url = self.llm_config.openai_api_base_url
+        model = self.llm_config.openai_api_model
         params = {
             "openai_api_key": api_key,
         }
@@ -134,7 +59,135 @@ class LLMBot:
             params["base_url"] = base_url
         if model:
             params["model"] = model
-        return ChatOpenAI(temperature=0.0, rate_limiter=self._get_rate_limiter(), **params)
+        return ChatOpenAI(rate_limiter=self._get_rate_limiter(), **params)
+
+    def get_llm(self) -> BaseChatModel:
+        if self.llm_config.ollama_model:
+            llm = self._get_chat_ollama()
+        elif self.llm_config.google_api_key:
+            llm = self._get_chat_google_generativeai()
+        elif self.llm_config.openai_api_key or self.llm_config.openai_api_base_url:
+            llm = self._get_chat_openai()
+        else:
+            raise Exception("No LLM backend data found")
+        return llm
+
+
+class LLMBot:
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        bot_config: BotConfig,
+        system_instructions: list[BaseMessage],
+        messages_storage: BaseMessagesStorage,
+    ) -> None:
+        self.bot_config = bot_config
+        self.system_instructions = system_instructions
+        # self.messages_buffer = messages_buffer
+        self.llm = llm
+        self.messages_storage: BaseMessagesStorage = messages_storage
+        # self._load_llm()
+        self._mcp_manager: MCPManager | None = None
+        self._async_resources_initialized = False
+
+        # if self.bot_config.use_tools:
+        #     self._load_tools()
+        self._load_tools()
+
+    def _get_langchain_config(self, chat_id: int) -> dict:
+        """Helper to create LangChain config with metadata and tags."""
+        bot_uuid = self.bot_config.bot_uuid
+        user_id = self.bot_config.user_id
+        return {
+            "tags": [f"bot:{bot_uuid}", f"user:{user_id}"],
+            "metadata": {
+                "bot_uuid": bot_uuid,
+                "bot_username": self.bot_config.bot_username,
+                "user_id": user_id,
+                "chat_id": chat_id,
+            },
+        }
+
+    def _get_session_timeout(self) -> aiohttp.ClientTimeout:
+        """Get the timeout for aiohttp sessions."""
+        return aiohttp.ClientTimeout(total=self.bot_config.web_content_request_timeout)
+
+    async def initialize_async_resources(self) -> None:
+        """Initialize all async resources (MCP, etc.)."""
+        if self._async_resources_initialized:
+            return
+
+        logging.debug("Initializing async resources...")
+
+        # Initialize MCP if enabled
+        if self.bot_config.enable_mcp:
+            logging.info("Initializing MCP...")
+            try:
+                from ai.mcp_manager import MCPManager
+
+                # TODO: We probably don't want to initialize MCP in each call, maybe we can cache this somehow?
+                self._mcp_manager = MCPManager(self.bot_config)
+                await self._mcp_manager.connect()
+                logging.info("MCP initialized successfully")
+
+                # Reload tools to include MCP tools
+                # if self.bot_config.use_tools:
+                await self._reload_tools_with_mcp()
+
+            except Exception as e:
+                logging.warning(
+                    f"MCP initialization failed, continuing without MCP: {e}",
+                    exc_info=True,
+                )
+                self._mcp_manager = None
+
+        self._async_resources_initialized = True
+
+    # async def cleanup(self) -> None:
+    #     """Clean up all async resources."""
+    #     if not self._async_resources_initialized:
+    #         return
+    #
+    #     logging.debug("Cleaning up async resources...")
+    #
+    #     # Clean up MCP if it was initialized
+    #     if self._mcp_manager is not None:
+    #         try:
+    #             await self._mcp_manager.close()
+    #             logging.info("MCP resources cleaned up successfully")
+    #         except Exception as e:
+    #             logging.error(f"Error cleaning up MCP resources: {e}", exc_info=True)
+    #
+    #     self._async_resources_initialized = False
+
+    async def _reload_tools_with_mcp(self) -> None:
+        """Reload tools including MCP tools."""
+        from ai.tools import get_all_tools
+
+        tools = await get_all_tools(self._mcp_manager, self.bot_config)
+        self.llm = self.llm.bind_tools(tools)
+        logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
+
+    async def close(self) -> None:
+        """Close all async resources."""
+        if self._mcp_manager:
+            await self._mcp_manager.disconnect()
+
+        logging.debug("Async resources closed")
+
+    async def __aenter__(self) -> "LLMBot":
+        """Async context manager entry - initialize async resources."""
+        await self.initialize_async_resources()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Async context manager exit - cleanup resources."""
+        await self.close()
 
     def _extract_url(self, text: str) -> str | None:
         """
@@ -142,7 +195,10 @@ class LLMBot:
         :param text: Text to extract the URL from
         :return: URL if found, None otherwise
         """
-        url = re.search(r"https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+", text)
+        url = re.search(
+            r"https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+",
+            text,
+        )
         return url.group(0) if url else None
 
     def _remove_urls(self, text: str) -> str:
@@ -151,82 +207,39 @@ class LLMBot:
         :param text: Text to remove URLs from
         :return: Text without URLs
         """
-        return re.sub(r"https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+", "", text)
+        return re.sub(
+            r"https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+",
+            "",
+            text,
+        )
 
-    def _load_llm(self):
-        if self.config.ollama_model:
-            self.llm = self._get_chat_ollama()
-        elif self.config.google_api_key:
-            self.llm = self._get_chat_google_generativeai()
-        elif self.config.openai_api_key or self.config.openai_api_base_url:
-            self.llm = self._get_chat_openai()
-        else:
-            raise Exception("No LLM backend data found")
-
-    def add_chat(self, chat_id: int) -> None:
-        """
-        Add a new chat to the list of chats.
-        :param chat_id: Chat ID
-        """
-        if chat_id not in self.chats:
-            self.chats[chat_id] = {
-                "messages": [],
-            }
-
-    def truncate_chat_context(self, chat_id: int) -> None:
+    def truncate_chat_context(self) -> None:
         """
         Truncate the chat context if it is too long.
-        :param chat_id: Chat ID
         """
-        while self.count_tokens(self.chats[chat_id]["messages"]) > self.config.context_max_tokens:
-            self.chats[chat_id]["messages"] = self.chats[chat_id]["messages"][1:]
-            logging.debug(f"Chat context truncated for chat {chat_id}")
+        while self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
+            self.messages_storage.delete_message(0)
+            logging.debug(f"Chat context truncated for chat {self.messages_storage.chat_id}")
 
-    async def call_sdapi(self, prompt: str) -> dict[str, Any] | None:
-        """
-        Call the StableDiffusion API.
-        :param prompt: The prompt to send to the StableDiffusion API.
-        :return: The response from the StableDiffusion API.
-        """
-        if self.config.sdapi_url:
-            try:
-                params = self.config.sdapi_params.copy()
-                params["prompt"] = prompt
-                if self.config.sdapi_negative_prompt:
-                    params["negative_prompt"] = self.config.sdapi_negative_prompt
-
-                # Use aiohttp for async HTTP requests
-                session = await self._get_session()
-                async with session.post(
-                    urljoin(self.config.sdapi_url, "/sdapi/v1/txt2img"),
-                    json=params,
-                ) as response:
-                    if response.status == 200:
-                        return await response.json()
-            except Exception as e:
-                logging.error("Failed to call SDAPI")
-                logging.exception(e)
-        return None
-
-    def clean_context(self, chat_id: int) -> None:
+    async def clean_context(self) -> None:
         """
         Clean the chat context.
-        :param chat_id: Chat ID
         """
-        self.chats[chat_id]["messages"] = []
-        logging.debug(f"Chat context cleaned for chat {chat_id}")
+        await self.messages_storage.clear_messages()
+        logging.debug(f"Chat context cleaned for chat {self.messages_storage.chat_id}")
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
-        self.chats[chat_id]["messages"].append(HumanMessage(content=message))
-        self.truncate_chat_context(chat_id)
-        ai_msg = await self.llm.ainvoke(self.system_instructions + self.chats[chat_id]["messages"])
+        self.messages_storage.add_message(HumanMessage(content=message))
+        self.truncate_chat_context()
+        config = self._get_langchain_config(chat_id)
+        ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages)
         if ai_msg.tool_calls:
-            self.chats[chat_id]["messages"].append(ai_msg)
+            self.messages_storage.add_message(ai_msg)
             for tool_call in ai_msg.tool_calls:
                 selected_tool = get_tool(tool_call["name"])
-                tool_msg = await selected_tool.ainvoke(tool_call)
-                self.chats[chat_id]["messages"].append(tool_msg)
-            ai_msg = await self.llm.ainvoke(self.system_instructions + self.chats[chat_id]["messages"])
+                tool_msg = await selected_tool.ainvoke(tool_call, config=config)
+                self.messages_storage.add_message(tool_msg)
+            ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages, config=config)
         return ai_msg
 
     async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
@@ -240,25 +253,32 @@ class LLMBot:
         logging.debug(f"Image message: {text}")
 
         try:
-            # Use aiohttp to download the image
-            session = await self._get_session()
-            async with session.get(image) as response:
-                response.raise_for_status()
-                image_bytes = await response.read()
-                image_data = base64.b64encode(image_bytes).decode("utf-8")
+            async with aiohttp.ClientSession() as session:
+                timeout = self._get_session_timeout()
 
-            llm_message = HumanMessage(
-                content=[
-                    {
-                        "type": "text",
-                        "text": text,
-                    },
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
-                ]
-            )
-            self.chats[chat_id]["messages"].append(llm_message)
-            self.truncate_chat_context(chat_id)
-            response = await self.llm.ainvoke(self.chats[chat_id]["messages"])
+                async with session.get(image, timeout=timeout) as response:
+                    response.raise_for_status()
+                    image_bytes = await response.read()
+                    image_data = base64.b64encode(image_bytes).decode("utf-8")
+
+                llm_message = HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": text,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
+                        },
+                    ]
+                )
+                self.messages_storage.add_message(llm_message)
+                self.truncate_chat_context()
+                response = await self.llm.ainvoke(
+                    self.messages_storage.messages,
+                    config=self._get_langchain_config(chat_id),
+                )
         except (aiohttp.ClientError, Exception) as e:
             if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get image: {image}")
@@ -280,8 +300,13 @@ class LLMBot:
         # response.content is sometimes a list instead of a string, TODO: find why this happens and fix it
         if isinstance(response.content, list):
             response_content = ""
-            for content_item in response.content:
-                response_content += f"\n\n{content_item}"
+            for i, content_item in enumerate(response.content):
+                if isinstance(content_item, str):
+                    response_content += content_item
+                else:
+                    response_content += content_item.get("text", "")
+                if i + 1 != len(response.content):
+                    response_content += "\n\n"
         else:
             response_content = response.content
 
@@ -311,23 +336,14 @@ class LLMBot:
             final_response = {"type": "text", "data": response_content}
         else:
             logging.debug(f"NO_ANSWER response for chat {chat_id}")
-            final_response = {"type": "text", "text": random.choice(["😐", "😶", "😳", "😕", "😑"])}
+            final_response = {
+                "type": "text",
+                "text": secrets.choice(["😐", "😶", "😳", "😕", "😑"]),
+            }
 
-        self.chats[chat_id]["messages"].append(AIMessage(content=response_content))
+        self.messages_storage.add_message(AIMessage(content=response_content))
 
         return final_response
-
-    async def generate_image(self, prompt: str) -> str | None:
-        """
-        Generate an image.
-        :param prompt: Prompt to generate the image
-        :return: Image representation in base64 format if the call was successful, None otherwise
-        """
-        logging.debug(f"Generate image: {prompt}")
-        response = await self.call_sdapi(prompt)
-        if response and "images" in response:
-            return response["images"][0]
-        return None
 
     def count_tokens(self, messages: list[BaseMessage]) -> int:
         """
@@ -350,96 +366,21 @@ class LLMBot:
 
         return self.llm.get_num_tokens(context_text) + extra_tokens
 
-    async def answer_webcontent(self, message_text: str, response_content: str, chat_id: int) -> str | None:
-        """
-        Answer a web content message.
-        :param message_text: Text to answer
-        :param response_content: Response content
-        :return: New response content if the call was successful, None otherwise
-        """
-        try:
-            url = self._extract_url(response_content)
-            if url:
-                logging.debug(f"Obtaining web content for {url}")
-
-                # Use aiohttp to fetch web content
-                session = await self._get_session()
-                async with session.get(url) as response:
-                    response.raise_for_status()
-                    html_content = await response.text()
-
-                from bs4 import BeautifulSoup
-
-                soup = BeautifulSoup(html_content, "html.parser")
-                page_content = soup.get_text(separator=" ", strip=True)
-
-                # Create a simple document for the chain
-                from langchain_core.documents import Document
-
-                docs = [Document(page_content=page_content)]
-
-                template = self._remove_urls(message_text) + "\n" + '"{text}"'
-                prompt = PromptTemplate.from_template(template)
-                logging.debug(f"Web content prompt: {prompt}")
-
-                self.truncate_chat_context(chat_id)
-
-                # TODO: Add full chat context
-                stuff_chain = create_stuff_documents_chain(
-                    llm=self.llm, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
-                )
-
-                # The key should match the document_variable_name parameter
-                response = await stuff_chain.ainvoke({"text": docs})
-                logging.debug(f"Web content response: {response}")
-                return response
-            else:
-                logging.debug(f"No URL found for web content: {message_text}")
-        except aiohttp.ClientError as e:
-            logging.error("Connection error connecting to web content")
-            logging.exception(e)
-            error_prompt = (
-                f"Generate a brief response in {self.config.preferred_language} "
-                f"explaining that you couldn't connect to the webpage {url}. "
-                f"Suggest checking the URL or trying again later. "
-                f"Keep your response under 150 characters and maintain your character's style."
-            )
-            return await self.generate_feedback_message(error_prompt)
-        except TimeoutError as e:
-            logging.error("Timeout error connecting to web content")
-            logging.exception(e)
-            error_prompt = (
-                f"Generate a brief response in {self.config.preferred_language} "
-                f"explaining that the webpage {url} took too long to respond. "
-                f"Suggest it might be unavailable or too large. "
-                f"Keep your response under 150 characters and maintain your character's style."
-            )
-            return await self.generate_feedback_message(error_prompt)
-        except Exception as e:
-            logging.error("Error connecting to web content")
-            logging.exception(e)
-            error_prompt = (
-                f"Generate a brief response in {self.config.preferred_language} "
-                f"explaining that you had trouble processing the webpage {url}. "
-                f"Suggest trying again later or trying a different URL. "
-                f"Keep your response under 150 characters and maintain your character's style."
-            )
-            return await self.generate_feedback_message(error_prompt)
-        return None
-
-    async def generate_feedback_message(self, prompt: str, max_length: int = 200) -> str:
+    async def generate_feedback_message(self, prompt: str, max_length: int = 200, chat_id: int | None = None) -> str:
         """
         Generate a feedback message using the LLM.
 
         :param prompt: Prompt to generate the feedback message
         :param max_length: Maximum length of the feedback message
+        :param chat_id: Optional chat ID for metadata
         :return: Generated feedback message
         """
         logging.debug("Generating feedback message")
 
         # Create a simple message list with just the prompt
         messages = [HumanMessage(content=prompt)]
-        response = await self.llm.ainvoke(messages)
+        config = self._get_langchain_config(chat_id) if chat_id else {}
+        response = await self.llm.ainvoke(messages, config=config)
 
         # Clean up the response if needed
         feedback_message = response.content.strip()
@@ -460,5 +401,5 @@ class LLMBot:
         """
         return (len(text.split()) / wpm) * 60
 
-    def _load_tools(self):
-        self.llm = self.llm.bind_tools(get_tools())  # add wikipedia?
+    def _load_tools(self) -> None:
+        self.llm = self.llm.bind_tools(get_tools(bot_config=self.bot_config))  # add wikipedia?
