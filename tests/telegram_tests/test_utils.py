@@ -12,6 +12,7 @@ from telegram.async_utils import (
     get_telegram_file_url,
     is_bot_reply,
     is_image,
+    reply_photo_to_telegram_message,
     reply_to_telegram_message,
     simulate_typing,
     user_is_admin,
@@ -370,6 +371,49 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_bot.send_chat_action.call_count, 2)
         self.assertEqual(mock_sleep.call_count, 8)
         mock_bot.send_chat_action.assert_called_with(chat_id, "typing")
+
+    async def test_reply_photo_to_telegram_message__successful_reply(self):
+        # Arrange
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.chat.id = 123456
+        mock_message.message_id = 789
+        mock_message.reply = unittest.mock.AsyncMock()
+        # "test" in base64
+        base64_image = "dGVzdA=="
+
+        # Mock logging
+        with unittest.mock.patch("logging.debug") as mock_logging:
+            # Act
+            await reply_photo_to_telegram_message(mock_bot, mock_message, base64_image)
+
+            # Assert
+            self.assertEqual(mock_bot.send_photo.call_count, 1)
+            call_args = mock_bot.send_photo.call_args[1]
+            self.assertEqual(call_args["chat_id"], 123456)
+            self.assertEqual(call_args["reply_to_message_id"], 789)
+            from aiogram.types import BufferedInputFile
+
+            self.assertIsInstance(call_args["photo"], BufferedInputFile)
+            mock_logging.assert_any_call(f"Sent image response for chat {mock_message.chat.id}")
+
+    async def test_reply_photo_to_telegram_message__failure_sends_error_message(self):
+        # Arrange
+        mock_bot = unittest.mock.AsyncMock()
+        mock_message = unittest.mock.AsyncMock()
+        mock_message.chat.id = 123456
+        mock_message.message_id = 789
+        mock_message.reply = unittest.mock.AsyncMock()
+        base64_image = "dGVzdA=="
+        mock_bot.send_photo.side_effect = Exception("API Error")
+
+        # Mock logging
+        with unittest.mock.patch("logging.exception"):
+            # Act
+            await reply_photo_to_telegram_message(mock_bot, mock_message, base64_image)
+
+            # Assert
+            mock_message.reply.assert_called_once_with("⚠️ Error sending image.")
 
     def test_convert_simple_markdown(self):
         # Arrange

@@ -10,6 +10,7 @@ from google.genai.types import HarmBlockThreshold, HarmCategory
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
@@ -94,19 +95,19 @@ class LLMBot:
         #     self._load_tools()
         self._load_tools()
 
-    def _get_langchain_config(self, chat_id: int) -> dict:
+    def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
         """Helper to create LangChain config with metadata and tags."""
         bot_uuid = self.bot_config.bot_uuid
         user_id = self.bot_config.user_id
-        return {
-            "tags": [f"bot:{bot_uuid}", f"user:{user_id}"],
-            "metadata": {
+        return RunnableConfig(
+            tags=[f"bot:{bot_uuid}", f"user:{user_id}"],
+            metadata={
                 "bot_uuid": bot_uuid,
                 "bot_username": self.bot_config.bot_username,
                 "user_id": user_id,
                 "chat_id": chat_id,
             },
-        }
+        )
 
     def _get_session_timeout(self) -> aiohttp.ClientTimeout:
         """Get the timeout for aiohttp sessions."""

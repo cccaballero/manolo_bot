@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import datetime
 import logging
 
 import telegramify_markdown
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 from telegramify_markdown import customize
 
 
@@ -146,6 +147,31 @@ async def reply_to_telegram_message(bot: Bot, message: Message, response_content
 
     if use_fallback and not await fallback_telegram_call(bot, message, response_content):
         logging.error(f"Failed to send response for chat {chat_id}")
+
+
+async def reply_photo_to_telegram_message(bot: Bot, message: Message, base64_image: str) -> None:
+    """
+    Reply to a message with a photo.
+    :param bot: Telegram bot instance
+    :param message: Telegram message to reply to
+    :param base64_image: Base64 encoded image data
+    :return: None
+    """
+    chat_id = message.chat.id
+    try:
+        logging.debug(f"Sending image for chat {chat_id}")
+        photo_bytes = base64.b64decode(base64_image)
+        photo = BufferedInputFile(photo_bytes, filename="image.png")
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            reply_to_message_id=message.message_id,
+        )
+        logging.debug(f"Sent image response for chat {chat_id}")
+    except Exception as e:
+        logging.exception(e)
+        logging.error(f"Failed to send image response for chat {chat_id}")
+        await message.reply("⚠️ Error sending image.")
 
 
 def clean_standard_message(bot_username: str, message_text: str) -> str:

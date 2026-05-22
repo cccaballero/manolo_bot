@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import datetime
 import logging
 import re
@@ -17,6 +16,7 @@ from ai.llmagent import LLMAgent
 from ai.llmbot import LLMBot, LLMBuilder
 from config import Config
 from storage.memory_storage import MemoryMessagesStorage
+from storage.redis_storage import RedisDBHelper, RedisMessagesStorage
 from telegram.async_utils import (
     get_message_from,
     get_message_text,
@@ -24,6 +24,7 @@ from telegram.async_utils import (
     is_bot_reply,
     is_image,
     is_reply,
+    reply_photo_to_telegram_message,
     reply_to_telegram_message,
     send_typing_action,
     simulate_typing,
@@ -155,14 +156,13 @@ bot_config = BotConfig(
     can_use_tavily_search=config.use_tavily_search,
 )
 
-# if config.agent_mode:
-#     llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage)
-# else:
-#     llm_bot = LLMBot(llm, bot_config, system_instructions, messages_storage)
-
 
 async def instance_llm_bot(chat_id: int) -> LLMBot:
-    messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
+    if config.storage_type == "redis":
+        bd_helper = RedisDBHelper(db_url=config.redis_url)
+        messages_storage = RedisMessagesStorage(bot_uuid=bot_config.bot_uuid, chat_id=chat_id, db=bd_helper)
+    else:
+        messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
     if config.agent_mode:
         llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage)
@@ -211,13 +211,7 @@ async def flush_context_command(message: Message):
         return
 
     logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
-
-    if chat_id not in llm_bot.chats:
-        logging.debug(f"Chat {chat_id} not found, creating new one")
-        llm_bot.add_chat(chat_id)
-    else:
-        await llm_bot.clean_context()
-
+    await llm_bot.clean_context()
     logging.debug(f"Chat {chat_id} context flushed")
 
     try:
@@ -340,12 +334,11 @@ async def process_message_queue():
 
                 if final_response:
                     if final_response.get("type") == "image":
-                        logging.debug(f"Sending image for chat {chat_id}")
-                        await bot.send_photo(
-                            chat_id,
-                            photo=base64.b64decode(final_response.get("data")),
-                            reply_to_message_id=message.message_id,
-                        )
+                        image_data = final_response.get("data")
+                        if isinstance(image_data, str):
+                            await reply_photo_to_telegram_message(bot, message, image_data)
+                        else:
+                            logging.error("Image data is not a string")
                     elif final_response.get("type") == "text":
                         # Remove thinking in reasoning models
                         response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)

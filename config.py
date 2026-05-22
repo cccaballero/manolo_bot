@@ -74,3 +74,6 @@ class Config(EnvModel):
     )
 
     use_tavily_search = BooleanField("USE_TAVILY_SEARCH", default=False)
+
+    storage_type = StringField("STORAGE_TYPE", default="memory", allowed_values=["memory", "redis"])
+    redis_url = StringField("REDIS_URL", default="redis://localhost:6379/0")
