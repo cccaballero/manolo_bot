@@ -9,8 +9,7 @@ from urllib.parse import urljoin
 import aiohttp
 from google.genai.types import HarmBlockThreshold, HarmCategory
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.document_loaders import AsyncHtmlLoader
-from langchain_community.document_transformers import Html2TextTransformer
+from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -365,12 +364,12 @@ class LLMBot:
             if url:
                 logging.debug(f"Obtaining web content for {url} using pseudotool")
 
-                loader = AsyncHtmlLoader([url])
-                docs = await loader.aload()
+                loader = WebBaseLoader(web_path=url)
 
-                # 2. Convert the raw HTML to clean, readable text
-                transformer = Html2TextTransformer()
-                transformed_docs = transformer.transform_documents(docs)
+                # alazy_load returns an async iterator of Document objects
+                docs = []
+                async for doc in loader.alazy_load():
+                    docs.append(doc)
 
                 template = self._remove_urls(message_text) + "\n" + '"{text}"'
                 prompt = PromptTemplate.from_template(template)
@@ -384,7 +383,7 @@ class LLMBot:
                 )
 
                 # The key should match the document_variable_name parameter
-                response = await stuff_chain.ainvoke({"text": transformed_docs})
+                response = await stuff_chain.ainvoke({"text": docs})
                 logging.debug(f"Web content response: {response}")
                 return response
             else:
