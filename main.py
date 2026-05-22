@@ -291,15 +291,20 @@ async def process_message_queue():
                     logging.debug(f"No message text for message {message.message_id}")
 
                 try:
+                    response = None
+
                     # Check if the message itself contains an image
                     if is_image(message) and config.is_image_multimodal:
                         logging.debug(f"Image message {message.message_id} for chat {chat_id}")
                         file = await bot.get_file(message.photo[-1].file_id)
-                        response = await llm_bot.answer_image_message(
-                            chat_id,
-                            message_parts,
-                            get_telegram_file_url(config.bot_token, file.file_path),
-                        )
+                        if file.file_path:
+                            response = await llm_bot.answer_image_message(
+                                chat_id,
+                                message_parts,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
                     # Check if the message is a reply to a message with an image
                     elif (
                         is_reply(message)
@@ -314,12 +319,16 @@ async def process_message_queue():
                             prompt_text = message_parts
                         else:
                             prompt_text = str(message_parts)
-                        response = await llm_bot.answer_image_message(
-                            chat_id,
-                            prompt_text,
-                            get_telegram_file_url(config.bot_token, file.file_path),
-                        )
-                    else:
+                        if file.file_path:
+                            response = await llm_bot.answer_image_message(
+                                chat_id,
+                                prompt_text,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                    # If no response is found, treat the message as a text message
+                    if not response:
                         logging.debug(f"Text message {message.message_id} for chat {chat_id}")
                         response = await llm_bot.answer_message(chat_id, message_parts)
                         logging.debug(f"Response: {response}")
