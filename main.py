@@ -341,7 +341,8 @@ async def process_message_queue():
                             logging.error("Image data is not a string")
                     elif final_response.get("type") == "text":
                         # Remove thinking in reasoning models
-                        response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
+                        raw_content = final_response.get("data") or final_response.get("text") or ""
+                        response_text = re.sub(r"<think>(.*?)</think>", "", raw_content, flags=re.DOTALL)
                         # Simulate typing if enabled
                         if config.simulate_typing:
                             await simulate_typing(
