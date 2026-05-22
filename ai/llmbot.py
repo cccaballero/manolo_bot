@@ -4,11 +4,17 @@ import re
 import secrets
 from types import TracebackType
 from typing import TYPE_CHECKING
+from urllib.parse import urljoin
 
 import aiohttp
 from google.genai.types import HarmBlockThreshold, HarmCategory
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.document_loaders import AsyncHtmlLoader
+from langchain_community.document_transformers import Html2TextTransformer
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -322,13 +328,13 @@ class LLMBot:
                 }
         elif "WEBCONTENT_RESUME" in response_content:
             logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
-            response_content = await self.answer_webcontent(message_text, response_content, chat_id)
+            response_content = await self.answer_webcontent(message_text, response_content)
             # TODO: find a way to graciously handle failed web content requests
             response_content = response_content if response_content else "😐"
             final_response = {"type": "text", "data": response_content}
         elif "WEBCONTENT_OPINION" in response_content:
             logging.debug(f"WEBCONTENT_OPINION response, generating web content opinion for chat {chat_id}")
-            response_content = await self.answer_webcontent(message_text, response_content, chat_id)
+            response_content = await self.answer_webcontent(message_text, response_content)
             # TODO: find a way to graciously handle failed web content requests
             response_content = response_content if response_content else "😐"
             final_response = {"type": "text", "data": response_content}
@@ -339,12 +345,119 @@ class LLMBot:
             logging.debug(f"NO_ANSWER response for chat {chat_id}")
             final_response = {
                 "type": "text",
-                "text": secrets.choice(["😐", "😶", "😳", "😕", "😑"]),
+                "data": secrets.choice(["😐", "😶", "😳", "😕", "😑"]),
             }
 
         self.messages_storage.add_message(AIMessage(content=response_content))
 
         return final_response
+
+    async def answer_webcontent(self, message_text: str, response_content: str) -> str | None:
+        """
+        Answer a web content message.
+        :param message_text: Text to answer
+        :param response_content: Response content
+        :param chat_id: Chat ID
+        :return: New response content if the call was successful, None otherwise
+        """
+        url = self._extract_url(response_content)
+        try:
+            if url:
+                logging.debug(f"Obtaining web content for {url} using pseudotool")
+
+                loader = AsyncHtmlLoader([url])
+                docs = await loader.aload()
+
+                # 2. Convert the raw HTML to clean, readable text
+                transformer = Html2TextTransformer()
+                transformed_docs = transformer.transform_documents(docs)
+
+                template = self._remove_urls(message_text) + "\n" + '"{text}"'
+                prompt = PromptTemplate.from_template(template)
+                logging.debug(f"Web content prompt: {prompt}")
+
+                self.truncate_chat_context()
+
+                # TODO: Add full chat context
+                stuff_chain = create_stuff_documents_chain(
+                    llm=self.llm, prompt=prompt, document_variable_name="text", output_parser=StrOutputParser()
+                )
+
+                # The key should match the document_variable_name parameter
+                response = await stuff_chain.ainvoke({"text": transformed_docs})
+                logging.debug(f"Web content response: {response}")
+                return response
+            else:
+                logging.debug(f"No URL found for web content: {message_text}")
+        except aiohttp.ClientError as e:
+            logging.error("Connection error connecting to web content")
+            logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.bot_config.preferred_language} "
+                f"explaining that you couldn't connect to the webpage {url}. "
+                f"Suggest checking the URL or trying again later. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return await self.generate_feedback_message(error_prompt)
+        except TimeoutError as e:
+            logging.error("Timeout error connecting to web content")
+            logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.bot_config.preferred_language} "
+                f"explaining that the webpage {url} took too long to respond. "
+                f"Suggest it might be unavailable or too large. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return await self.generate_feedback_message(error_prompt)
+        except Exception as e:
+            logging.error("Error connecting to web content")
+            logging.exception(e)
+            error_prompt = (
+                f"Generate a brief response in {self.bot_config.preferred_language} "
+                f"explaining that you had trouble processing the webpage {url}. "
+                f"Suggest trying again later or trying a different URL. "
+                f"Keep your response under 150 characters and maintain your character's style."
+            )
+            return await self.generate_feedback_message(error_prompt)
+        return None
+
+    async def call_sdapi(self, prompt: str) -> dict | None:
+        """
+        Call the StableDiffusion API.
+        :param prompt: The prompt to send to the StableDiffusion API.
+        :return: The response from the StableDiffusion API.
+        """
+        if self.bot_config.sdapi_url:
+            try:
+                params = self.bot_config.sdapi_params.copy()
+                params["prompt"] = prompt
+                if self.bot_config.sdapi_negative_prompt:
+                    params["negative_prompt"] = self.bot_config.sdapi_negative_prompt
+
+                # Use aiohttp for async HTTP requests
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        urljoin(self.bot_config.sdapi_url, "/sdapi/v1/txt2img"),
+                        json=params,
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+            except Exception as e:
+                logging.error("Failed to call SDAPI")
+                logging.exception(e)
+        return None
+
+    async def generate_image(self, prompt: str) -> str | None:
+        """
+        Generate an image.
+        :param prompt: Prompt to generate the image
+        :return: Image representation in base64 format if the call was successful, None otherwise
+        """
+        logging.debug(f"Generate image: {prompt}")
+        response = await self.call_sdapi(prompt)
+        if response and "images" in response:
+            return response["images"][0]
+        return None
 
     def count_tokens(self, messages: list[BaseMessage]) -> int:
         """
@@ -380,7 +493,7 @@ class LLMBot:
 
         # Create a simple message list with just the prompt
         messages = [HumanMessage(content=prompt)]
-        config = self._get_langchain_config(chat_id) if chat_id else {}
+        config = self._get_langchain_config(chat_id) if chat_id else None
         response = await self.llm.ainvoke(messages, config=config)
 
         # Clean up the response if needed

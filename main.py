@@ -16,7 +16,6 @@ from ai.llmagent import LLMAgent
 from ai.llmbot import LLMBot, LLMBuilder
 from config import Config
 from storage.memory_storage import MemoryMessagesStorage
-from storage.redis_storage import RedisDBHelper, RedisMessagesStorage
 from telegram.async_utils import (
     get_message_from,
     get_message_text,
@@ -34,6 +33,9 @@ from telegram.async_utils import (
 load_dotenv()
 
 config = Config()
+
+if config.storage_type == "redis":
+    from storage.redis_storage import RedisDBHelper, RedisMessagesStorage
 
 logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 
@@ -238,8 +240,11 @@ async def handle_message(message: Message):
     message_text = get_message_text(message)
 
     if (
-        message_text
-        and (f"@{config.bot_username}" in message_text or config.bot_name.lower() in message_text.lower())
+        (message.chat.type == "private" and config.allow_private_chats)
+        or (
+            message_text
+            and (f"@{config.bot_username}" in message_text or config.bot_name.lower() in message_text.lower())
+        )
         or (config.is_group_assistant and not is_reply(message) and "?" in message_text)
     ) or is_bot_reply(config.bot_username, message):
         await message_queue.put(message)

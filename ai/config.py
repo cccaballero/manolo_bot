@@ -37,6 +37,11 @@ class BotConfig:
 
     can_use_tavily_search: bool = False
 
+    # Stable Diffusion configuration
+    sdapi_url: str = ""
+    sdapi_params: dict = field(default_factory=dict)
+    sdapi_negative_prompt: str = ""
+
 
 @dataclass
 class LLMConfig:

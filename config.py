@@ -31,6 +31,7 @@ class Config(EnvModel):
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
     agent_mode = BooleanField("AGENT_MODE", default=False)
     agent_instructions = StringField("AGENT_INSTRUCTIONS")
+    allow_private_chats = BooleanField("ALLOW_PRIVATE_CHATS", default=True)
 
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)
