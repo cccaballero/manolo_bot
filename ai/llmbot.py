@@ -318,7 +318,7 @@ class LLMBot:
             if image:
                 final_response = {
                     "type": "image",
-                    "content": image,
+                    "data": image,
                 }
         elif "WEBCONTENT_RESUME" in response_content:
             logging.debug(f"WEBCONTENT_RESUME response, generating web content abstract for chat {chat_id}")
