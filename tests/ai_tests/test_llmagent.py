@@ -1,3 +1,4 @@
+import base64
 import unittest
 import unittest.mock
 from unittest.mock import AsyncMock, MagicMock
@@ -202,3 +203,45 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         # Check that no messages were added to storage on failure
         self.assertEqual(len(agent.messages_storage.messages), 0)
+
+    async def test_answer_voice_message_success(self):
+        # Arrange
+        agent = self.get_basic_llm_agent()
+        chat_id = 1
+        text = "Agent, listen"
+        audio_url = "http://example.com/audio.ogg"
+        fake_audio_data = b"agent_audio_data"
+
+        # Mock aiohttp
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.read = AsyncMock(return_value=fake_audio_data)
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_context_manager)
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+
+        # Mock Agent response
+        mock_ai_message = AIMessage(content="Agent heard it!")
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_ai_message]})
+        agent.agent = mock_agent
+
+        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session_cm):
+            # Act
+            response = await agent.answer_voice_message(chat_id, text, audio_url)
+
+        # Assert
+        self.assertEqual(response, mock_ai_message)
+        mock_agent.ainvoke.assert_called_once()
+
+        content = agent.messages_storage.messages[0].content
+        self.assertEqual(content[0]["text"], text)
+        self.assertEqual(content[1]["data"], base64.b64encode(fake_audio_data).decode("utf-8"))

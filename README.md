@@ -87,8 +87,11 @@ chats.
 
 #### Enable multimodal capabilities
 
-`ENABLE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal
+`IMAGE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal
 capabilities.
+
+`AUDIO_MULTIMODAL`: **(Experimental)** Enable multimodal capabilities for audio/voice messages (True, False). Currently,
+this feature only works with the Gemini API.
 
 #### Enable group assistant
 

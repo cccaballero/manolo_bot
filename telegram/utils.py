@@ -88,6 +88,15 @@ def is_image(message: Message) -> bool:
     return message.photo is not None
 
 
+def is_voice(message: Message) -> bool:
+    """
+    Check if the message is a voice message.
+    :param message: Telegram message
+    :return: True if the message is a voice message, False otherwise
+    """
+    return message.voice is not None
+
+
 def get_message_text(message: Message) -> str:
     """
     Get the text of the message.

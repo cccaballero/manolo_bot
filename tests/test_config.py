@@ -21,7 +21,8 @@ class TestConfig(unittest.TestCase):
         os.environ["RATE_LIMITER_REQUESTS_PER_SECOND"] = "0.25"
         os.environ["RATE_LIMITER_CHECK_EVERY_N_SECONDS"] = "0.1"
         os.environ["RATE_LIMITER_MAX_BUCKET_SIZE"] = "10"
-        os.environ["ENABLE_MULTIMODAL"] = "True"
+        os.environ["IMAGE_MULTIMODAL"] = "True"
+        os.environ["AUDIO_MULTIMODAL"] = "True"
         os.environ["ENABLE_GROUP_ASSISTANT"] = "False"
         os.environ["WEBUI_SD_API_URL"] = "http://localhost:7860"
         os.environ["WEBUI_SD_API_PARAMS"] = (
@@ -46,6 +47,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.rate_limiter_check_every_n_seconds, 0.1)
         self.assertEqual(config.rate_limiter_max_bucket_size, 10)
         self.assertEqual(config.is_image_multimodal, True)
+        self.assertEqual(config.is_audio_multimodal, True)
         self.assertEqual(config.is_group_assistant, False)
         self.assertEqual(config.sdapi_url, "http://localhost:7860")
         self.assertEqual(
@@ -70,7 +72,8 @@ class TestConfig(unittest.TestCase):
         del os.environ["RATE_LIMITER_REQUESTS_PER_SECOND"]
         del os.environ["RATE_LIMITER_CHECK_EVERY_N_SECONDS"]
         del os.environ["RATE_LIMITER_MAX_BUCKET_SIZE"]
-        del os.environ["ENABLE_MULTIMODAL"]
+        del os.environ["IMAGE_MULTIMODAL"]
+        del os.environ["AUDIO_MULTIMODAL"]
         del os.environ["ENABLE_GROUP_ASSISTANT"]
         del os.environ["WEBUI_SD_API_URL"]
         del os.environ["WEBUI_SD_API_PARAMS"]

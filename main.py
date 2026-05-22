@@ -23,6 +23,7 @@ from telegram.utils import (
     is_bot_reply,
     is_image,
     is_reply,
+    is_voice,
     reply_photo_to_telegram_message,
     reply_to_telegram_message,
     send_typing_action,
@@ -153,6 +154,7 @@ bot_config = BotConfig(
     bot_instructions_extra=config.bot_instructions_extra,
     preferred_language=config.preferred_language,
     is_image_multimodal=config.is_image_multimodal,
+    is_audio_multimodal=config.is_audio_multimodal,
     enable_mcp=config.enable_mcp,
     mcp_servers_config=config.mcp_servers_config,
     can_use_tavily_search=config.use_tavily_search,
@@ -228,12 +230,15 @@ async def flush_context_command(message: Message):
     await message.reply(success_message)
 
 
-@dp.message(F.content_type.in_(["text", "photo"]))
+@dp.message(F.content_type.in_(["text", "photo", "voice"]))
 async def handle_message(message: Message):
     """
     Handle all incoming messages. This function is called for every incoming message.
     :param message: Telegram message object
     """
+    if message.voice and not config.is_audio_multimodal:
+        return
+
     chat_id = message.chat.id
     if len(config.allowed_chat_ids) and str(chat_id) not in config.allowed_chat_ids:
         logging.debug(f"Chat {chat_id} not allowed")
@@ -290,8 +295,12 @@ async def process_message_queue():
                 elif is_reply(message):
                     reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
                     image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
+                    voice_info = (
+                        " [This message contains a voice message]" if is_voice(message.reply_to_message) else ""
+                    )
                     message_parts += (
-                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
+                        f'\n"@{get_message_from(message.reply_to_message)} '
+                        f'said: {reply_text}{image_info}{voice_info}"\n\n'
                     )
                 if message_text:
                     message_parts += message_text
@@ -335,6 +344,41 @@ async def process_message_queue():
                             )
                         else:
                             logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                    # Check if message is a voice message
+                    elif is_voice(message) and config.is_audio_multimodal:
+                        logging.debug(f"Voice message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.voice.file_id)
+                        message_parts += " [the user sent a voice message]"
+                        if file.file_path:
+                            response = await llm_bot.answer_voice_message(
+                                chat_id,
+                                message_parts,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
+                    # Check if the message is a reply to a message with an image
+                    elif (
+                        is_reply(message)
+                        and message.reply_to_message
+                        and is_voice(message.reply_to_message)
+                        and config.is_audio_multimodal
+                    ):
+                        logging.debug(f"Reply to voice message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.reply_to_message.voice.file_id)
+                        # Ensure we're passing a string to answer_image_message
+                        if isinstance(message_parts, str):
+                            prompt_text = message_parts
+                        else:
+                            prompt_text = str(message_parts)
+                        if file.file_path:
+                            response = await llm_bot.answer_voice_message(
+                                chat_id,
+                                prompt_text,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
                     # If no response is found, treat the message as a text message
                     if not response:
                         logging.debug(f"Text message {message.message_id} for chat {chat_id}")

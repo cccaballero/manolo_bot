@@ -29,6 +29,7 @@ class BotConfig:
     preferred_language: str = "English"
     add_no_answer: bool = False
     is_image_multimodal: bool = False
+    is_audio_multimodal: bool = False
     is_group_assistant: bool = False
     agent_mode: bool = False
 

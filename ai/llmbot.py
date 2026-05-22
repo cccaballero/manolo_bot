@@ -294,6 +294,53 @@ class LLMBot:
         logging.debug(f"Image message response: {response}")
         return response
 
+    async def answer_voice_message(self, chat_id: int, text: str, audio: str):
+        """
+        Answer a voice message.
+        :param chat_id: Chat ID
+        :param audio: Voice message audio
+        """
+        logging.debug(f"Voice message: {audio}")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                timeout = self._get_session_timeout()
+
+                async with session.get(audio, timeout=timeout) as response:
+                    response.raise_for_status()
+                    audio_bytes = await response.read()
+                    audio_data = base64.b64encode(audio_bytes).decode("utf-8")
+
+                llm_message = HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": text,
+                        },
+                        {
+                            "type": "media",
+                            "mime_type": "audio/ogg",
+                            # "data": audio_bytes,
+                            "data": audio_data,
+                            # "file_uri": audio,
+                        },
+                    ]
+                )
+                self.messages_storage.add_message(llm_message)
+                self.truncate_chat_context()
+                response = await self.llm.ainvoke(
+                    self.system_instructions + self.messages_storage.messages,
+                    config=self._get_langchain_config(chat_id),
+                )
+        except (aiohttp.ClientError, Exception) as e:
+            if isinstance(e, aiohttp.ClientError):
+                logging.error(f"Failed to get audio: {audio}")
+            logging.exception(e)
+            response = BaseMessage(content="NO_ANSWER", type="text")
+
+        logging.debug(f"Voice message response: {response}")
+        return response
+
     async def postprocess_response(self, response: BaseMessage, message_text: str, chat_id: int) -> dict | None:
         """
         Postprocess the response from the LLM.

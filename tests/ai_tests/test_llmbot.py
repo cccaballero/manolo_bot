@@ -1,6 +1,9 @@
+import base64
 import unittest
 import unittest.mock
+from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai.llmbot import LLMBot
@@ -224,6 +227,75 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
     # TODO: find a way to test process_message_buffer logic, probably the function needs a refactor to make it more
     #  testable
+
+    async def test_llmbot_answer_voice_message_success(self):
+        # Arrange
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.llm = MagicMock()
+        llm_bot.llm.ainvoke = AsyncMock()
+        llm_bot.llm.get_num_tokens = MagicMock(return_value=10)
+
+        chat_id = 1
+        text = "Check this audio"
+        audio_url = "http://example.com/audio.ogg"
+        fake_audio_data = b"fake_audio_data"
+
+        # Mock aiohttp
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.read = AsyncMock(return_value=fake_audio_data)
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = MagicMock()
+        mock_context_manager = MagicMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_context_manager)
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+
+        # Mock LLM response
+        mock_ai_message = AIMessage(content="Heard it!")
+        llm_bot.llm.ainvoke.return_value = mock_ai_message
+
+        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session_cm):
+            # Act
+            response = await llm_bot.answer_voice_message(chat_id, text, audio_url)
+
+        # Assert
+        self.assertEqual(response, mock_ai_message)
+        self.assertEqual(len(llm_bot.messages_storage.add_message.call_args_list), 1)
+
+        # In this test we use mock_messages_storage, so we check call args
+        call_args = llm_bot.messages_storage.add_message.call_args[0][0]
+        self.assertIsInstance(call_args, HumanMessage)
+        content = call_args.content
+        self.assertEqual(content[0]["text"], text)
+        self.assertEqual(content[1]["type"], "media")
+        self.assertEqual(content[1]["mime_type"], "audio/ogg")
+        self.assertEqual(content[1]["data"], base64.b64encode(fake_audio_data).decode("utf-8"))
+
+    async def test_answer_voice_message_failure(self):
+        # Arrange
+        llm_bot = self.get_basic_llm_bot()
+        chat_id = 1
+        text = "Fail test"
+        audio_url = "http://example.com/audio.ogg"
+
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError("Network error"))
+        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+
+        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session_cm):
+            # Act
+            response = await llm_bot.answer_voice_message(chat_id, text, audio_url)
+
+        # Assert
+        self.assertEqual(response.content, "NO_ANSWER")
+        # Ensure no message was added to storage
+        self.assertEqual(len(llm_bot.messages_storage.add_message.call_args_list), 0)
 
 
 if __name__ == "__main__":
