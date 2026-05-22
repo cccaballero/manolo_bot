@@ -1,4 +1,3 @@
-import json
 import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,7 +22,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_mcp_manager_no_config(self):
         """Test MCP manager with no configuration."""
-        self.config.mcp_servers_config = "{}"
+        self.config.mcp_servers_config = {}
         manager = MCPManager(self.config)
 
         await manager.connect()
@@ -55,7 +54,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
 
         # Configure manager
         server_config = {"test_server": {"command": "python", "args": ["/path/to/server.py"], "transport": "stdio"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
         await manager.connect()
@@ -81,7 +80,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
     async def test_mcp_manager_invalid_transport(self):
         """Test MCP manager with invalid transport type."""
         server_config = {"test_server": {"command": "python", "transport": "invalid_transport"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
 
@@ -93,7 +92,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
     async def test_mcp_manager_missing_command_for_stdio(self):
         """Test MCP manager with missing command for stdio transport."""
         server_config = {"test_server": {"transport": "stdio"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
 
@@ -105,7 +104,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
     async def test_mcp_manager_missing_url_for_http(self):
         """Test MCP manager with missing URL for streamable_http transport."""
         server_config = {"test_server": {"transport": "streamable_http"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
 
@@ -124,7 +123,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
 
         # Configure manager
         server_config = {"test_server": {"command": "python", "args": ["server.py"], "transport": "stdio"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
         await manager.connect()
@@ -139,7 +138,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
         # Server name with newline attempt for log injection
         malicious_name = "evil\nERROR - Fake error"
         server_config = {malicious_name: {"transport": "invalid"}}
-        self.config.mcp_servers_config = json.dumps(server_config)
+        self.config.mcp_servers_config = server_config
 
         manager = MCPManager(self.config)
 

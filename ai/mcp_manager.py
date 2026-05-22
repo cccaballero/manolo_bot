@@ -6,7 +6,7 @@ import logging
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from config import Config
+from ai.config import BotConfig
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 class MCPManager:
     """Manages MCP server connections and tool loading."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: BotConfig) -> None:
         self.config = config
         self._client: MultiServerMCPClient | None = None
         self._tools: list[BaseTool] = []
         self._connected = False
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Initialize MCP client and connect to configured servers."""
         if self._connected:
             return
@@ -50,7 +50,7 @@ class MCPManager:
             logger.error(f"Failed to initialize MCP: {e}", exc_info=True)
             raise
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Close all MCP server connections."""
         if self._client:
             try:
@@ -75,10 +75,13 @@ class MCPManager:
         """Check if MCP is connected."""
         return self._connected
 
-    def _parse_server_config(self, config_str: str) -> dict:
+    def _parse_server_config(self, config: dict) -> dict:
         """Parse MCP server configuration from JSON string."""
         try:
-            servers = json.loads(config_str)
+            if not isinstance(config, dict):
+                raise ValueError("MCP_SERVERS_CONFIG must be a JSON object")
+
+            servers = config.get("mcpServers", config)
 
             # Validate basic structure
             if not isinstance(servers, dict):
@@ -90,18 +93,18 @@ class MCPManager:
                     raise ValueError(f"Server {name!r} configuration must be an object")
 
                 transport = server_config.get("transport", "stdio")
-                if transport not in ["stdio", "streamable_http"]:
+                if transport not in ["stdio", "streamable_http", "sse"]:
                     raise ValueError(f"Server {name!r} has invalid transport: {transport!r}")
 
                 if transport == "stdio":
                     if "command" not in server_config:
                         raise ValueError(f"Server {name!r} missing 'command' for stdio transport")
-                elif transport == "streamable_http":
+                elif transport in {"streamable_http", "sse"}:
                     if "url" not in server_config:
-                        raise ValueError(f"Server {name!r} missing 'url' for streamable_http transport")
+                        raise ValueError(f"Server {name!r} missing 'url' for {transport} transport")
 
             return servers
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in MCP_SERVERS_CONFIG: {e}")
-            raise ValueError(f"MCP_SERVERS_CONFIG contains invalid JSON: {e}")
+            raise ValueError(f"MCP_SERVERS_CONFIG contains invalid JSON: {e}") from e

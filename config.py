@@ -19,6 +19,8 @@ class Config(EnvModel):
     bot_name = StringField("TELEGRAM_BOT_NAME", required=True)
     bot_username = StringField("TELEGRAM_BOT_USERNAME", required=True)
     bot_token = StringField("TELEGRAM_BOT_TOKEN", required=True)
+    bot_uuid = StringField("BOT_UUID", default="default-bot-uuid")
+    user_id = IntegerField("USER_ID", default=0)
     context_max_tokens = IntegerField("CONTEXT_MAX_TOKENS", default=4096)
     preferred_language = StringField("PREFERRED_LANGUAGE", default="Spanish")
     add_no_answer = BooleanField("ADD_NO_ANSWER", default=False)
@@ -29,6 +31,7 @@ class Config(EnvModel):
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
     agent_mode = BooleanField("AGENT_MODE", default=False)
     agent_instructions = StringField("AGENT_INSTRUCTIONS")
+    allow_private_chats = BooleanField("ALLOW_PRIVATE_CHATS", default=True)
 
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)
@@ -61,12 +64,17 @@ class Config(EnvModel):
 
     # MCP Configuration
     enable_mcp = BooleanField("ENABLE_MCP", default=False)
-    mcp_servers_config = StringField(
+    mcp_servers_config = JsonField(
         "MCP_SERVERS_CONFIG",
-        default="{}",
+        default={},
         warning="MCP_SERVERS_CONFIG not set. MCP will be disabled.",
     )
 
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )
+
+    use_tavily_search = BooleanField("USE_TAVILY_SEARCH", default=False)
+
+    storage_type = StringField("STORAGE_TYPE", default="memory", allowed_values=["memory", "redis"])
+    redis_url = StringField("REDIS_URL", default="redis://localhost:6379/0")

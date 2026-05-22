@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import datetime
 import logging
 import re
@@ -12,16 +11,19 @@ from aiogram.types import Message
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
+from ai.config import BotConfig, LLMConfig
 from ai.llmagent import LLMAgent
-from ai.llmbot import LLMBot
+from ai.llmbot import LLMBot, LLMBuilder
 from config import Config
-from telegram.async_utils import (
+from storage.memory_storage import MemoryMessagesStorage
+from telegram.utils import (
     get_message_from,
     get_message_text,
     get_telegram_file_url,
     is_bot_reply,
     is_image,
     is_reply,
+    reply_photo_to_telegram_message,
     reply_to_telegram_message,
     send_typing_action,
     simulate_typing,
@@ -31,6 +33,9 @@ from telegram.async_utils import (
 load_dotenv()
 
 config = Config()
+
+if config.storage_type == "redis":
+    from storage.redis_storage import RedisDBHelper, RedisMessagesStorage
 
 logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 
@@ -127,10 +132,50 @@ flush_context_failure_instructions = f"Generate a short, friendly message in {co
 system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 message_queue = asyncio.Queue()
 
-if config.agent_mode:
-    llm_bot = LLMAgent(config, system_instructions)
-else:
-    llm_bot = LLMBot(config, system_instructions)
+llm_config = LLMConfig(
+    google_api_key=config.google_api_key,
+    google_api_model=config.google_api_model,
+    openai_api_key=config.openai_api_key,
+    openai_api_model=config.openai_api_model,
+    openai_api_base_url=config.openai_api_base_url,
+    ollama_model=config.ollama_model,
+)
+
+llm = LLMBuilder(llm_config).get_llm()
+
+bot_config = BotConfig(
+    bot_uuid=config.bot_uuid,
+    bot_name=config.bot_name,
+    bot_username=config.bot_username,
+    bot_token=config.bot_token,
+    user_id=config.user_id,
+    bot_instructions_character=config.bot_instructions_character,
+    bot_instructions_extra=config.bot_instructions_extra,
+    preferred_language=config.preferred_language,
+    is_image_multimodal=config.is_image_multimodal,
+    enable_mcp=config.enable_mcp,
+    mcp_servers_config=config.mcp_servers_config,
+    can_use_tavily_search=config.use_tavily_search,
+    sdapi_url=config.sdapi_url,
+    sdapi_params=config.sdapi_params,
+    sdapi_negative_prompt=config.sdapi_negative_prompt,
+)
+
+
+async def instance_llm_bot(chat_id: int) -> LLMBot:
+    if config.storage_type == "redis":
+        bd_helper = RedisDBHelper(db_url=config.redis_url)
+        messages_storage = RedisMessagesStorage(bot_uuid=bot_config.bot_uuid, chat_id=chat_id, db=bd_helper)
+    else:
+        messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
+    await messages_storage.refresh_messages()
+    if config.agent_mode:
+        llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage)
+    else:
+        llm_bot = LLMBot(llm, bot_config, system_instructions, messages_storage)
+
+    return llm_bot
+
 
 # Initialize bot and dispatcher
 bot = Bot(token=config.bot_token)
@@ -146,6 +191,9 @@ async def flush_context_command(message: Message):
     logging.debug(f"Received flushcontext command from user {message.from_user.id} in chat {message.chat.id}")
     chat_id = message.chat.id
     user_id = message.from_user.id
+
+    llm_bot = await instance_llm_bot(chat_id)
+
     message_text = get_message_text(message)
 
     # Check if the bot is mentioned in the command
@@ -168,13 +216,7 @@ async def flush_context_command(message: Message):
         return
 
     logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
-
-    if chat_id not in llm_bot.chats:
-        logging.debug(f"Chat {chat_id} not found, creating new one")
-        llm_bot.add_chat(chat_id)
-    else:
-        llm_bot.clean_context(chat_id)
-
+    await llm_bot.clean_context()
     logging.debug(f"Chat {chat_id} context flushed")
 
     try:
@@ -198,15 +240,14 @@ async def handle_message(message: Message):
         return
     logging.debug(f"Chat {chat_id} allowed")
 
-    if chat_id not in llm_bot.chats:
-        logging.debug(f"Chat {chat_id} not found, creating new one")
-        llm_bot.add_chat(chat_id)
-
     message_text = get_message_text(message)
 
     if (
-        message_text
-        and (f"@{config.bot_username}" in message_text or config.bot_name.lower() in message_text.lower())
+        (message.chat.type == "private" and config.allow_private_chats)
+        or (
+            message_text
+            and (f"@{config.bot_username}" in message_text or config.bot_name.lower() in message_text.lower())
+        )
         or (config.is_group_assistant and not is_reply(message) and "?" in message_text)
     ) or is_bot_reply(config.bot_username, message):
         await message_queue.put(message)
@@ -228,96 +269,114 @@ async def process_message_queue():
 
             chat_id = message.chat.id
 
-            await send_typing_action(bot, chat_id)
-
-            message_text = get_message_text(message)
-            logging.debug(f"Message text: {message_text}")
-
-            # build message for llm context
-            username = get_message_from(message)
-            if username:
-                message_parts = f"@{username}: "
-            else:
-                user_name = message.from_user.first_name or "Unknown user"
-                message_parts = f"{user_name}: "
-            if is_bot_reply(config.bot_username, message):
-                message_parts += f"@{config.bot_username} "
-            elif is_reply(message):
-                reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-                image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
-                message_parts += f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
-            if message_text:
-                message_parts += message_text
-            else:
-                logging.debug(f"No message text for message {message.message_id}")
+            llm_bot = await instance_llm_bot(chat_id)
+            await llm_bot.initialize_async_resources()
 
             try:
-                # Check if the message itself contains an image
-                if is_image(message) and config.is_image_multimodal:
-                    logging.debug(f"Image message {message.message_id} for chat {chat_id}")
-                    file = await bot.get_file(message.photo[-1].file_id)
-                    response = await llm_bot.answer_image_message(
-                        chat_id,
-                        message_parts,
-                        get_telegram_file_url(config.bot_token, file.file_path),
-                    )
-                # Check if the message is a reply to a message with an image
-                elif (
-                    is_reply(message)
-                    and message.reply_to_message
-                    and is_image(message.reply_to_message)
-                    and config.is_image_multimodal
-                ):
-                    logging.debug(f"Reply to image message {message.message_id} for chat {chat_id}")
-                    file = await bot.get_file(message.reply_to_message.photo[-1].file_id)
-                    # Ensure we're passing a string to answer_image_message
-                    if isinstance(message_parts, str):
-                        prompt_text = message_parts
-                    else:
-                        prompt_text = str(message_parts)
-                    response = await llm_bot.answer_image_message(
-                        chat_id,
-                        prompt_text,
-                        get_telegram_file_url(config.bot_token, file.file_path),
-                    )
+                await send_typing_action(bot, chat_id)
+
+                message_text = get_message_text(message)
+                logging.debug(f"Message text: {message_text}")
+
+                # build message for llm context
+                username = get_message_from(message)
+                if username:
+                    message_parts = f"@{username}: "
                 else:
-                    logging.debug(f"Text message {message.message_id} for chat {chat_id}")
-                    response = await llm_bot.answer_message(chat_id, message_parts)
-                    logging.debug(f"Response: {response}")
-            except Exception as e:
-                logging.exception(e)
-                # clean chat context if there is an error for avoid looping on context based error
-                llm_bot.clean_context(chat_id)
-                message_queue.task_done()
-                continue
-
-            final_response = await llm_bot.postprocess_response(response, message_text, chat_id)
-
-            if final_response:
-                if final_response.get("type") == "image":
-                    logging.debug(f"Sending image for chat {chat_id}")
-                    await bot.send_photo(
-                        chat_id,
-                        photo=base64.b64decode(final_response.get("data")),
-                        reply_to_message_id=message.message_id,
+                    user_name = message.from_user.first_name or "Unknown user"
+                    message_parts = f"{user_name}: "
+                if is_bot_reply(config.bot_username, message):
+                    message_parts += f"@{config.bot_username} "
+                elif is_reply(message):
+                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
+                    message_parts += (
+                        f'\n"@{get_message_from(message.reply_to_message)} said: {reply_text}{image_info}"\n\n'
                     )
-                elif final_response.get("type") == "text":
-                    # Remove thinking in reasoning models
-                    response_text = re.sub(r"<think>(.*?)</think>", "", final_response.get("data"), flags=re.DOTALL)
-                    # Simulate typing if enabled
-                    if config.simulate_typing:
-                        await simulate_typing(
-                            bot,
-                            chat_id,
-                            response_text,
-                            start_time,
-                            max_typing_time=config.simulate_typing_max_time,
-                            wpm=config.simulate_typing_wpm,
-                        )
+                if message_text:
+                    message_parts += message_text
+                else:
+                    logging.debug(f"No message text for message {message.message_id}")
 
-                    await reply_to_telegram_message(bot, message, response_text)
+                try:
+                    response = None
 
-            message_queue.task_done()
+                    # Check if the message itself contains an image
+                    if is_image(message) and config.is_image_multimodal:
+                        logging.debug(f"Image message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.photo[-1].file_id)
+                        if file.file_path:
+                            response = await llm_bot.answer_image_message(
+                                chat_id,
+                                message_parts,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                    # Check if the message is a reply to a message with an image
+                    elif (
+                        is_reply(message)
+                        and message.reply_to_message
+                        and is_image(message.reply_to_message)
+                        and config.is_image_multimodal
+                    ):
+                        logging.debug(f"Reply to image message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.reply_to_message.photo[-1].file_id)
+                        # Ensure we're passing a string to answer_image_message
+                        if isinstance(message_parts, str):
+                            prompt_text = message_parts
+                        else:
+                            prompt_text = str(message_parts)
+                        if file.file_path:
+                            response = await llm_bot.answer_image_message(
+                                chat_id,
+                                prompt_text,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                            )
+                        else:
+                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                    # If no response is found, treat the message as a text message
+                    if not response:
+                        logging.debug(f"Text message {message.message_id} for chat {chat_id}")
+                        response = await llm_bot.answer_message(chat_id, message_parts)
+                        logging.debug(f"Response: {response}")
+                except Exception as e:
+                    logging.exception(e)
+                    # clean chat context if there is an error for avoid looping on context based error
+                    await llm_bot.clean_context()
+                    message_queue.task_done()
+                    continue
+
+                final_response = await llm_bot.postprocess_response(response, message_text, chat_id)
+
+                if final_response:
+                    if final_response.get("type") == "image":
+                        image_data = final_response.get("data")
+                        if isinstance(image_data, str):
+                            await reply_photo_to_telegram_message(bot, message, image_data)
+                        else:
+                            logging.error("Image data is not a string")
+                    elif final_response.get("type") == "text":
+                        # Remove thinking in reasoning models
+                        raw_content = final_response.get("data") or final_response.get("text") or ""
+                        response_text = re.sub(r"<think>(.*?)</think>", "", raw_content, flags=re.DOTALL)
+                        # Simulate typing if enabled
+                        if config.simulate_typing:
+                            await simulate_typing(
+                                bot,
+                                chat_id,
+                                response_text,
+                                start_time,
+                                max_typing_time=config.simulate_typing_max_time,
+                                wpm=config.simulate_typing_wpm,
+                            )
+
+                        await reply_to_telegram_message(bot, message, response_text)
+
+                await llm_bot.messages_storage.commit()
+                message_queue.task_done()
+            finally:
+                await llm_bot.close()
         except Exception as e:
             logging.error(f"Error processing message queue: {e}")
             logging.exception(e)
@@ -327,9 +386,6 @@ async def process_message_queue():
 
 async def main():
     """Main async function to run the bot."""
-    # Initialize async resources (including MCP)
-    await llm_bot.initialize_async_resources()
-
     # Start the message queue processor
     processor_task = asyncio.create_task(process_message_queue())
 
@@ -349,14 +405,12 @@ async def main():
         await dp.start_polling(bot)
     finally:
         processor_task.cancel()
-        await llm_bot.close()
         await bot.session.close()
 
 
 async def shutdown():
     """Graceful shutdown."""
     logging.info("Shutting down...")
-    await llm_bot.close()
     await bot.session.close()
     sys.exit(0)
 
