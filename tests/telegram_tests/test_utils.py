@@ -2,7 +2,7 @@ import datetime
 import unittest
 import unittest.mock
 
-from telegram.async_utils import (
+from telegram.utils import (
     _get_time_from_wpm,
     clean_standard_message,
     convert_markdown_to_telegram_format,

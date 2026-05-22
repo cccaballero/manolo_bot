@@ -1,11 +1,12 @@
+import asyncio
+import base64
 import datetime
 import logging
-import time
 
 import telegramify_markdown
-from telebot import TeleBot, util
-from telebot.apihelper import ApiTelegramException
-from telebot.types import Message
+from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import BufferedInputFile, Message
 from telegramify_markdown import customize
 
 
@@ -19,45 +20,51 @@ def get_telegram_file_url(bot_token: str, file_path: str) -> str:
     return f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
 
 
-def fallback_telegram_call(bot: TeleBot, message: Message, response_content: str) -> bool:
+async def fallback_telegram_call(bot: Bot, message: Message, response_content: str) -> bool:
     """
     Call the Telegram API without using Markdown formatting.
-    :param bot: Telegram telegram_bot instance
+    :param bot: Telegram bot instance
     :param message: Telegram message to reply to
     :param response_content: Response content
     :return: True if the call was successful, False otherwise
     """
     try:
-        text_chunks = util.smart_split(response_content, chars_per_string=3000)
+        # Split into chunks if message is too long
+        max_length = 3000
+        text_chunks = [response_content[i : i + max_length] for i in range(0, len(response_content), max_length)]
         previous_message = None
         for text in text_chunks:
             if previous_message:
-                previous_message = bot.reply_to(previous_message, text)
+                previous_message = await previous_message.reply(text)
             else:
-                previous_message = bot.reply_to(message, text)
+                previous_message = await message.reply(text)
     except Exception as e:
         logging.exception(e)
         return False
     return True
 
 
-def user_is_admin(bot: TeleBot, user_id: int, chat_id: int) -> bool:
+async def user_is_admin(bot: Bot, user_id: int, chat_id: int) -> bool:
     """
     Check if the user is an admin of the chat.
-    :param bot: Telegram telegram_bot instance
+    :param bot: Telegram bot instance
     :param user_id: User ID
     :param chat_id: Chat ID
     :return: True if the user is an admin, False otherwise
     """
-    admins = bot.get_chat_administrators(chat_id)
-    return any(admin.user.id == user_id for admin in admins)
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+        return any(admin.user.id == user_id for admin in admins)
+    except Exception as e:
+        logging.exception(e)
+        return False
 
 
 def is_bot_reply(bot_username: str, message: Message) -> bool:
     """
-    Check if the message is a reply to a telegram_bot message.
+    Check if the message is a reply to a bot message.
     :param message: Telegram message
-    :param bot_username: Telegram telegram_bot username
+    :param bot_username: Telegram bot username
     :return: True if the message is a reply, False otherwise
     """
     return True if message.reply_to_message and message.reply_to_message.from_user.username == bot_username else False
@@ -78,7 +85,7 @@ def is_image(message: Message) -> bool:
     :param message: Telegram message
     :return: True if the message is an image, False otherwise
     """
-    return message.content_type == "photo"
+    return message.photo is not None
 
 
 def get_message_text(message: Message) -> str:
@@ -96,7 +103,7 @@ def get_message_from(message: Message) -> str:
     :param message: Telegram message
     :return: Sender of the message
     """
-    return message.from_user.username
+    return message.from_user.username if message.from_user else None
 
 
 def convert_markdown_to_telegram_format(markdown_text: str) -> str:
@@ -109,13 +116,13 @@ def convert_markdown_to_telegram_format(markdown_text: str) -> str:
     return telegramify_markdown.markdownify(markdown_text)
 
 
-def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: str) -> None:
+async def reply_to_telegram_message(bot: Bot, message: Message, response_content: str) -> None:
     """
     Reply to a message.
-    :param bot: Telegram telegram_bot instance
+    :param bot: Telegram bot instance
     :param message: Telegram message to reply to
     :param response_content: Response content
-    :return: True if the call was successful, False otherwise
+    :return: None
     """
     chat_id = message.chat.id
     use_fallback = False
@@ -126,9 +133,9 @@ def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: 
     else:
         try:
             markdown_text = convert_markdown_to_telegram_format(response_content)
-            bot.reply_to(message, markdown_text, parse_mode="MarkdownV2")
+            await message.reply(markdown_text, parse_mode="MarkdownV2")
             logging.debug(f"Sent response for chat {chat_id}")
-        except ApiTelegramException as e:
+        except TelegramAPIError as e:
             logging.exception(e)
             logging.warning(
                 f"Failed to send response for chat {chat_id} using Markdown. Attempting fallback to plain text."
@@ -138,14 +145,39 @@ def reply_to_telegram_message(bot: TeleBot, message: Message, response_content: 
             logging.exception(e)
             use_fallback = True
 
-    if use_fallback and not fallback_telegram_call(bot, message, response_content):
+    if use_fallback and not await fallback_telegram_call(bot, message, response_content):
         logging.error(f"Failed to send response for chat {chat_id}")
+
+
+async def reply_photo_to_telegram_message(bot: Bot, message: Message, base64_image: str) -> None:
+    """
+    Reply to a message with a photo.
+    :param bot: Telegram bot instance
+    :param message: Telegram message to reply to
+    :param base64_image: Base64 encoded image data
+    :return: None
+    """
+    chat_id = message.chat.id
+    try:
+        logging.debug(f"Sending image for chat {chat_id}")
+        photo_bytes = base64.b64decode(base64_image)
+        photo = BufferedInputFile(photo_bytes, filename="image.png")
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            reply_to_message_id=message.message_id,
+        )
+        logging.debug(f"Sent image response for chat {chat_id}")
+    except Exception as e:
+        logging.exception(e)
+        logging.error(f"Failed to send image response for chat {chat_id}")
+        await message.reply("⚠️ Error sending image.")
 
 
 def clean_standard_message(bot_username: str, message_text: str) -> str:
     """
     Clean a standard message.
-    :param bot_username: Telegram telegram_bot username
+    :param bot_username: Telegram bot username
     :param message_text: Text to clean
     :return: Cleaned text
     """
@@ -165,12 +197,13 @@ def _get_time_from_wpm(text: str, wpm: float) -> float:
     return (len(text.split()) / wpm) * 60
 
 
-def send_typing_action(bot, chat_id):
-    bot.send_chat_action(chat_id, "typing")
+async def send_typing_action(bot: Bot, chat_id: int):
+    """Send typing action to chat."""
+    await bot.send_chat_action(chat_id, "typing")
 
 
-def simulate_typing(
-    bot: TeleBot, chat_id: int, text: str, start_time: datetime.datetime, max_typing_time: int = 10, wpm: int = 50
+async def simulate_typing(
+    bot: Bot, chat_id: int, text: str, start_time: datetime.datetime, max_typing_time: int = 10, wpm: int = 50
 ) -> None:
     """
     Simulate typing for a given text.
@@ -190,5 +223,5 @@ def simulate_typing(
 
     for second in range(int(time_left)):
         if second % 6 == 0:
-            bot.send_chat_action(chat_id, "typing")
-        time.sleep(1)
+            await bot.send_chat_action(chat_id, "typing")
+        await asyncio.sleep(1)

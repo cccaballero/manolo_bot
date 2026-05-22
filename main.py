@@ -16,7 +16,7 @@ from ai.llmagent import LLMAgent
 from ai.llmbot import LLMBot, LLMBuilder
 from config import Config
 from storage.memory_storage import MemoryMessagesStorage
-from telegram.async_utils import (
+from telegram.utils import (
     get_message_from,
     get_message_text,
     get_telegram_file_url,
