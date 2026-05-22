@@ -1,6 +1,7 @@
 # Telegram Chat Bot using LLM
 
-This is an experimental Telegram chat bot that uses a configurable LLM model to generate responses. With this bot, you can have engaging and realistic conversations with an artificial intelligence model.
+This is an experimental Telegram chat bot that uses a configurable LLM model to generate responses. With this bot, you
+can have engaging and realistic conversations with an artificial intelligence model.
 
 ## Getting Started
 
@@ -16,9 +17,12 @@ uv sync --no-dev
 
 You can copy and rename the provided `env.example` to `.env` and edit the file according to your data
 
-You can create a bot on Telegram and get its API token by following the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot).
+You can create a bot on Telegram and get its API token by following
+the [official instructions](https://core.telegram.org/bots#how-do-i-create-a-bot).
 
-To use the bot in a group, you have to use the @BotFather bot to [set the Group Privacy off](https://stackoverflow.com/questions/50204633/allow-bot-to-access-telegram-group-messages/50236522#50236522). This allows the bot to access all group messages.
+To use the bot in a group, you have to use the @BotFather bot
+to [set the Group Privacy off](https://stackoverflow.com/questions/50204633/allow-bot-to-access-telegram-group-messages/50236522#50236522).
+This allows the bot to access all group messages.
 
 #### Required environment variables.
 
@@ -44,20 +48,26 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 #### Enabling Agent Mode
 
-`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use agentic capabilities.
+`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use agentic
+capabilities.
 
-`AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior when in agent mode. This allows you to specify how the agent should behave, what tools it can use, and any specific guidelines for its operation. If not provided, default agent behavior will be used.
+`AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior when in agent mode. This allows you
+to specify how the agent should behave, what tools it can use, and any specific guidelines for its operation. If not
+provided, default agent behavior will be used.
 
 #### Enabling image Generation with Stable Diffusion
 
-`WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the bot will answer image generation requests using Stable Diffusion generated images.
+`WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the
+bot will answer image generation requests using Stable Diffusion generated images.
 
-`WEBUI_SD_API_PARAMS`: A JSON string containing Stable Diffusion Web UI API params. If not provided, default parameters for the SDXL Turbo model will be used.
+`WEBUI_SD_API_PARAMS`: A JSON string containing Stable Diffusion Web UI API params. If not provided, default parameters
+for the SDXL Turbo model will be used.
 
 #### Setting custom bot character instructions
 
-`TELEGRAM_BOT_INSTRUCTIONS_CHARACTER`: You can define a custom character for the bot instructions. 
-This will override the default bot character. For example: `You are a software engineer, geek and nerd, user of linux and free software technologies.`
+`TELEGRAM_BOT_INSTRUCTIONS_CHARACTER`: You can define a custom character for the bot instructions.
+This will override the default bot character. For example:
+`You are a software engineer, geek and nerd, user of linux and free software technologies.`
 
 #### Setting extra bot instructions
 
@@ -65,20 +75,25 @@ This will override the default bot character. For example: `You are a software e
 
 #### Setting custom bot instructions
 
-`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable. 
+`TELEGRAM_BOT_INSTRUCTIONS`: You can define custom LLM system instructions using this variable.
 This will override the default instructions, and the custom bot character instructions.
 
 #### Limiting Bot interaction
 
-`TELEGRAM_ALLOWED_CHATS`: You can use a comma-separated list of allowed chat IDs to limit bot interaction to those chats.
+`TELEGRAM_ALLOWED_CHATS`: You can use a comma-separated list of allowed chat IDs to limit bot interaction to those
+chats.
+
+`ALLOW_PRIVATE_CHATS`: Enable or disable direct bot interaction in private chats (True, False). Default is True.
 
 #### Enable multimodal capabilities
 
-`ENABLE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal capabilities.
+`ENABLE_MULTIMODAL`: Enable multimodal capabilities for images (True, False). The selected model must support multimodal
+capabilities.
 
 #### Enable group assistant
 
-`ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will respond to group chats with a question mark. The default value is False.
+`ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will respond to group chats with
+a question mark. The default value is False.
 
 #### Enable rate limiting
 
@@ -96,23 +111,34 @@ This will override the default instructions, and the custom bot character instru
 
 #### Web Content Retrieval Configuration
 
-`WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for HTTP requests when retrieving web content. Default is 10 seconds.
+`WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for HTTP requests when retrieving web content. Default is 10
+seconds.
 
 #### Simulate typing human behavior
 
-`SIMULATE_TYPING`: Enable simulating human typing behavior. The default is False. This typing simulation will influence the bot's response time in all chats.
+`SIMULATE_TYPING`: Enable simulating human typing behavior. The default is False. This typing simulation will influence
+the bot's response time in all chats.
 
 `SIMULATE_TYPING_WPM`: The words per minute for simulating human typing behavior. Default is 100.
 
-`SIMULATE_TYPING_MAX_TIME`: The maximum time in seconds for simulating human typing behavior. Default is 10 seconds (we usually don't want to wait too long).
+`SIMULATE_TYPING_MAX_TIME`: The maximum time in seconds for simulating human typing behavior. Default is 10 seconds (we
+usually don't want to wait too long).
 
 #### Tools usage
 
-`USE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+`USE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's
+tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+
+#### Storage Configuration
+
+`STORAGE_TYPE`: Sets the storage type for conversation context (memory, redis). Default is memory.
+
+`REDIS_URL`: The Redis URL for storage when `STORAGE_TYPE` is set to redis. Default is `redis://localhost:6379/0`.
 
 ### MCP (Model Context Protocol) Support
 
-manolo_bot supports the [Model Context Protocol](https://modelcontextprotocol.io/) for connecting to external tool servers.
+manolo_bot supports the [Model Context Protocol](https://modelcontextprotocol.io/) for connecting to external tool
+servers.
 
 #### Enabling MCP
 
@@ -124,20 +150,25 @@ Set the following environment variables:
 
 #### MCP Server Configuration
 
-MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, which accepts a JSON object mapping server names to their configurations.
+MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, which accepts a JSON object mapping server
+names to their configurations.
 
 **stdio transport example:**
+
 ```json
 {
   "math": {
     "command": "python",
-    "args": ["/path/to/math_server.py"],
+    "args": [
+      "/path/to/math_server.py"
+    ],
     "transport": "stdio"
   }
 }
 ```
 
 **streamable_http transport example:**
+
 ```json
 {
   "weather": {
@@ -148,11 +179,14 @@ MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, wh
 ```
 
 **Multiple servers:**
+
 ```json
 {
   "math": {
     "command": "python",
-    "args": ["/path/to/math_server.py"],
+    "args": [
+      "/path/to/math_server.py"
+    ],
     "transport": "stdio"
   },
   "weather": {
@@ -163,6 +197,7 @@ MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, wh
 ```
 
 **Notes:**
+
 - MCP tools are loaded alongside custom tools defined in `ai/tools.py`
 - If tool name conflicts occur, MCP tools will override custom tools (a warning is logged)
 - The bot will start successfully even if MCP initialization fails (graceful degradation)
@@ -176,7 +211,8 @@ MCP servers are configured via the `MCP_SERVERS_CONFIG` environment variable, wh
 
 The bot supports the following commands:
 
-- `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this command. The bot will respond with a confirmation message in the configured language.
+- `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this
+  command. The bot will respond with a confirmation message in the configured language.
 
 ### Running the Bot
 
@@ -185,6 +221,7 @@ You can run the bot using the following command:
 ```shell
 uv run main.py
 ```
+
 or
 
 ```shell
@@ -214,7 +251,8 @@ uv run python -m unittest discover
 
 ## Contributing
 
-If you'd like to contribute to this project, feel free to submit a pull request. We're always open to new ideas or improvements to the code.
+If you'd like to contribute to this project, feel free to submit a pull request. We're always open to new ideas or
+improvements to the code.
 
 ## License
 
