@@ -156,6 +156,9 @@ bot_config = BotConfig(
     enable_mcp=config.enable_mcp,
     mcp_servers_config=config.mcp_servers_config,
     can_use_tavily_search=config.use_tavily_search,
+    sdapi_url=config.sdapi_url,
+    sdapi_params=config.sdapi_params,
+    sdapi_negative_prompt=config.sdapi_negative_prompt,
 )
 
 
