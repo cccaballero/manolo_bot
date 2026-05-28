@@ -1,41 +1,127 @@
 Using as an App
 ===============
 
-`manolo-bot` can be run as a standalone Telegram bot.
+`manolo-bot` is ready to use as a standalone Telegram chat bot. It handles message queuing, multimodal inputs (images/voice), and tool execution out of the box.
 
-Configuration
--------------
+Quick Start
+-----------
 
-The bot is configured using environment variables. You can create a `.env` file based on the provided `env.example`.
+1. **Install the package**:
 
-Key environment variables:
+   .. code-block:: shell
 
-* `TELEGRAM_BOT_TOKEN`: Your Telegram Bot token from BotFather.
-* `GOOGLE_API_KEY`: API key for Google Gemini (optional).
-* `OPENAI_API_KEY`: API key for OpenAI (optional).
-* `OLLAMA_BASE_URL`: Base URL for Ollama local models (optional).
-* `REDIS_URL`: Redis connection URL for persistent storage (optional).
+      uv sync --no-dev
 
-Running the Bot
----------------
+2. **Configure environment**:
+   Copy the example environment file and edit it with your API tokens:
 
-If you installed using `uv`, you can run the bot with:
+   .. code-block:: shell
 
-.. code-block:: shell
+      cp env.example .env
 
-   uv run manolo-bot
+3. **Run the bot**:
 
-Alternatively, if you installed the package, the `manolo-bot` command should be available in your path:
+   .. code-block:: shell
 
-.. code-block:: shell
+      uv run manolo-bot
 
-   manolo-bot
+Configuration Details
+---------------------
 
-Using with Docker
------------------
+The bot is configured entirely via environment variables. You can set these in your terminal or, more conveniently, in a `.env` file in the project root.
 
-You can also run the bot using Docker and Docker Compose:
+LLM Providers
+~~~~~~~~~~~~~
+
+You must provide at least one API key or a local model configuration.
+
+* `GOOGLE_API_KEY`: API key for Google Gemini. If set, the bot defaults to `gemini-2.0-flash`.
+* `OPENAI_API_KEY`: API key for OpenAI.
+* `OPENAI_API_BASE_URL`: Use this for OpenAI-compatible services (like LM Studio or LocalAI).
+* `OLLAMA_MODEL`: Name of a model running on your local Ollama instance (e.g., `llama3`).
+
+**Advanced Model Selection:**
+
+* `OPENAI_API_MODEL`: Override the default OpenAI model (e.g., `gpt-4o`).
+* `GOOGLE_API_MODEL`: Override the default Gemini model (e.g., `gemini-1.5-pro`).
+
+Telegram Bot Settings
+~~~~~~~~~~~~~~~~~~~~~
+
+To get these values, talk to `@BotFather` on Telegram.
+
+* `TELEGRAM_BOT_TOKEN`: **Required.** Your unique bot token.
+* `TELEGRAM_BOT_NAME`: The display name you gave your bot.
+* `TELEGRAM_BOT_USERNAME`: The @username of your bot.
+
+Agent and Tools
+~~~~~~~~~~~~~~~
+
+* `AGENT_MODE`: Set to `True` to enable "Agentic" behavior. In this mode, the bot doesn't just respond; it thinks and acts. It will use the LLM to reason about your request and can perform multiple iterations (like searching the internet, reading web pages, and refining its search) until it completes the task.
+* `USE_TOOLS`: Set to `True` to allow the bot to use tools. In non-agent mode, it uses tools in a more direct, single-step way.
+* `AGENT_INSTRUCTIONS`: Custom rules that guide how the agent should reason and prioritize its actions when `AGENT_MODE` is active.
+
+Search Configuration
+~~~~~~~~~~~~~~~~~~~~
+
+The bot can search the web to answer your questions. By default, it uses DuckDuckGo (no API key required). For better results, you can enable **Tavily Search**:
+
+* `USE_TAVILY_SEARCH`: Set to `True` to use Tavily instead of DuckDuckGo.
+* `TAVILY_SEARCH_KEY`: Your Tavily API key (get one at `tavily.com <https://tavily.com/>`_).
+
+Image and Voice
+~~~~~~~~~~~~~~~
+
+* `IMAGE_MULTIMODAL`: Set to `True` to allow the bot to "see" images you send or reply to.
+* `AUDIO_MULTIMODAL`: **(Experimental)** Set to `True` to allow the bot to "hear" voice messages. Currently only supported by Google Gemini.
+* `WEBUI_SD_API_URL`: If you have a Stable Diffusion Web UI running, provide its URL here to enable the `/generate_image` capability.
+
+Storage and Persistence
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* `STORAGE_TYPE`:
+    * `memory` (default): Conversation history is lost when the bot stops.
+    * `redis`: Conversation history is saved in a Redis database.
+* `REDIS_URL`: Connection string if using Redis (e.g., `redis://localhost:6379/0`).
+
+Model Context Protocol (MCP)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`manolo-bot` can connect to external tool servers using MCP.
+
+* `ENABLE_MCP`: Set to `True` to enable.
+* `MCP_SERVERS_CONFIG`: A JSON string defining your MCP servers.
+
+**Example Config:**
+
+.. code-block:: json
+
+   {
+     "weather": {
+       "url": "http://localhost:8000/mcp/",
+       "transport": "streamable_http"
+     }
+   }
+
+Interaction Control
+~~~~~~~~~~~~~~~~~~~
+
+* `TELEGRAM_ALLOWED_CHATS`: Comma-separated list of IDs. If set, the bot will only respond in these chats.
+* `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages.
+* `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned.
+
+Available Commands
+------------------
+
+* `/flushcontext`: Use this in a chat to clear the bot's memory for that specific conversation. In groups, this is restricted to administrators.
+
+Running with Docker
+-------------------
+
+For production deployment, using Docker Compose is recommended:
 
 .. code-block:: shell
 
    docker-compose up -d
+
+This will start both the bot and a Redis instance for persistent storage.

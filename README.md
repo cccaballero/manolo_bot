@@ -1,7 +1,13 @@
-# Telegram Chat Bot using LLM
+# manolo-bot: AI-powered Telegram Chat Bot and Library
 
-This is an experimental Telegram chat bot that uses a configurable LLM model to generate responses. With this bot, you
-can have engaging and realistic conversations with an artificial intelligence model.
+[![Documentation Status](https://readthedocs.org/projects/manolo-bot/badge/?version=latest)](https://manolo-bot.readthedocs.io/en/latest/?badge=latest)
+
+`manolo-bot` is an AI-powered Telegram Chat Bot and Library built with Python, leveraging modern LLM frameworks and the Model Context Protocol (MCP).
+It is designed to be both a standalone application and a reusable library for building your own AI-powered bots.
+
+## Documentation
+
+Full documentation is available at [https://manolo-bot.readthedocs.io/](https://manolo-bot.readthedocs.io/)
 
 ## Getting Started
 
@@ -48,12 +54,9 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 #### Enabling Agent Mode
 
-`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use agentic
-capabilities.
+`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use **agentic capabilities**. This means the bot will use the LLM as a reasoning engine, allowing it to iterate through multiple steps (like searching the internet and analyzing results) to complete complex tasks.
 
-`AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior when in agent mode. This allows you
-to specify how the agent should behave, what tools it can use, and any specific guidelines for its operation. If not
-provided, default agent behavior will be used.
+`AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior and reasoning when in agent mode.
 
 #### Enabling image Generation with Stable Diffusion
 
@@ -131,6 +134,14 @@ usually don't want to wait too long).
 
 `USE_TOOLS`: Enable tool usage (True, False). Default is False. When tool usage is enabled, the bot will use the LLM's
 tools capabilities. When tool usage is disabled, the bot will use the prompt-based pseudo-tools implementation.
+
+#### Search Configuration
+
+The bot uses DuckDuckGo by default for web searches. You can optionally enable **Tavily Search** for more advanced search capabilities.
+
+`USE_TAVILY_SEARCH`: Enable Tavily Search (True, False). Default is False.
+
+`TAVILY_SEARCH_KEY`: Your Tavily API key. Required if `USE_TAVILY_SEARCH` is set to True.
 
 #### Storage Configuration
 
@@ -248,25 +259,47 @@ uv run python -m unittest discover tests
 
 ## Library Usage
 
-`manolo-bot` can also be used as a library to build your own bots.
+`manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM providers and message storage.
 
 ```python
-from manolo_bot import LLMBot, LLMBuilder, LLMAgent
-from manolo_bot.ai.config import BotConfig, LLMConfig
+import asyncio
+from manolo_bot import LLMBot, LLMBuilder
+from manolo_bot.config import BotConfig, LLMConfig
+from manolo_bot.storage.memory_storage import MemoryMessagesStorage
 
-# Example usage
-llm_config = LLMConfig(google_api_key="your_key")
-llm = LLMBuilder(llm_config).get_llm()
+async def main():
+    # 1. Configure LLM (Google, OpenAI, or Ollama)
+    llm_config = LLMConfig(google_api_key="your_api_key")
+    llm = LLMBuilder(llm_config).get_llm()
 
-bot_config = BotConfig(
-    bot_uuid="my-bot",
-    bot_name="MyBot",
-    # ... other config
-)
+    # 2. Define Bot identity
+    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
 
-# Initialize bot
-# bot = LLMBot(llm, bot_config, system_instructions, storage)
+    # 3. Setup Storage for a specific conversation
+    # Storage is isolated by bot_uuid and chat_id
+    storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
+    await storage.refresh_messages()
+
+    # 4. Initialize Bot
+    bot = LLMBot(
+        llm=llm,
+        config=bot_config,
+        system_instructions="You are a helpful assistant.",
+        storage=storage
+    )
+
+    # 5. Interact
+    response = await bot.answer_message(chat_id=123, message="Hello!")
+    print(f"Bot: {response.content}")
+    
+    # 6. Persistent changes (if using Redis)
+    await storage.commit()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+For more advanced usage, including **agentic behavior** (where the bot can iterate to complete tasks using tools), please refer to the [Library Usage section](https://manolo-bot.readthedocs.io/en/latest/usage_library.html) in the full documentation.
 
 ## Contributing
 

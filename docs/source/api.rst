@@ -32,6 +32,11 @@ Storage Components
 Configuration
 -------------
 
+.. automodule:: manolo_bot.ai.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.config
    :members:
    :undoc-members:

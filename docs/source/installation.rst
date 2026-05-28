@@ -28,3 +28,18 @@ Or using `pip`:
 .. code-block:: shell
 
    pip install .
+
+Installing for Development
+--------------------------
+
+If you want to contribute to the project or build the documentation locally, install the development dependencies:
+
+.. code-block:: shell
+
+   uv sync --dev
+
+To build the documentation:
+
+.. code-block:: shell
+
+   uv run sphinx-build -b html docs/source docs/_build/html
