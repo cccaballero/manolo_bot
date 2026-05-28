@@ -2,8 +2,8 @@ import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai.mcp_manager import MCPManager
-from config import Config
+from manolo_bot.ai.mcp_manager import MCPManager
+from manolo_bot.config import Config
 
 
 class TestMCPManager(unittest.IsolatedAsyncioTestCase):
@@ -39,7 +39,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await manager.connect()
 
-    @patch("ai.mcp_manager.MultiServerMCPClient")
+    @patch("manolo_bot.ai.mcp_manager.MultiServerMCPClient")
     async def test_mcp_manager_valid_config(self, mock_client_class):
         """Test MCP manager with valid configuration."""
         # Setup mock
@@ -113,7 +113,7 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("missing 'url'", str(context.exception))
 
-    @patch("ai.mcp_manager.MultiServerMCPClient")
+    @patch("manolo_bot.ai.mcp_manager.MultiServerMCPClient")
     async def test_mcp_manager_connect_twice(self, mock_client_class):
         """Test connecting MCP manager twice doesn't reinitialize."""
         # Setup mock

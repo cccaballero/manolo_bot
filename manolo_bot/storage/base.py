@@ -52,6 +52,12 @@ class BaseDBHelper(abc.ABC):
 
 
 class BaseMessagesStorage(abc.ABC):
+    """
+    Abstract base class for message storage.
+
+    Provides the interface for persisting and retrieving chat messages.
+    """
+
     def __init__(self, bot_uuid: str, chat_id: int) -> None:
         self.bot_uuid = bot_uuid
         self.chat_id = chat_id

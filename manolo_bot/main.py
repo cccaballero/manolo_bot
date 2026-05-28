@@ -11,12 +11,12 @@ from aiogram.types import Message
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
-from ai.config import BotConfig, LLMConfig
-from ai.llmagent import LLMAgent
-from ai.llmbot import LLMBot, LLMBuilder
-from config import Config
-from storage.memory_storage import MemoryMessagesStorage
-from telegram.utils import (
+from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.llmagent import LLMAgent
+from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
+from manolo_bot.config import Config
+from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+from manolo_bot.telegram.utils import (
     get_message_from,
     get_message_text,
     get_telegram_file_url,
@@ -36,7 +36,7 @@ load_dotenv()
 config = Config()
 
 if config.storage_type == "redis":
-    from storage.redis_storage import RedisDBHelper, RedisMessagesStorage
+    from manolo_bot.storage.redis_storage import RedisDBHelper, RedisMessagesStorage
 
 logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 
@@ -459,5 +459,13 @@ async def shutdown():
     sys.exit(0)
 
 
+def main_entry():
+    """Entry point for the console script."""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main_entry()

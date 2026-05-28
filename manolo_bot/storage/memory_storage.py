@@ -1,4 +1,4 @@
-from storage.base import BaseMessagesStorage, StorageMessage
+from manolo_bot.storage.base import BaseMessagesStorage, StorageMessage
 
 _chats = {}
 

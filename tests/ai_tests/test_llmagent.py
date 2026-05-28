@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from ai.llmagent import LLMAgent
-from config import Config
+from manolo_bot.ai.llmagent import LLMAgent
+from manolo_bot.config import Config
 
 
 class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
@@ -42,8 +42,8 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         agent.count_tokens = mock_count_tokens
         return agent
 
-    @unittest.mock.patch("ai.llmagent.create_agent")
-    @unittest.mock.patch("ai.tools.get_all_tools", new_callable=AsyncMock)
+    @unittest.mock.patch("manolo_bot.ai.llmagent.create_agent")
+    @unittest.mock.patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     async def test_llm_agent_initialization(self, mock_get_all_tools, mock_create_agent):
         # Arrange
         mock_config = MagicMock(spec=Config)

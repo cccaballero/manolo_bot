@@ -222,13 +222,7 @@ The bot supports the following commands:
 You can run the bot using the following command:
 
 ```shell
-uv run main.py
-```
-
-or
-
-```shell
-python main.py
+uv run manolo-bot
 ```
 
 ## Developers information
@@ -249,7 +243,29 @@ pre-commit install
 You can run the tests using the following command:
 
 ```shell
-uv run python -m unittest discover
+uv run python -m unittest discover tests
+```
+
+## Library Usage
+
+`manolo-bot` can also be used as a library to build your own bots.
+
+```python
+from manolo_bot import LLMBot, LLMBuilder, LLMAgent
+from manolo_bot.ai.config import BotConfig, LLMConfig
+
+# Example usage
+llm_config = LLMConfig(google_api_key="your_key")
+llm = LLMBuilder(llm_config).get_llm()
+
+bot_config = BotConfig(
+    bot_uuid="my-bot",
+    bot_name="MyBot",
+    # ... other config
+)
+
+# Initialize bot
+# bot = LLMBot(llm, bot_config, system_instructions, storage)
 ```
 
 ## Contributing

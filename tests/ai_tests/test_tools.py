@@ -4,7 +4,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from ai.tools import (
+from manolo_bot.ai.tools import (
     TimeResult,
     ddgs_search,
     extract_youtube_video_id,
@@ -40,7 +40,7 @@ class TestSearchInstructionsTool(unittest.TestCase):
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Mock the Config class for all tests
-        self.config_patcher = patch("ai.tools.BotConfig")
+        self.config_patcher = patch("manolo_bot.ai.tools.BotConfig")
         self.mock_config_class = self.config_patcher.start()
         self.mock_config = self.mock_config_class.return_value
         # Set default timeout values
@@ -61,7 +61,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertEqual(result, expected_result)
 
-    @patch("ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
     async def test_get_website_content__successful_content_retrieval(self, mock_loader_class):
         # Arrange
         mock_loader = unittest.mock.MagicMock()
@@ -89,8 +89,8 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         return iterator()
 
-    @patch("ai.tools.WebBaseLoader")
-    @patch("ai.tools.logging")
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools.logging")
     async def test_get_website_content__connection_error_handling(self, mock_logging, mock_loader_class):
         # Arrange
         mock_loader = unittest.mock.MagicMock()
@@ -108,8 +108,8 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
             "Failed to get content of the website https://example.com. Please try again later or try a different URL.",
         )
 
-    @patch("ai.tools.WebBaseLoader")
-    @patch("ai.tools.logging")
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools.logging")
     async def test_get_website_content__timeout_error_handling(self, mock_logging, mock_loader_class):
         # Arrange
         mock_loader = unittest.mock.MagicMock()
@@ -212,7 +212,7 @@ class TestGetCurrentTimeTool(unittest.IsolatedAsyncioTestCase):
 
 class TestDDGSSearchTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.ddgs_patcher = patch("ai.tools.DDGS")
+        self.ddgs_patcher = patch("manolo_bot.ai.tools.DDGS")
         self.mock_ddgs = self.ddgs_patcher.start()
         self.mock_ddgs_instance = MagicMock()
 
@@ -271,7 +271,7 @@ class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
         """Test that MCP tools override conflicting custom tools."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from ai.tools import get_all_tools, get_tools
+        from manolo_bot.ai.tools import get_all_tools, get_tools
 
         # Get custom tools (should include multiply, etc.)
         custom_tools = get_tools()
@@ -316,7 +316,7 @@ class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_all_tools_without_mcp(self):
         """Test that get_all_tools works without MCP manager."""
-        from ai.tools import get_all_tools, get_tools
+        from manolo_bot.ai.tools import get_all_tools, get_tools
 
         # Act
         all_tools = await get_all_tools(None)
@@ -330,7 +330,7 @@ class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
 class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Mock the Config class for all tests
-        self.config_patcher = patch("ai.tools.BotConfig")
+        self.config_patcher = patch("manolo_bot.ai.tools.BotConfig")
         self.mock_config_class = self.config_patcher.start()
         self.mock_config = self.mock_config_class.return_value
         # Set default token limit
@@ -382,7 +382,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertIsNone(result)
 
-    @patch("ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
     async def test_get_youtube_transcript__successful_transcript_retrieval(self, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -401,8 +401,8 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
         self.assertEqual(result, expected_result.strip())
 
-    @patch("ai.tools.YouTubeTranscriptApi")
-    @patch("ai.tools.logging")
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools.logging")
     async def test_get_youtube_transcript__no_transcript_found(self, mock_logging, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -415,8 +415,8 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
         self.assertIn("No transcript is available for this YouTube video", result)
 
-    @patch("ai.tools.YouTubeTranscriptApi")
-    @patch("ai.tools.logging")
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools.logging")
     async def test_get_youtube_transcript__transcripts_disabled(self, mock_logging, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -430,7 +430,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
         self.assertIn("No transcript is available for this YouTube video", result)
 
-    @patch("ai.tools.extract_youtube_video_id")
+    @patch("manolo_bot.ai.tools.extract_youtube_video_id")
     async def test_get_youtube_transcript__invalid_youtube_url(self, mock_extract_id):
         # Arrange
         url = "https://example.com/not-a-youtube-url"
@@ -442,8 +442,8 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertIn("Could not extract a valid YouTube video ID", result)
 
-    @patch("ai.tools.YouTubeTranscriptApi")
-    @patch("ai.tools.BotConfig")
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools.BotConfig")
     async def test_get_youtube_transcript__truncates_long_transcripts(self, mock_config, mock_transcript_api):
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"

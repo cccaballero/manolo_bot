@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from config import Config
+from manolo_bot.config import Config
 
 
 class TestConfig(unittest.TestCase):

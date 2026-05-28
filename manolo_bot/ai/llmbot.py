@@ -20,15 +20,17 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
-from ai.config import BotConfig, LLMConfig
-from ai.tools import get_tool, get_tools
-from storage.base import BaseMessagesStorage
+from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.tools import get_tool, get_tools
+from manolo_bot.storage.base import BaseMessagesStorage
 
 if TYPE_CHECKING:
-    from ai.mcp_manager import MCPManager
+    from manolo_bot.ai.mcp_manager import MCPManager
 
 
 class LLMBuilder:
+    """Factory class for creating LangChain Chat Model instances."""
+
     def __init__(self, llm_config: LLMConfig) -> None:
         self.llm_config = llm_config
 
@@ -68,6 +70,12 @@ class LLMBuilder:
         return ChatOpenAI(rate_limiter=self._get_rate_limiter(), **params)
 
     def get_llm(self) -> BaseChatModel:
+        """
+        Creates and returns an instance of the configured LLM.
+
+        :return: A LangChain BaseChatModel instance.
+        :raises Exception: If no LLM configuration is found.
+        """
         if self.llm_config.ollama_model:
             llm = self._get_chat_ollama()
         elif self.llm_config.google_api_key:
@@ -80,6 +88,12 @@ class LLMBuilder:
 
 
 class LLMBot:
+    """
+    Base class for a Telegram LLM Chat Bot.
+
+    Handles interaction with the LLM, message processing, and context management.
+    """
+
     def __init__(
         self,
         llm: BaseChatModel,
@@ -129,7 +143,7 @@ class LLMBot:
         if self.bot_config.enable_mcp:
             logging.info("Initializing MCP...")
             try:
-                from ai.mcp_manager import MCPManager
+                from manolo_bot.ai.mcp_manager import MCPManager
 
                 # TODO: We probably don't want to initialize MCP in each call, maybe we can cache this somehow?
                 self._mcp_manager = MCPManager(self.bot_config)
@@ -168,7 +182,7 @@ class LLMBot:
 
     async def _reload_tools_with_mcp(self) -> None:
         """Reload tools including MCP tools."""
-        from ai.tools import get_all_tools
+        from manolo_bot.ai.tools import get_all_tools
 
         tools = await get_all_tools(self._mcp_manager, self.bot_config)
         self.llm = self.llm.bind_tools(tools)
@@ -235,6 +249,13 @@ class LLMBot:
         logging.debug(f"Chat context cleaned for chat {self.messages_storage.chat_id}")
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+        """
+        Processes a text message and returns the LLM's response.
+
+        :param chat_id: The ID of the chat.
+        :param message: The text of the message to process.
+        :return: The response message from the LLM.
+        """
         self.messages_storage.add_message(HumanMessage(content=message))
         self.truncate_chat_context()
         config = self._get_langchain_config(chat_id)

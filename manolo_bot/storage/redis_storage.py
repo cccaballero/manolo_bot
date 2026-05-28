@@ -2,7 +2,7 @@ import logging
 
 import redis
 
-from storage.base import (
+from manolo_bot.storage.base import (
     BaseDBHelper,
     BaseMessagesStorage,
     StorageMessage,

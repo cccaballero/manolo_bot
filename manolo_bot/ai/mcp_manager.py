@@ -6,7 +6,7 @@ import logging
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from ai.config import BotConfig
+from manolo_bot.ai.config import BotConfig
 
 logger = logging.getLogger(__name__)
 
