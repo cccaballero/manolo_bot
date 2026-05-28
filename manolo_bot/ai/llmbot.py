@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 
 class LLMBuilder:
+    """Factory class for creating LangChain Chat Model instances."""
+
     def __init__(self, llm_config: LLMConfig) -> None:
         self.llm_config = llm_config
 
@@ -68,6 +70,12 @@ class LLMBuilder:
         return ChatOpenAI(rate_limiter=self._get_rate_limiter(), **params)
 
     def get_llm(self) -> BaseChatModel:
+        """
+        Creates and returns an instance of the configured LLM.
+
+        :return: A LangChain BaseChatModel instance.
+        :raises Exception: If no LLM configuration is found.
+        """
         if self.llm_config.ollama_model:
             llm = self._get_chat_ollama()
         elif self.llm_config.google_api_key:
@@ -80,6 +88,12 @@ class LLMBuilder:
 
 
 class LLMBot:
+    """
+    Base class for a Telegram LLM Chat Bot.
+
+    Handles interaction with the LLM, message processing, and context management.
+    """
+
     def __init__(
         self,
         llm: BaseChatModel,
@@ -235,6 +249,13 @@ class LLMBot:
         logging.debug(f"Chat context cleaned for chat {self.messages_storage.chat_id}")
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+        """
+        Processes a text message and returns the LLM's response.
+
+        :param chat_id: The ID of the chat.
+        :param message: The text of the message to process.
+        :return: The response message from the LLM.
+        """
         self.messages_storage.add_message(HumanMessage(content=message))
         self.truncate_chat_context()
         config = self._get_langchain_config(chat_id)

@@ -12,6 +12,12 @@ from manolo_bot.storage.base import BaseMessagesStorage
 
 
 class LLMAgent(LLMBot):
+    """
+    Advanced Telegram LLM Chat Bot using a LangGraph-based agent.
+
+    This bot can use tools and dynamically integrate with MCP servers.
+    """
+
     def __init__(
         self,
         llm: BaseChatModel,
