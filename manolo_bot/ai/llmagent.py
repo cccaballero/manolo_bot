@@ -6,9 +6,9 @@ from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from ai.config import BotConfig
-from ai.llmbot import LLMBot
-from storage.base import BaseMessagesStorage
+from manolo_bot.ai.config import BotConfig
+from manolo_bot.ai.llmbot import LLMBot
+from manolo_bot.storage.base import BaseMessagesStorage
 
 
 class LLMAgent(LLMBot):
@@ -28,7 +28,7 @@ class LLMAgent(LLMBot):
         await super().initialize_async_resources()
 
         # Create agent with all tools (custom + MCP)
-        from ai.tools import get_all_tools
+        from manolo_bot.ai.tools import get_all_tools
 
         # TODO: We probably don't want to call "mcp_manager.get_tools()" in each call, maybe we can cache this somehow?
         tools = await get_all_tools(self._mcp_manager, self.bot_config)

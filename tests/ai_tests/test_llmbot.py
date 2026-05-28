@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from ai.llmbot import LLMBot
-from config import Config
+from manolo_bot.ai.llmbot import LLMBot
+from manolo_bot.config import Config
 
 
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):

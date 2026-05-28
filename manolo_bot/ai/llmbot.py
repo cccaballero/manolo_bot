@@ -20,12 +20,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
-from ai.config import BotConfig, LLMConfig
-from ai.tools import get_tool, get_tools
-from storage.base import BaseMessagesStorage
+from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.tools import get_tool, get_tools
+from manolo_bot.storage.base import BaseMessagesStorage
 
 if TYPE_CHECKING:
-    from ai.mcp_manager import MCPManager
+    from manolo_bot.ai.mcp_manager import MCPManager
 
 
 class LLMBuilder:
@@ -129,7 +129,7 @@ class LLMBot:
         if self.bot_config.enable_mcp:
             logging.info("Initializing MCP...")
             try:
-                from ai.mcp_manager import MCPManager
+                from manolo_bot.ai.mcp_manager import MCPManager
 
                 # TODO: We probably don't want to initialize MCP in each call, maybe we can cache this somehow?
                 self._mcp_manager = MCPManager(self.bot_config)
@@ -168,7 +168,7 @@ class LLMBot:
 
     async def _reload_tools_with_mcp(self) -> None:
         """Reload tools including MCP tools."""
-        from ai.tools import get_all_tools
+        from manolo_bot.ai.tools import get_all_tools
 
         tools = await get_all_tools(self._mcp_manager, self.bot_config)
         self.llm = self.llm.bind_tools(tools)

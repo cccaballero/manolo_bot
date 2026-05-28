@@ -11,8 +11,8 @@ from langchain_tavily import TavilySearch
 from pydantic import BaseModel
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
-from ai.config import BotConfig
-from ai.mcp_manager import MCPManager
+from manolo_bot.ai.config import BotConfig
+from manolo_bot.ai.mcp_manager import MCPManager
 
 
 class TimeResult(BaseModel):

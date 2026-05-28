@@ -25,4 +25,4 @@ COPY . .
 RUN uv sync --locked
 
 # Run the bot
-CMD ["uv", "run", "main.py"]
+CMD ["uv", "run", "manolo-bot"]

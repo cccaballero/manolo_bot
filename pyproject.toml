@@ -30,8 +30,18 @@ dependencies = [
     "html2text>=2025.4.15",
 ]
 
+[project.scripts]
+manolo-bot = "manolo_bot.main:main_entry"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["manolo_bot"]
+
 [dependency-groups]
-dev = ["pre-commit>=4.1.0", "pytest-asyncio>=0.24.0", "ruff>=0.11.0"]
+dev = ["pre-commit>=4.1.0", "ruff>=0.11.0"]
 
 [tool.ruff]
 line-length = 120
