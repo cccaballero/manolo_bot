@@ -53,6 +53,18 @@ To get these values, talk to `@BotFather` on Telegram.
 * `TELEGRAM_BOT_TOKEN`: **Required.** Your unique bot token.
 * `TELEGRAM_BOT_NAME`: The display name you gave your bot.
 * `TELEGRAM_BOT_USERNAME`: The @username of your bot.
+* `BOT_UUID`: A unique identifier for this bot instance (default: `default-bot-uuid`). Used to isolate conversation history in storage.
+* `USER_ID`: Your Telegram User ID (default: `0`). Used for internal tracking and metadata.
+
+Bot Persona and Instructions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Customize how the bot behaves and speaks.
+
+* `TELEGRAM_BOT_INSTRUCTIONS`: Full system instructions for the LLM. Overrides all other instructions.
+* `TELEGRAM_BOT_INSTRUCTIONS_CHARACTER`: Defines the bot's "personality" (e.g., "You are a helpful assistant").
+* `TELEGRAM_BOT_INSTRUCTIONS_EXTRA`: Additional instructions appended to the main system prompt.
+* `PREFERRED_LANGUAGE`: The language the bot should prefer (default: `Spanish`).
 
 Agent and Tools
 ~~~~~~~~~~~~~~~
@@ -75,6 +87,8 @@ Image and Voice
 * `IMAGE_MULTIMODAL`: Set to `True` to allow the bot to "see" images you send or reply to.
 * `AUDIO_MULTIMODAL`: **(Experimental)** Set to `True` to allow the bot to "hear" voice messages. Currently only supported by Google Gemini.
 * `WEBUI_SD_API_URL`: If you have a Stable Diffusion Web UI running, provide its URL here to enable the `/generate_image` capability.
+* `WEBUI_SD_API_PARAMS`: A JSON string of parameters for the Stable Diffusion API (e.g., `{"steps": 20, "width": 512}`).
+* `WEBUI_SD_API_NEGATIVE_PROMPT`: Words or concepts you want Stable Diffusion to avoid.
 
 Storage and Persistence
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,6 +123,22 @@ Interaction Control
 * `TELEGRAM_ALLOWED_CHATS`: Comma-separated list of IDs. If set, the bot will only respond in these chats.
 * `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages.
 * `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned.
+* `ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it should respond.
+* `SIMULATE_TYPING`: If `True`, the bot will simulate typing before sending a response.
+* `SIMULATE_TYPING_WPM`: Typing speed in words per minute (default: `100`).
+* `SIMULATE_TYPING_MAX_TIME`: Maximum time in seconds to simulate typing (default: `10`).
+
+Advanced Settings
+~~~~~~~~~~~~~~~~~
+
+Fine-tune the bot's performance and logging.
+
+* `LOGGING_LEVEL`: Set the verbosity of logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+* `CONTEXT_MAX_TOKENS`: Maximum number of tokens to keep in conversation memory (default: `4096`).
+* `WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout for tools that fetch web content (default: `10`).
+* `RATE_LIMITER_REQUESTS_PER_SECOND`: Max requests per second (default: `0.25`).
+* `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).
+* `RATE_LIMITER_MAX_BUCKET_SIZE`: Token bucket size for rate limiting (default: `10`).
 
 Available Commands
 ------------------

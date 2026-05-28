@@ -44,6 +44,12 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
 
+#### Advanced Identity Settings
+
+`BOT_UUID`: A unique identifier for this bot instance (default: `default-bot-uuid`). Used to isolate conversation history in storage.
+
+`USER_ID`: Your Telegram User ID (default: `0`). Used for internal tracking and metadata.
+
 #### Selecting OpenAI Model.
 
 `OPENAI_API_MODEL`: LLM to use for OpenAI or OpenAI-like API; if not provided, the default model will be used.
@@ -87,6 +93,8 @@ This will override the default instructions, and the custom bot character instru
 chats.
 
 `ALLOW_PRIVATE_CHATS`: Enable or disable direct bot interaction in private chats (True, False). Default is True.
+
+`ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it should respond (True, False). Default is False.
 
 #### Enable multimodal capabilities
 
