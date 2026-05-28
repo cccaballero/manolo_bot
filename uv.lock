@@ -1602,13 +1602,18 @@ dependencies = [
 docs = [
     { name = "myst-parser" },
     { name = "sphinx" },
+    { name = "sphinx-autodoc-typehints" },
     { name = "sphinx-rtd-theme" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "myst-parser" },
     { name = "pre-commit" },
     { name = "ruff" },
+    { name = "sphinx" },
+    { name = "sphinx-autodoc-typehints" },
+    { name = "sphinx-rtd-theme" },
 ]
 
 [package.metadata]
@@ -1630,11 +1635,12 @@ requires-dist = [
     { name = "langchain-tavily", specifier = ">=0.2.17" },
     { name = "langgraph", specifier = ">=0.5.4" },
     { name = "mcp", specifier = ">=1.3.1" },
-    { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=4.0.0" },
+    { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=5.1.0" },
     { name = "pillow", specifier = ">=11.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.1.3" },
-    { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.0.2" },
+    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.1.0" },
+    { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.10.3" },
+    { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
     { name = "telegramify-markdown", extras = ["mermaid"], specifier = ">=0.5.1" },
     { name = "transformers", specifier = ">=4.53.0" },
     { name = "youtube-transcript-api", specifier = ">=1.1.1" },
@@ -1643,8 +1649,12 @@ provides-extras = ["docs"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "myst-parser", specifier = ">=5.1.0" },
     { name = "pre-commit", specifier = ">=4.1.0" },
     { name = "ruff", specifier = ">=0.11.0" },
+    { name = "sphinx", specifier = ">=9.1.0" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=3.10.3" },
+    { name = "sphinx-rtd-theme", specifier = ">=3.1.0" },
 ]
 
 [[package]]
@@ -2929,6 +2939,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a/sphinx-9.1.0.tar.gz", hash = "sha256:7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb", size = 8718324, upload-time = "2025-12-31T15:09:27.646Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/73/f7/b1884cb3188ab181fc81fa00c266699dab600f927a964df02ec3d5d1916a/sphinx-9.1.0-py3-none-any.whl", hash = "sha256:c84fdd4e782504495fe4f2c0b3413d6c2bf388589bb352d439b2a3bb99991978", size = 3921742, upload-time = "2025-12-31T15:09:25.561Z" },
+]
+
+[[package]]
+name = "sphinx-autodoc-typehints"
+version = "3.10.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/fd/44b8cf4465af19bf6684142f83b9b4123f6b97dc640fbdcd01f7fc01064e/sphinx_autodoc_typehints-3.10.3.tar.gz", hash = "sha256:01798d25041a16b95c5e053a45b133228e66ff37dbeef0ae8b3add4937aa41a2", size = 78698, upload-time = "2026-05-28T05:13:36.421Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/30/4891d0503d4c32d857fb60ee1ea5b46f1bb13880866624f955bcb1dc9834/sphinx_autodoc_typehints-3.10.3-py3-none-any.whl", hash = "sha256:c6f9909dbdf81085f01b8a677f4da9accf97bd403d9bf820718fd5a745da355f", size = 40080, upload-time = "2026-05-28T05:13:35.04Z" },
 ]
 
 [[package]]
