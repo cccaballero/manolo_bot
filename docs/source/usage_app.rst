@@ -148,10 +148,12 @@ Available Commands
 Running with Docker
 -------------------
 
-For production deployment, using Docker Compose is recommended:
+For production deployment, using Docker Compose (V2) is recommended:
 
 .. code-block:: shell
 
-   docker-compose up -d
+   docker compose up -d
+
+If you encounter a ``KeyError: 'ContainerConfig'`` when using the older ``docker-compose`` tool, please upgrade to Docker Compose V2.
 
 This will start both the bot and a Redis instance for persistent storage.

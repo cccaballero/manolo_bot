@@ -30,11 +30,13 @@ GOOGLE_API_KEY=your_google_api_key
 LOGGING_LEVEL=INFO
 ```
 
-2. Run with docker-compose:
+2. Run with Docker Compose (V2 recommended):
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
+
+> **Note:** If you use the old `docker-compose` (V1) and get a `KeyError: 'ContainerConfig'`, it is because your Docker Engine is too new for the deprecated V1 tool. Please upgrade to Docker Compose V2.
 
 ## Building the Docker Image
 
