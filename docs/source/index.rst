@@ -1,7 +1,7 @@
-Welcome to manolo-bot's documentation!
-======================================
+manolo-bot: AI-powered Telegram Chat Bot and Library
+====================================================
 
-`manolo-bot` is a sophisticated Telegram chat bot built with Python, leveraging modern LLM frameworks and the Model Context Protocol (MCP).
+`manolo-bot` is an AI-powered Telegram Chat Bot and Library built with Python, leveraging modern LLM frameworks and the Model Context Protocol (MCP).
 It is designed to be both a standalone application and a reusable library for building your own AI-powered bots.
 
 .. toctree::
