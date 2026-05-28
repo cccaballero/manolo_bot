@@ -267,13 +267,18 @@ uv run python -m unittest discover tests
 
 ## Library Usage
 
-`manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM providers and message storage.
+`manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM providers, message storage, and agentic capabilities.
+
+### Using LLMAgent (Recommended)
+
+The `LLMAgent` is the most powerful way to use the library. It allows the bot to use tools and iterate through multiple steps to solve complex queries.
 
 ```python
 import asyncio
-from manolo_bot import LLMBot, LLMBuilder
+from manolo_bot import LLMAgent, LLMBuilder
 from manolo_bot.config import BotConfig, LLMConfig
 from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+from manolo_bot.ai.tools import get_tools
 
 async def main():
     # 1. Configure LLM (Google, OpenAI, or Ollama)
@@ -284,21 +289,23 @@ async def main():
     bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
 
     # 3. Setup Storage for a specific conversation
-    # Storage is isolated by bot_uuid and chat_id
     storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
     await storage.refresh_messages()
 
-    # 4. Initialize Bot
-    bot = LLMBot(
+    # 4. Initialize Agent with tools
+    tools = get_tools()
+    agent = LLMAgent(
         llm=llm,
         config=bot_config,
         system_instructions="You are a helpful assistant.",
-        storage=storage
+        storage=storage,
+        tools=tools
     )
 
     # 5. Interact
-    response = await bot.answer_message(chat_id=123, message="Hello!")
-    print(f"Bot: {response.content}")
+    # The agent can search the web, analyze content, etc.
+    response = await agent.answer_message(chat_id=123, message="What is the current price of Bitcoin?")
+    print(f"Agent: {response.content}")
     
     # 6. Persistent changes (if using Redis)
     await storage.commit()
@@ -307,7 +314,26 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-For more advanced usage, including **agentic behavior** (where the bot can iterate to complete tasks using tools), please refer to the [Library Usage section](https://manolo-bot.readthedocs.io/en/latest/usage_library.html) in the full documentation.
+### Using LLMBot (Simple)
+
+For simpler use cases or when using models that don't support tool calling, you can use the basic `LLMBot`. It provides a direct chat interface without iterative reasoning.
+
+```python
+from manolo_bot import LLMBot
+
+# ... (same setup as above)
+
+bot = LLMBot(
+    llm=llm,
+    config=bot_config,
+    system_instructions="You are a simple assistant.",
+    storage=storage
+)
+
+response = await bot.answer_message(chat_id=123, message="Hello!")
+```
+
+For more advanced usage and full API details, please refer to the [Full Documentation](https://manolo-bot.readthedocs.io/).
 
 ## Contributing
 

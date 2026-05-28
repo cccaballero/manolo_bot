@@ -56,91 +56,84 @@ The `storage` component is responsible for persisting conversation history. `man
    # chat_id is a unique identifier for the current conversation (e.g., a user ID)
    storage = MemoryMessagesStorage(bot_uuid="my-unique-bot-id", chat_id=12345)
 
-Basic Example
--------------
+Main Component: LLMAgent (Recommended)
+--------------------------------------
 
-Here is a complete, runnable example using `MemoryMessagesStorage`.
-
-.. code-block:: python
-
-   import asyncio
-   from manolo_bot import LLMBot, LLMBuilder
-   from manolo_bot.config import LLMConfig, BotConfig
-   from manolo_bot.storage.memory_storage import MemoryMessagesStorage
-
-   async def main():
-       # 1. Setup LLM
-       llm_config = LLMConfig(google_api_key="your_key")
-       llm = LLMBuilder(llm_config).get_llm()
-
-       # 2. Setup Bot Identity
-       bot_config = BotConfig(bot_uuid="bot-1", bot_name="Assistant")
-
-       # 3. Setup Storage for a specific conversation
-       chat_id = 1001
-       storage = MemoryMessagesStorage(bot_uuid="bot-1", chat_id=chat_id)
-       await storage.refresh_messages() # Load existing history
-
-       # 4. Initialize the Bot
-       bot = LLMBot(
-           llm=llm,
-           config=bot_config,
-           system_instructions="You are a helpful assistant.",
-           storage=storage
-       )
-
-       # 5. Answer a message
-       response = await bot.answer_message(chat_id=chat_id, message="Hi, who are you?")
-       print(f"Bot: {response.content}")
-
-       # 6. Save new messages to storage
-       await storage.commit()
-
-   if __name__ == "__main__":
-       asyncio.run(main())
-
-Advanced Usage: LLMAgent
-------------------------
-
-If you need your bot to perform complex tasks that require reasoning and multiple steps (like searching the web, analyzing content, and then summarizing), use `LLMAgent` instead of `LLMBot`.
+The `LLMAgent` is the most powerful and feature-rich component in `manolo-bot`. It implements **Agentic behavior**, meaning it uses the LLM as a "reasoning engine" to complete tasks.
 
 What is "Agentic" behavior?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Unlike a standard LLM that generates a single response, an **Agent** uses the LLM as a "reasoning engine." When you use `LLMAgent`:
+Unlike a standard LLM that generates a single response, an **Agent** iterates through a loop:
 
 1.  **Reasoning**: The bot analyzes the user's request.
 2.  **Tool Selection**: It decides if it needs external information (e.g., using a Search tool).
-3.  **Iteration**: It executes the tool, observes the result, and then *iterates*. If the search result wasn't enough, it might try a different search or a different tool.
-4.  **Completion**: It continues this loop until it has enough information to provide a final, comprehensive answer.
+3.  **Iteration**: It executes the tool, observes the result, and then *iterates*.
+4.  **Completion**: It continues this loop until it has enough information to provide a final answer.
 
 Implementation Example
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from manolo_bot import LLMAgent
+   import asyncio
+   from manolo_bot import LLMAgent, LLMBuilder
+   from manolo_bot.config import LLMConfig, BotConfig
+   from manolo_bot.storage.memory_storage import MemoryMessagesStorage
    from manolo_bot.ai.tools import get_tools
 
-   # 1. Get built-in tools (Search, YouTube, Scraper, etc.)
-   tools = get_tools()
+   async def main():
+       # 1. Setup LLM (Must support Tool Calling)
+       llm_config = LLMConfig(google_api_key="your_key")
+       llm = LLMBuilder(llm_config).get_llm()
 
-   # 2. Initialize the Agent
-   # Note: LLMAgent requires an LLM that supports Tool Calling
-   agent = LLMAgent(
+       # 2. Setup Bot Identity
+       bot_config = BotConfig(bot_uuid="bot-1", bot_name="Assistant")
+
+       # 3. Setup Storage
+       chat_id = 1001
+       storage = MemoryMessagesStorage(bot_uuid="bot-1", chat_id=chat_id)
+       await storage.refresh_messages()
+
+       # 4. Initialize the Agent with Tools
+       tools = get_tools()
+       agent = LLMAgent(
+           llm=llm,
+           config=bot_config,
+           system_instructions="You are a helpful assistant.",
+           storage=storage,
+           tools=tools
+       )
+
+       # 5. Answer a message
+       # The agent will automatically decide when to use search, etc.
+       response = await agent.answer_message(chat_id=chat_id, message="What happened in the news today?")
+       print(f"Agent Result: {response.content}")
+
+       await storage.commit()
+
+   if __name__ == "__main__":
+       asyncio.run(main())
+
+Simple Alternative: LLMBot
+--------------------------
+
+The `LLMBot` is a simpler implementation designed for:
+*   **Simple Models**: LLMs that do not support tool calling or have limited reasoning capabilities.
+*   **Direct Interaction**: When you only need a straightforward chat interface without multi-step reasoning.
+*   **Performance**: It is slightly faster as it doesn't perform multiple iterations.
+
+.. code-block:: python
+
+   from manolo_bot import LLMBot
+
+   # ... (Setup is identical to LLMAgent, but without tools)
+
+   bot = LLMBot(
        llm=llm,
        config=bot_config,
-       system_instructions="You are a helpful researcher.",
-       storage=storage,
-       tools=tools
+       system_instructions="You are a simple chatbot.",
+       storage=storage
    )
 
-   # 3. The agent will automatically loop to complete the task
-   # Request: "Search for the latest SpaceX launch and summarize the mission"
-   response = await agent.answer_message(
-       chat_id=chat_id, 
-       message="What was the last SpaceX launch about?"
-   )
-   
-   print(f"Final Research Result: {response.content}")
-   await storage.commit()
+   response = await bot.answer_message(chat_id=chat_id, message="Hello!")

@@ -69,7 +69,10 @@ Customize how the bot behaves and speaks.
 Agent and Tools
 ~~~~~~~~~~~~~~~
 
-* `AGENT_MODE`: Set to `True` to enable "Agentic" behavior. In this mode, the bot doesn't just respond; it thinks and acts. It will use the LLM to reason about your request and can perform multiple iterations (like searching the internet, reading web pages, and refining its search) until it completes the task.
+.. note::
+   Using **Agent Mode** is highly recommended for a better experience, as it allows the bot to reason and use tools effectively.
+
+* `AGENT_MODE`: Set to `True` (recommended) to enable "Agentic" behavior. In this mode, the bot doesn't just respond; it thinks and acts. It will use the LLM to reason about your request and can perform multiple iterations (like searching the internet, reading web pages, and refining its search) until it completes the task.
 * `USE_TOOLS`: Set to `True` to allow the bot to use tools. In non-agent mode, it uses tools in a more direct, single-step way.
 * `AGENT_INSTRUCTIONS`: Custom rules that guide how the agent should reason and prioritize its actions when `AGENT_MODE` is active.
 
