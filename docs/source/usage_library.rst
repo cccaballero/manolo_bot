@@ -20,8 +20,8 @@ The `LLMConfig` class holds all settings for the AI provider (OpenAI, Google, or
 
 .. code-block:: python
 
-   from manolo_bot.config import LLMConfig
-   from manolo_bot import LLMBuilder
+   from manolo_bot.ai.config import LLMConfig
+   from manolo_bot.ai.llmbot import LLMBuilder
 
    # Example: Google Gemini
    llm_config = LLMConfig(google_api_key="your_api_key")
@@ -34,7 +34,7 @@ The `BotConfig` class defines settings like the bot's name, UUID (for unique ide
 
 .. code-block:: python
 
-   from manolo_bot.config import BotConfig
+   from manolo_bot.ai.config import BotConfig
 
    bot_config = BotConfig(
        bot_uuid="my-unique-bot-id",
@@ -77,8 +77,9 @@ Implementation Example
 .. code-block:: python
 
    import asyncio
-   from manolo_bot import LLMAgent, LLMBuilder
-   from manolo_bot.config import LLMConfig, BotConfig
+   from manolo_bot.ai.llmagent import LLMAgent
+   from manolo_bot.ai.llmbot import LLMBuilder
+   from manolo_bot.ai.config import LLMConfig, BotConfig
    from manolo_bot.storage.memory_storage import MemoryMessagesStorage
    from manolo_bot.ai.tools import get_tools
 
@@ -125,7 +126,7 @@ The `LLMBot` is a simpler implementation designed for:
 
 .. code-block:: python
 
-   from manolo_bot import LLMBot
+   from manolo_bot.ai.llmbot import LLMBot
 
    # ... (Setup is identical to LLMAgent, but without tools)
 
@@ -148,7 +149,7 @@ To add custom tools, use the ``@tool`` decorator from ``langchain_core.tools`` a
 .. code-block:: python
 
    from langchain_core.tools import tool
-   from manolo_bot import LLMAgent
+   from manolo_bot.ai.llmagent import LLMAgent
 
    @tool
    def get_stock_price(symbol: str) -> str:

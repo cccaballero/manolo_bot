@@ -37,8 +37,8 @@ manolo-bot = "manolo_bot.main:main_entry"
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["manolo_bot"]
+[tool.setuptools.packages.find]
+include = ["manolo_bot*"]
 
 [project.optional-dependencies]
 docs = [

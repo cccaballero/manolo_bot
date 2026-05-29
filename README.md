@@ -2,7 +2,8 @@
 
 [![Documentation Status](https://readthedocs.org/projects/manolo-bot/badge/?version=latest)](https://manolo-bot.readthedocs.io/en/latest/?badge=latest)
 
-`manolo-bot` is an AI-powered Telegram Chat Bot and Library built with Python, leveraging modern LLM frameworks and the Model Context Protocol (MCP).
+`manolo-bot` is an AI-powered Telegram Chat Bot and Library built with Python, leveraging modern LLM frameworks and the
+Model Context Protocol (MCP).
 It is designed to be both a standalone application and a reusable library for building your own AI-powered bots.
 
 ## Documentation
@@ -46,7 +47,8 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 #### Advanced Identity Settings
 
-`BOT_UUID`: A unique identifier for this bot instance (default: `default-bot-uuid`). Used to isolate conversation history in storage.
+`BOT_UUID`: A unique identifier for this bot instance (default: `default-bot-uuid`). Used to isolate conversation
+history in storage.
 
 `USER_ID`: Your Telegram User ID (default: `0`). Used for internal tracking and metadata.
 
@@ -60,7 +62,9 @@ The `OPENAI_API_BASE_URL` will look for an OpenAI API like, as the LM Studio API
 
 #### Enabling Agent Mode
 
-`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use **agentic capabilities**. This means the bot will use the LLM as a reasoning engine, allowing it to iterate through multiple steps (like searching the internet and analyzing results) to complete complex tasks.
+`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use **agentic
+capabilities**. This means the bot will use the LLM as a reasoning engine, allowing it to iterate through multiple
+steps (like searching the internet and analyzing results) to complete complex tasks.
 
 `AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior and reasoning when in agent mode.
 
@@ -94,7 +98,8 @@ chats.
 
 `ALLOW_PRIVATE_CHATS`: Enable or disable direct bot interaction in private chats (True, False). Default is True.
 
-`ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it should respond (True, False). Default is False.
+`ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it
+should respond (True, False). Default is False.
 
 #### Enable multimodal capabilities
 
@@ -145,7 +150,8 @@ tools capabilities. When tool usage is disabled, the bot will use the prompt-bas
 
 #### Search Configuration
 
-The bot uses DuckDuckGo by default for web searches. You can optionally enable **Tavily Search** for more advanced search capabilities.
+The bot uses DuckDuckGo by default for web searches. You can optionally enable **Tavily Search** for more advanced
+search capabilities.
 
 `USE_TAVILY_SEARCH`: Enable Tavily Search (True, False). Default is False.
 
@@ -267,18 +273,22 @@ uv run python -m unittest discover tests
 
 ## Library Usage
 
-`manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM providers, message storage, and agentic capabilities.
+`manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM
+providers, message storage, and agentic capabilities.
 
 ### Using LLMAgent (Recommended)
 
-The `LLMAgent` is the most powerful way to use the library. It allows the bot to use tools and iterate through multiple steps to solve complex queries.
+The `LLMAgent` is the most powerful way to use the library. It allows the bot to use tools and iterate through multiple
+steps to solve complex queries.
 
 ```python
 import asyncio
-from manolo_bot import LLMAgent, LLMBuilder
-from manolo_bot.config import BotConfig, LLMConfig
+from manolo_bot.ai.llmagent import LLMAgent
+from manolo_bot.ai.llmbot import LLMBuilder
+from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.storage.memory_storage import MemoryMessagesStorage
 from manolo_bot.ai.tools import get_tools
+
 
 async def main():
     # 1. Configure LLM (Google, OpenAI, or Ollama)
@@ -306,9 +316,10 @@ async def main():
     # The agent can search the web, analyze content, etc.
     response = await agent.answer_message(chat_id=123, message="What is the current price of Bitcoin?")
     print(f"Agent: {response.content}")
-    
+
     # 6. Persistent changes (if using Redis)
     await storage.commit()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -320,21 +331,25 @@ You can provide your own tools when initializing `LLMAgent` or `LLMBot`:
 
 ```python
 from langchain_core.tools import tool
+from manolo_bot.ai.llmagent import LLMAgent
+
 
 @tool
 def my_tool(query: str) -> str:
     """Description of my tool."""
     return "Result"
 
+
 agent = LLMAgent(..., tools=[my_tool])
 ```
 
 ### Using LLMBot (Simple)
 
-For simpler use cases or when using models that don't support tool calling, you can use the basic `LLMBot`. It provides a direct chat interface without iterative reasoning.
+For simpler use cases or when using models that don't support tool calling, you can use the basic `LLMBot`. It provides
+a direct chat interface without iterative reasoning.
 
 ```python
-from manolo_bot import LLMBot
+from manolo_bot.ai.llmbot import LLMBot
 
 # ... (same setup as above)
 
@@ -348,7 +363,8 @@ bot = LLMBot(
 response = await bot.answer_message(chat_id=123, message="Hello!")
 ```
 
-For more advanced usage and full API details, please refer to the [Full Documentation](https://manolo-bot.readthedocs.io/).
+For more advanced usage and full API details, please refer to
+the [Full Documentation](https://manolo-bot.readthedocs.io/).
 
 ## Contributing
 

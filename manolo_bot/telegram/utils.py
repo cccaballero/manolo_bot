@@ -7,7 +7,6 @@ import telegramify_markdown
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile, Message
-from telegramify_markdown import customize
 
 
 def get_telegram_file_url(bot_token: str, file_path: str) -> str:
@@ -121,7 +120,7 @@ def convert_markdown_to_telegram_format(markdown_text: str) -> str:
     :param markdown_text: Text to convert
     :return: Converted text
     """
-    customize.strict_markdown = False
+    telegramify_markdown.customize.strict_markdown = False
     return telegramify_markdown.markdownify(markdown_text)
 
 
