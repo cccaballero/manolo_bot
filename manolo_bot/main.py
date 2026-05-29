@@ -155,6 +155,7 @@ bot_config = BotConfig(
     preferred_language=config.preferred_language,
     is_image_multimodal=config.is_image_multimodal,
     is_audio_multimodal=config.is_audio_multimodal,
+    use_tools=config.use_tools,
     enable_mcp=config.enable_mcp,
     mcp_servers_config=config.mcp_servers_config,
     can_use_tavily_search=config.use_tavily_search,

@@ -61,7 +61,7 @@ class Config(EnvModel):
     simulate_typing_wpm = IntegerField("SIMULATE_TYPING_WPM", default=100)
     simulate_typing_max_time = IntegerField("SIMULATE_TYPING_MAX_TIME", default=10)
 
-    use_tools = BooleanField("USE_TOOLS", default=False)
+    use_tools = BooleanField("USE_TOOLS", default=True)
 
     # MCP Configuration
     enable_mcp = BooleanField("ENABLE_MCP", default=False)

@@ -5,6 +5,7 @@ import aiohttp
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.llmbot import LLMBot
@@ -18,14 +19,17 @@ class LLMAgent(LLMBot):
     This bot can use tools and dynamically integrate with MCP servers.
     """
 
+    bind_tools_on_init = False
+
     def __init__(
         self,
         llm: BaseChatModel,
         bot_config: BotConfig,
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
+        tools: list[BaseTool] | None = None,
     ) -> None:
-        super().__init__(llm, bot_config, system_instructions, messages_storage)
+        super().__init__(llm, bot_config, system_instructions, messages_storage, tools=tools)
         # Don't create agent yet - wait for async initialization
         self.agent = None
 
@@ -36,8 +40,8 @@ class LLMAgent(LLMBot):
         # Create agent with all tools (custom + MCP)
         from manolo_bot.ai.tools import get_all_tools
 
-        # TODO: We probably don't want to call "mcp_manager.get_tools()" in each call, maybe we can cache this somehow?
-        tools = await get_all_tools(self._mcp_manager, self.bot_config)
+        # Use the tools passed in __init__ if available, otherwise get default ones
+        tools = await get_all_tools(self._mcp_manager, self.bot_config, custom_tools=self.tools)
 
         self.agent = create_agent(
             model=self.llm,

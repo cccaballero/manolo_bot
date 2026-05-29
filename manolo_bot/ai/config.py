@@ -19,7 +19,7 @@ class BotConfig:
     simulate_typing_wpm: int = 100
     simulate_typing_max_time: int = 10
 
-    # use_tools: bool = False
+    use_tools: bool = False
 
     # MCP Configuration
     enable_mcp: bool = False

@@ -314,6 +314,21 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Custom Tools
+
+You can provide your own tools when initializing `LLMAgent` or `LLMBot`:
+
+```python
+from langchain_core.tools import tool
+
+@tool
+def my_tool(query: str) -> str:
+    """Description of my tool."""
+    return "Result"
+
+agent = LLMAgent(..., tools=[my_tool])
+```
+
 ### Using LLMBot (Simple)
 
 For simpler use cases or when using models that don't support tool calling, you can use the basic `LLMBot`. It provides a direct chat interface without iterative reasoning.

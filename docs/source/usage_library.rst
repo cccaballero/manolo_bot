@@ -137,3 +137,38 @@ The `LLMBot` is a simpler implementation designed for:
    )
 
    response = await bot.answer_message(chat_id=chat_id, message="Hello!")
+
+Custom Tools
+------------
+
+You can easily provide your own tools to both ``LLMAgent`` and ``LLMBot``. This allows you to extend the bot's capabilities with your own domain-specific logic.
+
+To add custom tools, use the ``@tool`` decorator from ``langchain_core.tools`` and pass a list of tools to the constructor.
+
+.. code-block:: python
+
+   from langchain_core.tools import tool
+   from manolo_bot import LLMAgent
+
+   @tool
+   def get_stock_price(symbol: str) -> str:
+       """Gets the current stock price for a given symbol."""
+       # Your custom logic here
+       return f"The price of {symbol} is $150.00"
+
+   # Initialize with custom tools
+   custom_tools = [get_stock_price]
+   agent = LLMAgent(
+       ...,
+       tools=custom_tools
+   )
+
+.. note::
+   If you provide a ``tools`` list, it will **replace** the default built-in tools. If you want to **extend** the default tools, you can use the ``get_tools`` function:
+
+   .. code-block:: python
+
+      from manolo_bot.ai.tools import get_tools
+      
+      all_tools = get_tools(bot_config) + [get_stock_price]
+      agent = LLMAgent(..., tools=all_tools)

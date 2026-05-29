@@ -16,6 +16,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
@@ -94,12 +95,15 @@ class LLMBot:
     Handles interaction with the LLM, message processing, and context management.
     """
 
+    bind_tools_on_init = True
+
     def __init__(
         self,
         llm: BaseChatModel,
         bot_config: BotConfig,
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
+        tools: list[BaseTool] | None = None,
     ) -> None:
         self.bot_config = bot_config
         self.system_instructions = system_instructions
@@ -107,12 +111,12 @@ class LLMBot:
         self.llm = llm
         self.messages_storage: BaseMessagesStorage = messages_storage
         # self._load_llm()
+        self.tools = tools
         self._mcp_manager: MCPManager | None = None
         self._async_resources_initialized = False
 
-        # if self.bot_config.use_tools:
-        #     self._load_tools()
-        self._load_tools()
+        if self.bind_tools_on_init and self.bot_config.use_tools:
+            self._load_tools()
 
     def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
         """Helper to create LangChain config with metadata and tags."""
@@ -151,8 +155,8 @@ class LLMBot:
                 logging.info("MCP initialized successfully")
 
                 # Reload tools to include MCP tools
-                # if self.bot_config.use_tools:
-                await self._reload_tools_with_mcp()
+                if self.bot_config.use_tools:
+                    await self._reload_tools_with_mcp()
 
             except Exception as e:
                 logging.warning(
@@ -184,7 +188,7 @@ class LLMBot:
         """Reload tools including MCP tools."""
         from manolo_bot.ai.tools import get_all_tools
 
-        tools = await get_all_tools(self._mcp_manager, self.bot_config)
+        tools = await get_all_tools(self._mcp_manager, self.bot_config, custom_tools=self.tools)
         self.llm = self.llm.bind_tools(tools)
         logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
 
@@ -583,4 +587,5 @@ class LLMBot:
         return (len(text.split()) / wpm) * 60
 
     def _load_tools(self) -> None:
-        self.llm = self.llm.bind_tools(get_tools(bot_config=self.bot_config))  # add wikipedia?
+        tools_to_bind = self.tools if self.tools is not None else get_tools(bot_config=self.bot_config)
+        self.llm = self.llm.bind_tools(tools_to_bind)  # add wikipedia?

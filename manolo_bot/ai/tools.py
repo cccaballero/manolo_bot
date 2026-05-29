@@ -231,16 +231,19 @@ def get_tool(name: str) -> BaseTool | None:
     return None
 
 
-async def get_all_tools(mcp_manager: MCPManager = None, bot_config: BotConfig = None) -> list:
+async def get_all_tools(
+    mcp_manager: MCPManager = None, bot_config: BotConfig = None, custom_tools: list[BaseTool] | None = None
+) -> list:
     """
     Get all available tools (custom + MCP).
 
     :param mcp_manager: Optional MCP manager to load MCP tools from
     :param bot_config: Optional bot config
+    :param custom_tools: Optional list of tools to use instead of default ones
     :return: List of all available tools
     """
-    # Start with custom tools
-    tools = get_tools(bot_config)
+    # Start with custom tools or default ones
+    tools = custom_tools if custom_tools is not None else get_tools(bot_config)
 
     # Add MCP tools if available
     if mcp_manager and mcp_manager.is_connected:
