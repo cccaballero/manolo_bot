@@ -8,7 +8,7 @@ import sys
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
 from manolo_bot.ai.config import BotConfig, LLMConfig
@@ -31,7 +31,7 @@ from manolo_bot.telegram.utils import (
     user_is_admin,
 )
 
-load_dotenv()
+load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 
 config = Config()
 
