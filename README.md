@@ -10,17 +10,25 @@ It is designed to be both a standalone application and a reusable library for bu
 
 Full documentation is available at [https://manolo-bot.readthedocs.io/](https://manolo-bot.readthedocs.io/)
 
-## Getting Started
+## Installation
 
-### Prerequisites
+### From PyPI (Recommended)
 
-First, you need to install the required packages using [uv](https://docs.astral.sh/uv/):
+You can install `manolo-bot` directly from PyPI:
+
+```shell
+pip install manolo-bot
+```
+
+### From Source
+
+If you want to run the bot from the source code, you need to install the required packages using [uv](https://docs.astral.sh/uv/):
 
 ```shell
 uv sync --no-dev
 ```
 
-### Configuration
+## Configuration
 
 You can copy and rename the provided `env.example` to `.env` and edit the file according to your data
 

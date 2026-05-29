@@ -10,20 +10,22 @@ Quick Start
 
    .. code-block:: shell
 
-      uv sync --no-dev
+      pip install manolo-bot
 
 2. **Configure environment**:
-   Copy the example environment file and edit it with your API tokens:
+   Create a ``.env`` file in your current directory or set environment variables directly:
 
-   .. code-block:: shell
+   .. code-block:: text
 
-      cp env.example .env
+      TELEGRAM_BOT_TOKEN=your_telegram_token
+      GOOGLE_API_KEY=your_gemini_api_key
+      # Add other configuration as needed
 
 3. **Run the bot**:
 
    .. code-block:: shell
 
-      uv run manolo-bot
+      manolo-bot
 
 Configuration Details
 ---------------------

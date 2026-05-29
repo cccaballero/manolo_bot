@@ -1,14 +1,17 @@
 Installation
 ============
 
-Prerequisites
--------------
+From PyPI (Recommended)
+-----------------------
 
-* Python 3.12 or higher.
-* `uv` (recommended) or `pip`.
+You can install ``manolo-bot`` directly from PyPI using ``pip``:
 
-Installing from source
-----------------------
+.. code-block:: shell
+
+   pip install manolo-bot
+
+From Source
+-----------
 
 Clone the repository:
 
