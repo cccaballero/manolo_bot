@@ -2,7 +2,7 @@
 name = "manolo-bot"
 version = "0.1.0"
 description = "AI-powered Telegram Chat Bot and Library using LLMs"
-authors = [{ name = "Carlos Cesar Caballero Díaz", email = "tbd@example.com" }]
+authors = [{ name = "Carlos Cesar Caballero Díaz", email = "ccesarcaball.cc@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
