@@ -150,7 +150,7 @@ Document Storage
 
 Configure how the bot handles uploaded documents.
 
-* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `10485760` bytes / 10MB).
+* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
 * `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Available Commands

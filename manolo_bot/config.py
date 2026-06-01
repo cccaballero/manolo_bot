@@ -76,7 +76,7 @@ class Config(EnvModel):
     )
 
     # Document processing configuration
-    max_document_size = IntegerField("MAX_DOCUMENT_SIZE_BYTES", default=10 * 1024 * 1024)  # 10MB
+    max_document_size = IntegerField("MAX_DOCUMENT_SIZE_BYTES", default=2 * 1024 * 1024)  # 2MB
     document_storage_path = StringField(
         "DOCUMENT_STORAGE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "documents")
     )
