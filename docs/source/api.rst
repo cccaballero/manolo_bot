@@ -19,12 +19,27 @@ AI Components
 Storage Components
 ------------------
 
-.. automodule:: manolo_bot.storage.base
+.. automodule:: manolo_bot.storage.messages.base
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: manolo_bot.storage.memory_storage
+.. automodule:: manolo_bot.storage.messages.memory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.messages.redis
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.documents.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.documents.file
    :members:
    :undoc-members:
    :show-inheritance:

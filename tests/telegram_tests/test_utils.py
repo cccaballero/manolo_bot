@@ -11,7 +11,9 @@ from manolo_bot.telegram.utils import (
     get_message_text,
     get_telegram_file_url,
     is_bot_reply,
+    is_document,
     is_image,
+    is_voice,
     reply_photo_to_telegram_message,
     reply_to_telegram_message,
     simulate_typing,
@@ -173,11 +175,56 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AttributeError):
             is_image(None)
 
+    def test_is_voice__returns_true_when_voice(self):
+        # Arrange
+        message = unittest.mock.Mock()
+        message.voice = unittest.mock.Mock()
+
+        # Act
+        result = is_voice(message)
+
+        # Assert
+        self.assertTrue(result)
+
+    def test_is_voice__returns_false_when_not_voice(self):
+        # Arrange
+        message = unittest.mock.Mock()
+        message.voice = None
+
+        # Act
+        result = is_voice(message)
+
+        # Assert
+        self.assertFalse(result)
+
+    def test_is_document__returns_true_when_document(self):
+        # Arrange
+        message = unittest.mock.Mock()
+        message.document = unittest.mock.Mock()
+
+        # Act
+        result = is_document(message)
+
+        # Assert
+        self.assertTrue(result)
+
+    def test_is_document__returns_false_when_not_document(self):
+        # Arrange
+        message = unittest.mock.Mock()
+        message.document = None
+
+        # Act
+        result = is_document(message)
+
+        # Assert
+        self.assertFalse(result)
+
     def test_get_message_text__returns_text_when_not_image(self):
         # Arrange
         message = unittest.mock.Mock()
         message.text = "Hello, world!"
         message.photo = None  # Not an image
+        message.document = None  # Not a document
 
         # Act
         result = get_message_text(message)

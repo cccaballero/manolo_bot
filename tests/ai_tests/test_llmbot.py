@@ -1,20 +1,24 @@
 import base64
 import unittest
 import unittest.mock
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from manolo_bot.ai.llmbot import LLMBot
+from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.config import Config
 
 
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     def get_basic_llm_bot(self):
-        mock_llm = unittest.mock.MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock()
         mock_llm.bind_tools.return_value = mock_llm
-        mock_config = unittest.mock.MagicMock(spec=Config)
+        # Ensure token counting works in tests by returning an int, not a mock
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+
+        mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
         mock_config.google_api_key = None
         mock_config.openai_api_key = None
@@ -25,7 +29,10 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.mcp_servers_config = {}
         mock_config.use_tools = False
         mock_config.can_use_tavily_search = False
-        mock_messages_storage = unittest.mock.MagicMock()
+        mock_config.max_document_size = 10 * 1024 * 1024
+        mock_messages_storage = MagicMock()
+        mock_messages_storage.messages = []
+
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
         llm_bot = LLMBot(mock_llm, mock_config, system_instructions, mock_messages_storage)  # Initialize the bot
         llm_bot.chats = {1: {"messages": []}}
@@ -93,6 +100,84 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.bot_config, mock_bot_config)
         self.assertEqual(bot.system_instructions, system_instructions)
         self.assertEqual(bot.messages_storage, mock_messages_storage)
+
+    async def test_answer_document_message__success(self):
+        # Arrange
+        from manolo_bot.storage.documents.base import BaseDocumentStorage
+
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="Analysis"))
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+
+        mock_storage = MagicMock(spec=BaseDocumentStorage)
+        mock_storage.store = AsyncMock()
+
+        bot = self.get_basic_llm_bot()
+        bot.llm = mock_llm
+        bot.document_storage = mock_storage
+
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=b"something"):
+            with patch("manolo_bot.ai.document_loaders.DocumentLoader.extract_text_from_pdf", return_value="text"):
+                with patch("manolo_bot.ai.llmbot.DocumentLoader") as mock_loader_class:
+                    mock_loader_class.return_value.extract_text.return_value = "text"
+                    mock_loader_class.SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt", "md", "csv"]
+
+                    # Act
+                    result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
+
+                    # Assert
+                    self.assertEqual(result.content, "Analysis")
+                    # Filename is now unique (contains uuid), so we use ANY or check it starts with uuid
+                    mock_storage.store.assert_called_once_with(1, unittest.mock.ANY, "text")
+                    actual_filename = mock_storage.store.call_args[0][1]
+                    self.assertTrue(actual_filename.endswith("_file.pdf"))
+                    self.assertEqual(len(actual_filename.split("_")[0]), 8)
+
+    async def test_answer_document_message__too_large(self):
+        # Arrange
+        bot = self.get_basic_llm_bot()
+        bot.generate_feedback_message = AsyncMock(return_value="Message too large")
+        bot.bot_config.max_document_size = 100  # Small limit
+
+        with patch(
+            "manolo_bot.ai.llmbot.LLMBot._download_file", side_effect=FileTooLargeError("File is too large (200 bytes)")
+        ):
+            with patch("manolo_bot.ai.document_loaders.DocumentLoader.extract_text_from_pdf", return_value="text"):
+                # Act
+                result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
+
+                # Assert
+                self.assertEqual(result.content, "Message too large")
+
+    async def test_answer_document_message__unsupported_format(self):
+        # Arrange
+        bot = self.get_basic_llm_bot()
+        bot.generate_feedback_message = AsyncMock(return_value="Unsupported format message")
+
+        # Act
+        result = await bot.answer_document_message(1, "prompt", "http://url", "test.exe")
+
+        # Assert
+        self.assertEqual(result.content, "Unsupported format message")
+        bot.generate_feedback_message.assert_called_once()
+        # Verify it includes the extension in the prompt
+        args = bot.generate_feedback_message.call_args[0][0]
+        self.assertIn(".exe", args)
+
+    async def test_clean_context__clears_messages_and_documents(self):
+        # Arrange
+        mock_messages_storage = AsyncMock()
+        mock_document_storage = AsyncMock()
+        bot = self.get_basic_llm_bot()
+        bot.messages_storage = mock_messages_storage
+        bot.document_storage = mock_document_storage
+
+        # Act
+        await bot.clean_context()
+
+        # Assert
+        mock_messages_storage.clear_messages.assert_called_once()
+        mock_document_storage.clear.assert_called_once()
 
     def test_extract_url__extract_valid_url(self):
         # Arrange
@@ -240,27 +325,11 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         audio_url = "http://example.com/audio.ogg"
         fake_audio_data = b"fake_audio_data"
 
-        # Mock aiohttp
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.read = AsyncMock(return_value=fake_audio_data)
-        mock_response.raise_for_status = MagicMock()
-
-        mock_session = MagicMock()
-        mock_context_manager = MagicMock()
-        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_context_manager)
-
-        mock_session_cm = MagicMock()
-        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
-
         # Mock LLM response
         mock_ai_message = AIMessage(content="Heard it!")
         llm_bot.llm.ainvoke.return_value = mock_ai_message
 
-        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session_cm):
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=fake_audio_data):
             # Act
             response = await llm_bot.answer_voice_message(chat_id, text, audio_url)
 

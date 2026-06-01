@@ -117,10 +117,19 @@ capabilities.
 `AUDIO_MULTIMODAL`: **(Experimental)** Enable multimodal capabilities for audio/voice messages (True, False). Currently,
 this feature only works with the Gemini API.
 
+`DOCUMENT_MULTIMODAL`: Enable document analysis for PDF, DOCX, and TXT files (True, False). Default is False.
+When enabled, the bot can extract text from uploaded documents and use it as context.
+For large documents, it is recommended to use a model with a large context window (like Gemini) and increase `CONTEXT_MAX_TOKENS`.
+The document text is stored separately from chat history to keep memory clean.
+
 #### Enable group assistant
 
 `ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will respond to group chats with
 a question mark. The default value is False.
+
+#### Document processing configuration
+`MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: 2MB).
+`DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory.
 
 #### Enable rate limiting
 
@@ -294,7 +303,7 @@ import asyncio
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBuilder
 from manolo_bot.ai.config import BotConfig, LLMConfig
-from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+from manolo_bot.storage.messages.memory import MemoryMessagesStorage
 from manolo_bot.ai.tools import get_tools
 
 

@@ -15,12 +15,14 @@ from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.config import Config
-from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+from manolo_bot.storage.documents.file import FileDocumentStorage
+from manolo_bot.storage.messages.memory import MemoryMessagesStorage
 from manolo_bot.telegram.utils import (
     get_message_from,
     get_message_text,
     get_telegram_file_url,
     is_bot_reply,
+    is_document,
     is_image,
     is_reply,
     is_voice,
@@ -36,7 +38,9 @@ load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 config = Config()
 
 if config.storage_type == "redis":
-    from manolo_bot.storage.redis_storage import RedisDBHelper, RedisMessagesStorage
+    from manolo_bot.storage.messages.redis import RedisDBHelper, RedisMessagesStorage
+
+document_storage = FileDocumentStorage(bot_uuid=config.bot_uuid, base_path=config.document_storage_path)
 
 logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 
@@ -155,6 +159,7 @@ bot_config = BotConfig(
     preferred_language=config.preferred_language,
     is_image_multimodal=config.is_image_multimodal,
     is_audio_multimodal=config.is_audio_multimodal,
+    is_document_multimodal=config.is_document_multimodal,
     use_tools=config.use_tools,
     enable_mcp=config.enable_mcp,
     mcp_servers_config=config.mcp_servers_config,
@@ -162,6 +167,7 @@ bot_config = BotConfig(
     sdapi_url=config.sdapi_url,
     sdapi_params=config.sdapi_params,
     sdapi_negative_prompt=config.sdapi_negative_prompt,
+    max_document_size=config.max_document_size,
 )
 
 
@@ -173,9 +179,9 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
     if config.agent_mode:
-        llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage)
+        llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage, document_storage=document_storage)
     else:
-        llm_bot = LLMBot(llm, bot_config, system_instructions, messages_storage)
+        llm_bot = LLMBot(llm, bot_config, system_instructions, messages_storage, document_storage=document_storage)
 
     return llm_bot
 
@@ -231,13 +237,16 @@ async def flush_context_command(message: Message):
     await message.reply(success_message)
 
 
-@dp.message(F.content_type.in_(["text", "photo", "voice"]))
+@dp.message(F.content_type.in_(["text", "photo", "voice", "document"]))
 async def handle_message(message: Message):
     """
     Handle all incoming messages. This function is called for every incoming message.
     :param message: Telegram message object
     """
     if message.voice and not config.is_audio_multimodal:
+        return
+
+    if message.document and not config.is_document_multimodal:
         return
 
     chat_id = message.chat.id
@@ -299,9 +308,12 @@ async def process_message_queue():
                     voice_info = (
                         " [This message contains a voice message]" if is_voice(message.reply_to_message) else ""
                     )
+                    document_info = (
+                        " [This message contains a document]" if is_document(message.reply_to_message) else ""
+                    )
                     message_parts += (
                         f'\n"@{get_message_from(message.reply_to_message)} '
-                        f'said: {reply_text}{image_info}{voice_info}"\n\n'
+                        f'said: {reply_text}{image_info}{voice_info}{document_info}"\n\n'
                     )
                 if message_text:
                     message_parts += message_text
@@ -380,6 +392,41 @@ async def process_message_queue():
                             )
                         else:
                             logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
+                    # Check if message is a document
+                    elif is_document(message) and config.is_document_multimodal:
+                        logging.debug(f"Document message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.document.file_id)
+                        if file.file_path:
+                            response = await llm_bot.answer_document_message(
+                                chat_id,
+                                message_parts,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                                message.document.file_name,
+                            )
+                        else:
+                            logging.error(
+                                f"Document file not found for message {message.message_id} for chat {chat_id}"
+                            )
+                    # Check if the message is a reply to a message with a document
+                    elif (
+                        is_reply(message)
+                        and message.reply_to_message
+                        and is_document(message.reply_to_message)
+                        and config.is_document_multimodal
+                    ):
+                        logging.debug(f"Reply to document message {message.message_id} for chat {chat_id}")
+                        file = await bot.get_file(message.reply_to_message.document.file_id)
+                        if file.file_path:
+                            response = await llm_bot.answer_document_message(
+                                chat_id,
+                                message_parts,
+                                get_telegram_file_url(config.bot_token, file.file_path),
+                                message.reply_to_message.document.file_name,
+                            )
+                        else:
+                            logging.error(
+                                f"Document file not found for message {message.message_id} for chat {chat_id}"
+                            )
                     # If no response is found, treat the message as a text message
                     if not response:
                         logging.debug(f"Text message {message.message_id} for chat {chat_id}")

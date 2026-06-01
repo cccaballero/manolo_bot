@@ -26,3 +26,26 @@ source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
 }
+
+autodoc_mock_imports = [
+    "redis",
+    "pypdf",
+    "docx",
+    "aiohttp",
+    "google",
+    "langchain",
+    "langchain_classic",
+    "langchain_community",
+    "langchain_core",
+    "langchain_google_genai",
+    "langchain_ollama",
+    "langchain_openai",
+    "pydantic",
+    "pydantic_settings",
+    "youtube_transcript_api",
+    "ddgs",
+    "llmagent",
+    "langchain_mcp_adapters",
+    "mcp",
+    "langgraph",
+]
