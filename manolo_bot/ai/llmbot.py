@@ -32,6 +32,12 @@ if TYPE_CHECKING:
     from manolo_bot.storage.documents.base import BaseDocumentStorage
 
 
+class FileTooLargeError(ValueError):
+    """Exception raised when a file exceeds the allowed size."""
+
+    pass
+
+
 class LLMBuilder:
     """Factory class for creating LangChain Chat Model instances."""
 
@@ -399,12 +405,12 @@ class LLMBot:
                 # Check Content-Length if available
                 content_length = response.headers.get("Content-Length")
                 if content_length and int(content_length) > self.bot_config.max_document_size:
-                    raise ValueError(f"Document is too large ({content_length} bytes)")
+                    raise FileTooLargeError(f"Document is too large ({content_length} bytes)")
 
                 file_content = await response.read()
 
                 if len(file_content) > self.bot_config.max_document_size:
-                    raise ValueError(f"Document is too large ({len(file_content)} bytes)")
+                    raise FileTooLargeError(f"Document is too large ({len(file_content)} bytes)")
 
         # Extract text
         loader = DocumentLoader()
@@ -468,6 +474,15 @@ class LLMBot:
                 f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
                 f"explaining that you cannot read .{extension} files yet. "
                 f"Mention that you support {supported}. "
+                f"Keep it under 150 characters and maintain your character's style."
+            )
+            feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
+            response = AIMessage(content=feedback)
+
+        except FileTooLargeError:
+            error_prompt = (
+                f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
+                f"explaining that the document is too large and you cannot process it. "
                 f"Keep it under 150 characters and maintain your character's style."
             )
             feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)

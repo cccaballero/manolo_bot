@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
-from manolo_bot.ai.llmbot import LLMBot
+from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.storage.documents.base import BaseDocumentStorage
 from manolo_bot.storage.messages.base import BaseMessagesStorage
 
@@ -222,6 +222,16 @@ class LLMAgent(LLMBot):
             )
             feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
             response = AIMessage(content=feedback)
+
+        except FileTooLargeError:
+            error_prompt = (
+                f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
+                f"explaining that the document is too large and you cannot process it. "
+                f"Keep it under 150 characters and maintain your character's style."
+            )
+            feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
+            response = AIMessage(content=feedback)
+
         except (aiohttp.ClientError, Exception) as e:
             if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get document: {document_url}")

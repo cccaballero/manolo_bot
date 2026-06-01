@@ -167,6 +167,7 @@ bot_config = BotConfig(
     sdapi_url=config.sdapi_url,
     sdapi_params=config.sdapi_params,
     sdapi_negative_prompt=config.sdapi_negative_prompt,
+    max_document_size=config.max_document_size,
 )
 
 
