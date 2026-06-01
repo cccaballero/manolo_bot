@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from manolo_bot.ai.llmbot import LLMBot
+from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.config import Config
 
 
@@ -116,32 +116,22 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         bot.llm = mock_llm
         bot.document_storage = mock_storage
 
-        # Mock download
-        mock_response = AsyncMock()
-        mock_response.read.return_value = b"content"
-        mock_response.status = 200
-        mock_response.headers = {"Content-Length": "7"}
-        mock_response.raise_for_status = MagicMock()
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=b"something"):
+            with patch("manolo_bot.ai.document_loaders.DocumentLoader.extract_text_from_pdf", return_value="text"):
+                with patch("manolo_bot.ai.llmbot.DocumentLoader") as mock_loader_class:
+                    mock_loader_class.return_value.extract_text.return_value = "text"
+                    mock_loader_class.SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt", "md", "csv"]
 
-        mock_session_inst = MagicMock()
-        mock_session_inst.__aenter__.return_value = mock_session_inst
-        mock_session_inst.get.return_value.__aenter__.return_value = mock_response
+                    # Act
+                    result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
 
-        with patch("manolo_bot.ai.llmbot.aiohttp.ClientSession", return_value=mock_session_inst):
-            with patch("manolo_bot.ai.llmbot.DocumentLoader") as mock_loader_class:
-                mock_loader_class.return_value.extract_text.return_value = "text"
-                mock_loader_class.SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt", "md", "csv"]
-
-                # Act
-                result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
-
-                # Assert
-                self.assertEqual(result.content, "Analysis")
-                # Filename is now unique (contains uuid), so we use ANY or check it starts with uuid
-                mock_storage.store.assert_called_once_with(1, unittest.mock.ANY, "text")
-                actual_filename = mock_storage.store.call_args[0][1]
-                self.assertTrue(actual_filename.endswith("_file.pdf"))
-                self.assertEqual(len(actual_filename.split("_")[0]), 8)
+                    # Assert
+                    self.assertEqual(result.content, "Analysis")
+                    # Filename is now unique (contains uuid), so we use ANY or check it starts with uuid
+                    mock_storage.store.assert_called_once_with(1, unittest.mock.ANY, "text")
+                    actual_filename = mock_storage.store.call_args[0][1]
+                    self.assertTrue(actual_filename.endswith("_file.pdf"))
+                    self.assertEqual(len(actual_filename.split("_")[0]), 8)
 
     async def test_answer_document_message__too_large(self):
         # Arrange
@@ -149,23 +139,15 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         bot.generate_feedback_message = AsyncMock(return_value="Message too large")
         bot.bot_config.max_document_size = 100  # Small limit
 
-        # Mock download with large content
-        mock_response = AsyncMock()
-        mock_response.read.return_value = b"a" * 200
-        mock_response.status = 200
-        mock_response.headers = {"Content-Length": "200"}
-        mock_response.raise_for_status = MagicMock()
+        with patch(
+            "manolo_bot.ai.llmbot.LLMBot._download_file", side_effect=FileTooLargeError("File is too large (200 bytes)")
+        ):
+            with patch("manolo_bot.ai.document_loaders.DocumentLoader.extract_text_from_pdf", return_value="text"):
+                # Act
+                result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
 
-        mock_session_inst = MagicMock()
-        mock_session_inst.__aenter__.return_value = mock_session_inst
-        mock_session_inst.get.return_value.__aenter__.return_value = mock_response
-
-        with patch("manolo_bot.ai.llmbot.aiohttp.ClientSession", return_value=mock_session_inst):
-            # Act
-            result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
-
-            # Assert
-            self.assertEqual(result.content, "Message too large")
+                # Assert
+                self.assertEqual(result.content, "Message too large")
 
     async def test_answer_document_message__unsupported_format(self):
         # Arrange
@@ -343,27 +325,11 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         audio_url = "http://example.com/audio.ogg"
         fake_audio_data = b"fake_audio_data"
 
-        # Mock aiohttp
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.read = AsyncMock(return_value=fake_audio_data)
-        mock_response.raise_for_status = MagicMock()
-
-        mock_session = MagicMock()
-        mock_context_manager = MagicMock()
-        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_context_manager)
-
-        mock_session_cm = MagicMock()
-        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
-
         # Mock LLM response
         mock_ai_message = AIMessage(content="Heard it!")
         llm_bot.llm.ainvoke.return_value = mock_ai_message
 
-        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session_cm):
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=fake_audio_data):
             # Act
             response = await llm_bot.answer_voice_message(chat_id, text, audio_url)
 

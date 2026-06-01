@@ -147,6 +147,40 @@ class LLMBot:
         """Get the timeout for aiohttp sessions."""
         return aiohttp.ClientTimeout(total=self.bot_config.web_content_request_timeout)
 
+    async def _download_file(self, url: str, session: aiohttp.ClientSession, size_limit: int = 0) -> bytes:
+        """
+        Downloads a file from a URL with a size limit.
+        Checks Content-Length header first, then streams in chunks.
+
+        :param url: URL to download
+        :param session: aiohttp ClientSession
+        :param size_limit: Maximum allowed size in bytes, 0 for no limit
+        :return: File content as bytes
+        :raises FileTooLargeError: If the file exceeds the maximum allowed size
+        """
+        timeout = self._get_session_timeout()
+        async with session.get(url, timeout=timeout) as response:
+            response.raise_for_status()
+
+            # 1. Header Check (First layer of security)
+            content_length = response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    if size_limit and int(content_length) > size_limit:
+                        raise FileTooLargeError(f"File is too large ({content_length} bytes)")
+                except ValueError:
+                    # If Content-Length is not an integer, we ignore it and rely on the stream check
+                    pass
+
+            # 2. Chunked Download (Second layer of security)
+            file_content = bytearray()
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                file_content.extend(chunk)
+                if size_limit and len(file_content) > size_limit:
+                    raise FileTooLargeError(f"File exceeds maximum allowed size ({len(file_content)} bytes)")
+
+            return bytes(file_content)
+
     async def initialize_async_resources(self) -> None:
         """Initialize all async resources (MCP, etc.)."""
         if self._async_resources_initialized:
@@ -300,12 +334,8 @@ class LLMBot:
 
         try:
             async with aiohttp.ClientSession() as session:
-                timeout = self._get_session_timeout()
-
-                async with session.get(image, timeout=timeout) as response:
-                    response.raise_for_status()
-                    image_bytes = await response.read()
-                    image_data = base64.b64encode(image_bytes).decode("utf-8")
+                image_bytes = await self._download_file(image, session)
+                image_data = base64.b64encode(image_bytes).decode("utf-8")
 
                 llm_message = HumanMessage(
                     content=[
@@ -344,12 +374,8 @@ class LLMBot:
 
         try:
             async with aiohttp.ClientSession() as session:
-                timeout = self._get_session_timeout()
-
-                async with session.get(audio, timeout=timeout) as response:
-                    response.raise_for_status()
-                    audio_bytes = await response.read()
-                    audio_data = base64.b64encode(audio_bytes).decode("utf-8")
+                audio_bytes = await self._download_file(audio, session)
+                audio_data = base64.b64encode(audio_bytes).decode("utf-8")
 
                 llm_message = HumanMessage(
                     content=[
@@ -397,20 +423,9 @@ class LLMBot:
             raise UnsupportedFileError(f"Extension .{extension} is not supported")
 
         async with aiohttp.ClientSession() as session:
-            timeout = self._get_session_timeout()
-
-            async with session.get(document_url, timeout=timeout) as response:
-                response.raise_for_status()
-
-                # Check Content-Length if available
-                content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > self.bot_config.max_document_size:
-                    raise FileTooLargeError(f"Document is too large ({content_length} bytes)")
-
-                file_content = await response.read()
-
-                if len(file_content) > self.bot_config.max_document_size:
-                    raise FileTooLargeError(f"Document is too large ({len(file_content)} bytes)")
+            file_content = await self._download_file(
+                document_url, session, size_limit=self.bot_config.max_document_size
+            )
 
         # Extract text
         loader = DocumentLoader()

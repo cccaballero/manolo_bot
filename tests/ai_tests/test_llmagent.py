@@ -93,18 +93,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         agent.document_storage = MagicMock(spec=BaseDocumentStorage)
         agent.document_storage.store = AsyncMock()
 
-        # Mock download properly
-        mock_response = AsyncMock()
-        mock_response.read.return_value = b"content"
-        mock_response.status = 200
-        mock_response.headers = {"Content-Length": "7"}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_session_inst = MagicMock()
-        mock_session_inst.__aenter__.return_value = mock_session_inst
-        mock_session_inst.get.return_value.__aenter__.return_value = mock_response
-
-        with patch("manolo_bot.ai.llmagent.aiohttp.ClientSession", return_value=mock_session_inst):
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value="something"):
             with patch("manolo_bot.ai.llmbot.DocumentLoader") as mock_loader_class:
                 mock_loader_class.return_value.extract_text.return_value = "text"
                 mock_loader_class.SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt", "md", "csv"]
