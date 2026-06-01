@@ -37,7 +37,8 @@ class DocumentLoader:
     Utility class for extracting text from different document formats using LangChain native parsers.
     """
 
-    SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt", "md", "csv"]
+    _extensions = {"pdf": ["pdf"], "docx": ["docx"], "txt": ["txt", "md", "csv"]}
+    SUPPORTED_EXTENSIONS = [ext for ext_list in _extensions.values() for ext in ext_list]
 
     def __init__(self):
         # mode="single" returns the whole document as one Document object
@@ -108,9 +109,9 @@ class DocumentLoader:
         file_like = io.BytesIO(file_content)
         extension = filename.split(".")[-1].lower()
 
-        if extension == "pdf":
+        if extension in self._extensions["pdf"]:
             return self.extract_text_from_pdf(file_like)
-        elif extension == "docx":
+        elif extension in self._extensions["docx"]:
             return self.extract_text_from_docx(file_like)
         else:
             # Must be txt, md, or csv based on validate_filename check
