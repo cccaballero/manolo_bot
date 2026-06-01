@@ -96,13 +96,24 @@ def is_voice(message: Message) -> bool:
     return message.voice is not None
 
 
+def is_document(message: Message) -> bool:
+    """
+    Check if the message is a document.
+    :param message: Telegram message
+    :return: True if the message is a document, False otherwise
+    """
+    return message.document is not None
+
+
 def get_message_text(message: Message) -> str:
     """
     Get the text of the message.
     :param message: Telegram message
-    :return: Text of the message (caption if message is an image message)
+    :return: Text of the message (caption if message is an image or document message)
     """
-    return message.caption if is_image(message) else message.text
+    if is_image(message) or is_document(message):
+        return message.caption
+    return message.text
 
 
 def get_message_from(message: Message) -> str:

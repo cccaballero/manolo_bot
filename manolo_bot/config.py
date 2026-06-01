@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 from envmodel import (
     BooleanField,
     EnvModel,
@@ -29,6 +32,7 @@ class Config(EnvModel):
     rate_limiter_max_bucket_size = IntegerField("RATE_LIMITER_MAX_BUCKET_SIZE", default=10)
     is_image_multimodal = BooleanField("IMAGE_MULTIMODAL", default=False)
     is_audio_multimodal = BooleanField("AUDIO_MULTIMODAL", default=False)
+    is_document_multimodal = BooleanField("DOCUMENT_MULTIMODAL", default=False)
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
     agent_mode = BooleanField("AGENT_MODE", default=False)
     agent_instructions = StringField("AGENT_INSTRUCTIONS")
@@ -69,6 +73,12 @@ class Config(EnvModel):
         "MCP_SERVERS_CONFIG",
         default={},
         warning="MCP_SERVERS_CONFIG not set. MCP will be disabled.",
+    )
+
+    # Document processing configuration
+    max_document_size = IntegerField("MAX_DOCUMENT_SIZE_BYTES", default=10 * 1024 * 1024)  # 10MB
+    document_storage_path = StringField(
+        "DOCUMENT_STORAGE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "documents")
     )
 
     logging_level = StringField(

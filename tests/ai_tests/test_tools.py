@@ -1,10 +1,11 @@
 import unittest
 import unittest.mock
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from manolo_bot.ai.tools import (
+    ReadDocumentTool,
     TimeResult,
     ddgs_search,
     extract_youtube_video_id,
@@ -325,6 +326,56 @@ class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
         custom_tools = get_tools()
         self.assertEqual(len(all_tools), len(custom_tools))
         self.assertEqual([t.name for t in all_tools], [t.name for t in custom_tools])
+
+
+class TestReadDocumentTool(unittest.IsolatedAsyncioTestCase):
+    async def test_read_document_tool_initialization(self):
+        # Arrange
+        from manolo_bot.storage.documents.base import BaseDocumentStorage
+
+        mock_storage = MagicMock(spec=BaseDocumentStorage)
+        tool = ReadDocumentTool(document_storage=mock_storage, context_max_tokens=1000)
+
+        # Assert
+        self.assertEqual(tool.name, "read_document")
+        self.assertEqual(tool.document_storage, mock_storage)
+
+    async def test_read_document_tool_run(self):
+        # Arrange
+        from manolo_bot.storage.documents.base import BaseDocumentStorage
+
+        mock_storage = MagicMock(spec=BaseDocumentStorage)
+        mock_storage.retrieve = AsyncMock(return_value="Document content")
+        tool = ReadDocumentTool(document_storage=mock_storage)
+
+        mock_config = MagicMock()
+        mock_config.get.return_value.get.return_value = 12345  # chat_id
+
+        # Act
+        result = await tool._arun("test.pdf", config=mock_config)
+
+        # Assert
+        self.assertEqual(result, "Document content")
+        mock_storage.retrieve.assert_called_once_with(12345, "test.pdf")
+
+    async def test_read_document_tool_not_found(self):
+        # Arrange
+        from manolo_bot.storage.documents.base import BaseDocumentStorage
+
+        mock_storage = MagicMock(spec=BaseDocumentStorage)
+        mock_storage.retrieve = AsyncMock(return_value=None)
+        mock_storage.list_documents = AsyncMock(return_value=["other.pdf"])
+        tool = ReadDocumentTool(document_storage=mock_storage)
+
+        mock_config = MagicMock()
+        mock_config.get.return_value.get.return_value = 12345
+
+        # Act
+        result = await tool._arun("missing.pdf", config=mock_config)
+
+        # Assert
+        self.assertIn("missing.pdf' not found", result)
+        self.assertIn("other.pdf", result)
 
 
 class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):

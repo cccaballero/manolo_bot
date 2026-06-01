@@ -51,7 +51,7 @@ The `storage` component is responsible for persisting conversation history. `man
 
 .. code-block:: python
 
-   from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+   from manolo_bot.storage.messages.memory import MemoryMessagesStorage
 
    # chat_id is a unique identifier for the current conversation (e.g., a user ID)
    storage = MemoryMessagesStorage(bot_uuid="my-unique-bot-id", chat_id=12345)
@@ -80,7 +80,7 @@ Implementation Example
    from manolo_bot.ai.llmagent import LLMAgent
    from manolo_bot.ai.llmbot import LLMBuilder
    from manolo_bot.ai.config import LLMConfig, BotConfig
-   from manolo_bot.storage.memory_storage import MemoryMessagesStorage
+   from manolo_bot.storage.messages.memory import MemoryMessagesStorage
    from manolo_bot.ai.tools import get_tools
 
    async def main():

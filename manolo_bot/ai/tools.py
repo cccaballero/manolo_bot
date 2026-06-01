@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from ddgs import DDGS
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_tavily import TavilySearch
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.mcp_manager import MCPManager
+from manolo_bot.storage.documents.base import BaseDocumentStorage
 
 
 class TimeResult(BaseModel):
@@ -204,7 +206,46 @@ def get_search_instructions() -> str:
     """
 
 
-def get_tools(bot_config: BotConfig | None = None) -> list:
+class ReadDocumentTool(BaseTool):
+    """
+    Tool for reading the content of a document that the user has uploaded.
+    You should use this tool when the user refers to a document they previously sent.
+    """
+
+    name: str = "read_document"
+    description: str = (
+        "Tool for reading the content of a document that the user has uploaded. "
+        "Input should be the filename provided in the pointer message."
+    )
+    document_storage: BaseDocumentStorage
+    context_max_tokens: int = 4096
+
+    def _run(self, filename: str, config: RunnableConfig) -> str:
+        # Synchronous implementation if needed
+        raise NotImplementedError("Use _arun instead")
+
+    async def _arun(self, filename: str, config: RunnableConfig) -> str:
+        chat_id = config.get("metadata", {}).get("chat_id")
+        if not chat_id:
+            return "Error: Could not determine chat_id from context."
+
+        content = await self.document_storage.retrieve(chat_id, filename)
+        if content:
+            # Truncate if too long to avoid token limits, but keep it generous
+            # since we are using Gemini with Big Context strategy
+            max_chars = self.context_max_tokens * 4
+            if len(content) > max_chars:
+                logging.warning(f"Document {filename} truncated for tool response")
+                return content[:max_chars] + "\n... [Document truncated]"
+            return content
+        else:
+            available = await self.document_storage.list_documents(chat_id)
+            return f"Document '{filename}' not found. Available documents: {', '.join(available) or 'None'}"
+
+
+def get_tools(
+    bot_config: BotConfig | None = None, document_storage: BaseDocumentStorage | None = None
+) -> list[BaseTool]:
     TAVILY_SEARCH_KEY = os.environ.get("TAVILY_SEARCH_KEY")
     if (bot_config and bot_config.can_use_tavily_search) and TAVILY_SEARCH_KEY:
         logging.debug("Using Tavily search")
@@ -213,7 +254,7 @@ def get_tools(bot_config: BotConfig | None = None) -> list:
         logging.debug("Using ddgs search")
         search_tool = ddgs_search
 
-    return [
+    tools: list = [
         get_current_time,
         get_website_content,
         author,
@@ -223,27 +264,43 @@ def get_tools(bot_config: BotConfig | None = None) -> list:
         multiply,
     ]
 
+    if bot_config and bot_config.is_document_multimodal and document_storage:
+        tools.append(
+            ReadDocumentTool(
+                document_storage=document_storage,
+                context_max_tokens=bot_config.context_max_tokens,
+            )
+        )
 
-def get_tool(name: str) -> BaseTool | None:
-    for tool_function in get_tools():
+    return tools
+
+
+def get_tool(
+    name: str, bot_config: BotConfig | None = None, document_storage: BaseDocumentStorage | None = None
+) -> BaseTool | None:
+    for tool_function in get_tools(bot_config, document_storage):
         if tool_function.name == name:
             return tool_function
     return None
 
 
 async def get_all_tools(
-    mcp_manager: MCPManager = None, bot_config: BotConfig = None, custom_tools: list[BaseTool] | None = None
+    mcp_manager: MCPManager = None,
+    bot_config: BotConfig = None,
+    document_storage: BaseDocumentStorage = None,
+    custom_tools: list[BaseTool] | None = None,
 ) -> list:
     """
     Get all available tools (custom + MCP).
 
     :param mcp_manager: Optional MCP manager to load MCP tools from
     :param bot_config: Optional bot config
+    :param document_storage: Optional document storage backend
     :param custom_tools: Optional list of tools to use instead of default ones
     :return: List of all available tools
     """
     # Start with custom tools or default ones
-    tools = custom_tools if custom_tools is not None else get_tools(bot_config)
+    tools = custom_tools if custom_tools is not None else get_tools(bot_config, document_storage)
 
     # Add MCP tools if available
     if mcp_manager and mcp_manager.is_connected:

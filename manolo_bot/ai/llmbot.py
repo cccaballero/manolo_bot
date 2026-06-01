@@ -22,11 +22,14 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
 from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError, clean_text
 from manolo_bot.ai.tools import get_tool, get_tools
-from manolo_bot.storage.base import BaseMessagesStorage
+from manolo_bot.storage.documents.utils import generate_document_key
+from manolo_bot.storage.messages.base import BaseMessagesStorage
 
 if TYPE_CHECKING:
     from manolo_bot.ai.mcp_manager import MCPManager
+    from manolo_bot.storage.documents.base import BaseDocumentStorage
 
 
 class LLMBuilder:
@@ -104,6 +107,7 @@ class LLMBot:
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
+        document_storage: "BaseDocumentStorage | None" = None,
     ) -> None:
         self.bot_config = bot_config
         self.system_instructions = system_instructions
@@ -112,6 +116,7 @@ class LLMBot:
         self.messages_storage: BaseMessagesStorage = messages_storage
         # self._load_llm()
         self.tools = tools
+        self.document_storage = document_storage
         self._mcp_manager: MCPManager | None = None
         self._async_resources_initialized = False
 
@@ -188,7 +193,9 @@ class LLMBot:
         """Reload tools including MCP tools."""
         from manolo_bot.ai.tools import get_all_tools
 
-        tools = await get_all_tools(self._mcp_manager, self.bot_config, custom_tools=self.tools)
+        tools = await get_all_tools(
+            self._mcp_manager, self.bot_config, document_storage=self.document_storage, custom_tools=self.tools
+        )
         self.llm = self.llm.bind_tools(tools)
         logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
 
@@ -250,7 +257,9 @@ class LLMBot:
         Clean the chat context.
         """
         await self.messages_storage.clear_messages()
-        logging.debug(f"Chat context cleaned for chat {self.messages_storage.chat_id}")
+        if self.document_storage:
+            await self.document_storage.clear(self.messages_storage.chat_id)
+        logging.debug(f"Chat context and documents cleaned for chat {self.messages_storage.chat_id}")
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
         """
@@ -267,7 +276,7 @@ class LLMBot:
         if ai_msg.tool_calls:
             self.messages_storage.add_message(ai_msg)
             for tool_call in ai_msg.tool_calls:
-                selected_tool = get_tool(tool_call["name"])
+                selected_tool = get_tool(tool_call["name"], self.bot_config, self.document_storage)
                 tool_msg = await selected_tool.ainvoke(tool_call, config=config)
                 self.messages_storage.add_message(tool_msg)
             ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages, config=config)
@@ -364,6 +373,111 @@ class LLMBot:
             response = BaseMessage(content="NO_ANSWER", type="text")
 
         logging.debug(f"Voice message response: {response}")
+        return response
+
+    async def _process_and_store_document(self, chat_id: int, document_url: str, filename: str) -> tuple[str, str]:
+        """
+        Downloads, processes, and stores a document.
+
+        :param chat_id: Chat ID
+        :param document_url: URL to download the document
+        :param filename: Original filename
+        :return: A tuple of (doc_key, extracted_text)
+        :raises UnsupportedFileError: If the format is not supported
+        :raises ValueError: If the document is too large
+        """
+        extension = filename.split(".")[-1].lower()
+        if extension not in DocumentLoader.SUPPORTED_EXTENSIONS:
+            raise UnsupportedFileError(f"Extension .{extension} is not supported")
+
+        async with aiohttp.ClientSession() as session:
+            timeout = self._get_session_timeout()
+
+            async with session.get(document_url, timeout=timeout) as response:
+                response.raise_for_status()
+
+                # Check Content-Length if available
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > self.bot_config.max_document_size:
+                    raise ValueError(f"Document is too large ({content_length} bytes)")
+
+                file_content = await response.read()
+
+                if len(file_content) > self.bot_config.max_document_size:
+                    raise ValueError(f"Document is too large ({len(file_content)} bytes)")
+
+        # Extract text
+        loader = DocumentLoader()
+        extracted_text = loader.extract_text(file_content, filename)
+        extracted_text = clean_text(extracted_text)
+
+        # Generate a unique key for the document to avoid collisions
+        doc_key = generate_document_key(filename)
+
+        # Store document text
+        if self.document_storage:
+            await self.document_storage.store(chat_id, doc_key, extracted_text)
+
+        return doc_key, extracted_text
+
+    async def answer_document_message(self, chat_id: int, text: str, document_url: str, filename: str) -> BaseMessage:
+        """
+        Answer a document message.
+
+        :param chat_id: Chat ID
+        :param text: Text to answer (user prompt/caption)
+        :param document_url: URL to download the document
+        :param filename: Original filename
+        :return: Response
+        """
+        logging.debug(f"Document message: {filename}")
+
+        try:
+            doc_key, extracted_text = await self._process_and_store_document(chat_id, document_url, filename)
+
+            # For LLMBot (simple), we "stuff" the context for this turn only
+            # but we don't save the massive text to chat history
+            prompt = (
+                f"The user uploaded a document: {filename} (ID: {doc_key})\n"
+                f"--- DOCUMENT START ---\n"
+                f"{extracted_text}\n"
+                f"--- DOCUMENT END ---\n\n"
+                f"User message: {text}"
+            )
+
+            # Add a pointer message to history instead of full text
+            pointer_message = HumanMessage(
+                content=f"User uploaded a document: {filename}. "
+                f"Use the read_document tool with filename '{doc_key}' to access it."
+            )
+            self.messages_storage.add_message(pointer_message)
+            self.truncate_chat_context()
+
+            # We invoke with the stuffed prompt for this specific turn
+            messages = self.system_instructions + self.messages_storage.messages[:-1] + [HumanMessage(content=prompt)]
+
+            response = await self.llm.ainvoke(
+                messages,
+                config=self._get_langchain_config(chat_id),
+            )
+
+        except UnsupportedFileError:
+            extension = filename.split(".")[-1].lower()
+            supported = ", ".join([ext.upper() for ext in DocumentLoader.SUPPORTED_EXTENSIONS])
+            error_prompt = (
+                f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
+                f"explaining that you cannot read .{extension} files yet. "
+                f"Mention that you support {supported}. "
+                f"Keep it under 150 characters and maintain your character's style."
+            )
+            feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
+            response = AIMessage(content=feedback)
+
+        except Exception as e:
+            logging.error(f"Error processing document {filename}: {e}")
+            logging.exception(e)
+            response = BaseMessage(content="NO_ANSWER", type="text")
+
         return response
 
     async def postprocess_response(self, response: BaseMessage, message_text: str, chat_id: int) -> dict | None:
@@ -587,5 +701,7 @@ class LLMBot:
         return (len(text.split()) / wpm) * 60
 
     def _load_tools(self) -> None:
-        tools_to_bind = self.tools if self.tools is not None else get_tools(bot_config=self.bot_config)
+        tools_to_bind = (
+            self.tools if self.tools is not None else get_tools(self.bot_config, document_storage=self.document_storage)
+        )
         self.llm = self.llm.bind_tools(tools_to_bind)  # add wikipedia?

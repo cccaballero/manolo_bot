@@ -145,6 +145,14 @@ Fine-tune the bot's performance and logging.
 * `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).
 * `RATE_LIMITER_MAX_BUCKET_SIZE`: Token bucket size for rate limiting (default: `10`).
 
+Document Storage
+~~~~~~~~~~~~~~~~
+
+Configure how the bot handles uploaded documents.
+
+* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `10485760` bytes / 10MB).
+* `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
+
 Available Commands
 ------------------
 

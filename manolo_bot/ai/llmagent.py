@@ -4,12 +4,14 @@ import logging
 import aiohttp
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
+from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
 from manolo_bot.ai.llmbot import LLMBot
-from manolo_bot.storage.base import BaseMessagesStorage
+from manolo_bot.storage.documents.base import BaseDocumentStorage
+from manolo_bot.storage.messages.base import BaseMessagesStorage
 
 
 class LLMAgent(LLMBot):
@@ -28,8 +30,11 @@ class LLMAgent(LLMBot):
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
+        document_storage: BaseDocumentStorage | None = None,
     ) -> None:
-        super().__init__(llm, bot_config, system_instructions, messages_storage, tools=tools)
+        super().__init__(
+            llm, bot_config, system_instructions, messages_storage, tools=tools, document_storage=document_storage
+        )
         # Don't create agent yet - wait for async initialization
         self.agent = None
 
@@ -41,7 +46,9 @@ class LLMAgent(LLMBot):
         from manolo_bot.ai.tools import get_all_tools
 
         # Use the tools passed in __init__ if available, otherwise get default ones
-        tools = await get_all_tools(self._mcp_manager, self.bot_config, custom_tools=self.tools)
+        tools = await get_all_tools(
+            self._mcp_manager, self.bot_config, document_storage=self.document_storage, custom_tools=self.tools
+        )
 
         self.agent = create_agent(
             model=self.llm,
@@ -169,4 +176,57 @@ class LLMAgent(LLMBot):
             response = BaseMessage(content="NO_ANSWER", type="text")
 
         logging.debug(f"Voice message response: {response}")
+        return response
+
+    async def answer_document_message(self, chat_id: int, text: str, document_url: str, filename: str) -> BaseMessage:
+        """
+        Answer a document message using the agent.
+
+        :param chat_id: Chat ID
+        :param text: Text to answer
+        :param document_url: Document URL
+        :param filename: Original filename
+        :return: Response
+        """
+        logging.debug(f"Document message: {filename}")
+
+        try:
+            doc_key, _ = await self._process_and_store_document(chat_id, document_url, filename)
+
+            # Add a pointer message to history
+            pointer_message = HumanMessage(
+                content=f"User uploaded a document: {filename}. "
+                f"Use the read_document tool with filename '{doc_key}' to access it."
+            )
+            self.messages_storage.add_message(pointer_message)
+            self.truncate_chat_context()
+
+            # We don't stuff the prompt for the agent, we just add the user message
+            # and the agent will use the tool if needed.
+            self.messages_storage.add_message(HumanMessage(content=text))
+
+            config = self._get_langchain_config(chat_id)
+            response = (
+                await self.agent.ainvoke(
+                    {"messages": self.system_instructions + self.messages_storage.messages}, config=config
+                )
+            )["messages"][-1]
+        except UnsupportedFileError:
+            extension = filename.split(".")[-1].lower()
+            supported = ", ".join([ext.upper() for ext in DocumentLoader.SUPPORTED_EXTENSIONS])
+            error_prompt = (
+                f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
+                f"explaining that you cannot read .{extension} files yet. "
+                f"Mention that you support {supported}. "
+                f"Keep it under 150 characters and maintain your character's style."
+            )
+            feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
+            response = AIMessage(content=feedback)
+        except (aiohttp.ClientError, Exception) as e:
+            if isinstance(e, aiohttp.ClientError):
+                logging.error(f"Failed to get document: {document_url}")
+            logging.exception(e)
+            response = BaseMessage(content="NO_ANSWER", type="text")
+
+        logging.debug(f"Document message response: {response}")
         return response

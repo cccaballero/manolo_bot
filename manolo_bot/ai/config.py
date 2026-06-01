@@ -30,11 +30,13 @@ class BotConfig:
     add_no_answer: bool = False
     is_image_multimodal: bool = False
     is_audio_multimodal: bool = False
+    is_document_multimodal: bool = False
     is_group_assistant: bool = False
     agent_mode: bool = False
 
     # Web content retrieval configuration
     web_content_request_timeout: int = 10
+    max_document_size: int = 10 * 1024 * 1024
 
     can_use_tavily_search: bool = False
 
