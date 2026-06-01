@@ -146,6 +146,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
     async def test_answer_document_message__too_large(self):
         # Arrange
         bot = self.get_basic_llm_bot()
+        bot.generate_feedback_message = AsyncMock(return_value="Message too large")
         bot.bot_config.max_document_size = 100  # Small limit
 
         # Mock download with large content
@@ -164,7 +165,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
             result = await bot.answer_document_message(1, "prompt", "http://url", "file.pdf")
 
             # Assert
-            self.assertEqual(result.content, "NO_ANSWER")
+            self.assertEqual(result.content, "Message too large")
 
     async def test_answer_document_message__unsupported_format(self):
         # Arrange
