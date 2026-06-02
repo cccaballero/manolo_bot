@@ -53,6 +53,30 @@ Step 3: Install and Run
 4.  **Start Chatting**:
     Open Telegram, find your bot by its username, and send it a message like "Hello!".
 
+Security and Privacy
+--------------------
+
+By default, your bot will respond to anyone who sends it a message. To prevent unauthorized use, you can restrict it to specific users or groups.
+
+Restricting to Specific Chats
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the ``TELEGRAM_ALLOWED_CHATS`` variable to provide a comma-separated list of IDs. The bot will ignore any message coming from a chat ID not in this list.
+
+.. code-block:: text
+
+   # Only respond to these two users/groups
+   TELEGRAM_ALLOWED_CHATS=12345678, -100123456789
+
+**How to find a Chat ID?**
+You can use a bot like `@userinfobot <https://t.me/userinfobot>`_ or `@MissRose_bot <https://t.me/MissRose_bot>`_ (send ``/id`` in a group) to find the ID of a user or a group.
+
+Private vs. Group Chats
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages, forcing it to be used only in allowed groups.
+* `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned. This is useful for support or FAQ bots.
+
 Advanced Configuration
 ----------------------
 
@@ -157,12 +181,9 @@ Model Context Protocol (MCP)
      }
    }
 
-Interaction Control
-~~~~~~~~~~~~~~~~~~~
+Interaction and Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-* `TELEGRAM_ALLOWED_CHATS`: Comma-separated list of IDs. If set, the bot will only respond in these chats.
-* `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages.
-* `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned.
 * `ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it should respond.
 * `SIMULATE_TYPING`: If `True`, the bot will simulate typing before sending a response.
 * `SIMULATE_TYPING_WPM`: Typing speed in words per minute (default: `100`).
