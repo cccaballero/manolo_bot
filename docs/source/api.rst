@@ -16,6 +16,16 @@ AI Components
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: manolo_bot.ai.mcp_manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.ai.document_loaders
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Storage Components
 ------------------
 

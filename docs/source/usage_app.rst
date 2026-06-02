@@ -3,32 +3,82 @@ Using as an App
 
 `manolo-bot` is ready to use as a standalone Telegram chat bot. It handles message queuing, multimodal inputs (images/voice), and tool execution out of the box.
 
-Quick Start
------------
+Quick Start: Your First Telegram Bot
+------------------------------------
 
-1. **Install the package**:
+This guide will help you get a basic Telegram bot up and running in minutes.
 
-   .. code-block:: shell
+Step 1: Get a Telegram Bot Token
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-      pip install manolo-bot
+1.  Open Telegram and search for `@BotFather <https://t.me/botfather>`_.
+2.  Send the command ``/newbot``.
+3.  Follow the instructions to choose a name and a username for your bot.
+4.  BotFather will give you an **API Token**. Keep this safe!
 
-2. **Configure environment**:
-   Create a ``.env`` file in your current directory or set environment variables directly:
+Step 2: Get an AI API Key
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: text
+For this tutorial, we recommend using Google Gemini as it's easy to set up:
 
-      TELEGRAM_BOT_TOKEN=your_telegram_token
-      GOOGLE_API_KEY=your_gemini_api_key
-      # Add other configuration as needed
+1.  Go to `Google AI Studio <https://aistudio.google.com/>`_.
+2.  Create a free **API Key**.
 
-3. **Run the bot**:
+Step 3: Install and Run
+~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: shell
+1.  **Install the package**:
 
-      manolo-bot
+    .. code-block:: shell
 
-Configuration Details
----------------------
+       pip install manolo-bot
+
+2.  **Create a configuration file**:
+    Create a file named ``.env`` in your current folder and paste your keys:
+
+    .. code-block:: text
+
+       TELEGRAM_BOT_TOKEN=your_telegram_token_here
+       TELEGRAM_BOT_NAME=MyAwesomeBot
+       TELEGRAM_BOT_USERNAME=my_awesome_bot
+       GOOGLE_API_KEY=your_google_api_key_here
+       AGENT_MODE=True
+
+3.  **Run the bot**:
+
+    .. code-block:: shell
+
+       manolo-bot
+
+4.  **Start Chatting**:
+    Open Telegram, find your bot by its username, and send it a message like "Hello!".
+
+Security and Privacy
+--------------------
+
+By default, your bot will respond to anyone who sends it a message. To prevent unauthorized use, you can restrict it to specific users or groups.
+
+Restricting to Specific Chats
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the ``TELEGRAM_ALLOWED_CHATS`` variable to provide a comma-separated list of IDs. The bot will ignore any message coming from a chat ID not in this list.
+
+.. code-block:: text
+
+   # Only respond to these two users/groups
+   TELEGRAM_ALLOWED_CHATS=12345678, -100123456789
+
+**How to find a Chat ID?**
+You can use a bot like `@userinfobot <https://t.me/userinfobot>`_ or `@MissRose_bot <https://t.me/MissRose_bot>`_ (send ``/id`` in a group) to find the ID of a user or a group.
+
+Private vs. Group Chats
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages, forcing it to be used only in allowed groups.
+* `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned. This is useful for support or FAQ bots.
+
+Advanced Configuration
+----------------------
 
 The bot is configured entirely via environment variables. You can set these in your terminal or, more conveniently, in a `.env` file in the project root.
 
@@ -91,9 +141,18 @@ Image and Voice
 
 * `IMAGE_MULTIMODAL`: Set to `True` to allow the bot to "see" images you send or reply to.
 * `AUDIO_MULTIMODAL`: **(Experimental)** Set to `True` to allow the bot to "hear" voice messages. Currently only supported by Google Gemini.
+* `DOCUMENT_MULTIMODAL`: Set to `True` to allow the bot to "read" uploaded documents (PDF, DOCX, TXT).
 * `WEBUI_SD_API_URL`: If you have a Stable Diffusion Web UI running, provide its URL here to enable the `/generate_image` capability.
 * `WEBUI_SD_API_PARAMS`: A JSON string of parameters for the Stable Diffusion API (e.g., `{"steps": 20, "width": 512}`).
 * `WEBUI_SD_API_NEGATIVE_PROMPT`: Words or concepts you want Stable Diffusion to avoid.
+
+Document Processing
+~~~~~~~~~~~~~~~~~~~
+
+When `DOCUMENT_MULTIMODAL` is enabled, the bot can process uploaded files. It extracts the text content, cleans it, and stores it in a temporary storage so the LLM can reference it during the conversation.
+
+* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
+* `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Storage and Persistence
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -122,12 +181,9 @@ Model Context Protocol (MCP)
      }
    }
 
-Interaction Control
-~~~~~~~~~~~~~~~~~~~
+Interaction and Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-* `TELEGRAM_ALLOWED_CHATS`: Comma-separated list of IDs. If set, the bot will only respond in these chats.
-* `ALLOW_PRIVATE_CHATS`: Set to `False` to prevent the bot from responding in direct messages.
-* `ENABLE_GROUP_ASSISTANT`: If `True`, the bot will proactively respond to messages containing a `?` in groups, even if not directly mentioned.
 * `ADD_NO_ANSWER`: If `True`, the bot will reply with "NO_ANSWER" if it doesn't understand a message or isn't sure if it should respond.
 * `SIMULATE_TYPING`: If `True`, the bot will simulate typing before sending a response.
 * `SIMULATE_TYPING_WPM`: Typing speed in words per minute (default: `100`).
@@ -144,14 +200,6 @@ Fine-tune the bot's performance and logging.
 * `RATE_LIMITER_REQUESTS_PER_SECOND`: Max requests per second (default: `0.25`).
 * `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).
 * `RATE_LIMITER_MAX_BUCKET_SIZE`: Token bucket size for rate limiting (default: `10`).
-
-Document Storage
-~~~~~~~~~~~~~~~~
-
-Configure how the bot handles uploaded documents.
-
-* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
-* `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Available Commands
 ------------------
