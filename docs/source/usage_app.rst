@@ -4,7 +4,7 @@ Using as an App
 `manolo-bot` is ready to use as a standalone Telegram chat bot. It handles message queuing, multimodal inputs (images/voice), and tool execution out of the box.
 
 Quick Start: Your First Telegram Bot
------------------------------------
+------------------------------------
 
 This guide will help you get a basic Telegram bot up and running in minutes.
 
