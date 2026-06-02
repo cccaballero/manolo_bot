@@ -91,9 +91,18 @@ Image and Voice
 
 * `IMAGE_MULTIMODAL`: Set to `True` to allow the bot to "see" images you send or reply to.
 * `AUDIO_MULTIMODAL`: **(Experimental)** Set to `True` to allow the bot to "hear" voice messages. Currently only supported by Google Gemini.
+* `DOCUMENT_MULTIMODAL`: Set to `True` to allow the bot to "read" uploaded documents (PDF, DOCX, TXT).
 * `WEBUI_SD_API_URL`: If you have a Stable Diffusion Web UI running, provide its URL here to enable the `/generate_image` capability.
 * `WEBUI_SD_API_PARAMS`: A JSON string of parameters for the Stable Diffusion API (e.g., `{"steps": 20, "width": 512}`).
 * `WEBUI_SD_API_NEGATIVE_PROMPT`: Words or concepts you want Stable Diffusion to avoid.
+
+Document Processing
+~~~~~~~~~~~~~~~~~~~
+
+When `DOCUMENT_MULTIMODAL` is enabled, the bot can process uploaded files. It extracts the text content, cleans it, and stores it in a temporary storage so the LLM can reference it during the conversation.
+
+* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
+* `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Storage and Persistence
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -144,14 +153,6 @@ Fine-tune the bot's performance and logging.
 * `RATE_LIMITER_REQUESTS_PER_SECOND`: Max requests per second (default: `0.25`).
 * `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).
 * `RATE_LIMITER_MAX_BUCKET_SIZE`: Token bucket size for rate limiting (default: `10`).
-
-Document Storage
-~~~~~~~~~~~~~~~~
-
-Configure how the bot handles uploaded documents.
-
-* `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
-* `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Available Commands
 ------------------

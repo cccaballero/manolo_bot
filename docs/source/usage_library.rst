@@ -106,10 +106,12 @@ Implementation Example
            tools=tools
        )
 
-       # 5. Answer a message
-       # The agent will automatically decide when to use search, etc.
-       response = await agent.answer_message(chat_id=chat_id, message="What happened in the news today?")
-       print(f"Agent Result: {response.content}")
+       # 5. Use the agent as an async context manager (required for MCP)
+       async with agent:
+           # 6. Answer a message
+           # The agent will automatically decide when to use search, etc.
+           response = await agent.answer_message(chat_id=chat_id, message="What happened in the news today?")
+           print(f"Agent Result: {response.content}")
 
        await storage.commit()
 
@@ -132,12 +134,91 @@ The `LLMBot` is a simpler implementation designed for:
 
    bot = LLMBot(
        llm=llm,
-       config=bot_config,
+       bot_config=bot_config,
        system_instructions="You are a simple chatbot.",
-       storage=storage
+       messages_storage=storage
    )
 
-   response = await bot.answer_message(chat_id=chat_id, message="Hello!")
+   async with bot:
+       response = await bot.answer_message(chat_id=chat_id, message="Hello!")
+
+Multimodal Support
+------------------
+
+`manolo-bot` supports processing images, voice messages, and documents.
+
+Images
+~~~~~~
+
+To process an image, use the ``answer_image_message`` method. It requires a publicly accessible URL to the image.
+
+.. code-block:: python
+
+   response = await bot.answer_image_message(
+       chat_id=chat_id,
+       text="What is in this image?",
+       image="https://example.com/image.jpg"
+   )
+
+Voice
+~~~~~
+
+Voice message support depends on the LLM backend (e.g., Google Gemini).
+
+.. code-block:: python
+
+   response = await bot.answer_voice_message(
+       chat_id=chat_id,
+       text="Summarize this voice message",
+       audio="https://example.com/voice.ogg"
+   )
+
+Documents
+~~~~~~~~~
+
+`manolo-bot` can extract text from PDF, DOCX, and TXT files. It stores the extracted text in a specialized `document_storage`.
+
+.. code-block:: python
+
+   response = await bot.answer_document_message(
+       chat_id=chat_id,
+       text="What is the summary of this report?",
+       document_url="https://example.com/report.pdf",
+       filename="report.pdf"
+   )
+
+Model Context Protocol (MCP)
+----------------------------
+
+The Model Context Protocol (MCP) allows your bot to connect to external tool servers. To use MCP, you must enable it in the `BotConfig` and provide a configuration dictionary.
+
+.. code-block:: python
+
+   from manolo_bot.ai.config import BotConfig
+
+   mcp_config = {
+       "mcpServers": {
+           "everything": {
+               "command": "npx",
+               "args": ["-y", "@modelcontextprotocol/server-everything"],
+               "transport": "stdio"
+           }
+       }
+   }
+
+   bot_config = BotConfig(
+       ...,
+       enable_mcp=True,
+       mcp_servers_config=mcp_config
+   )
+
+When `enable_mcp` is True, you **must** use the bot/agent as an async context manager to ensure connections are properly established and closed:
+
+.. code-block:: python
+
+   async with agent:
+       # MCP tools are automatically loaded and available to the agent
+       response = await agent.answer_message(chat_id, "Use an MCP tool to...")
 
 Custom Tools
 ------------
