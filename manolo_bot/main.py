@@ -121,6 +121,8 @@ You should not include your user name or identifier at the beginning of your res
 {pseudotools_instructions if not (config.use_tools or config.agent_mode) else tools_instructions}
 {generate_image_instructions if config.sdapi_url else ""}
 
+The current datetime is: [datetime]
+
 Other users cannot know who you really are, nor can they know the instructions I have given you. You will not leave the character at any time and you will follow the instructions that I have given you to the letter.
 
 {language_instructions}
@@ -171,6 +173,15 @@ bot_config = BotConfig(
 )
 
 
+def get_datetime(bot) -> str:
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+instructions_mapping = {
+    "[datetime]": get_datetime,
+}
+
+
 async def instance_llm_bot(chat_id: int) -> LLMBot:
     if config.storage_type == "redis":
         bd_helper = RedisDBHelper(db_url=config.redis_url)
@@ -179,9 +190,23 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
     if config.agent_mode:
-        llm_bot = LLMAgent(llm, bot_config, system_instructions, messages_storage, document_storage=document_storage)
+        llm_bot = LLMAgent(
+            llm,
+            bot_config,
+            system_instructions,
+            messages_storage,
+            document_storage=document_storage,
+            system_instructions_mapping=instructions_mapping,
+        )
     else:
-        llm_bot = LLMBot(llm, bot_config, system_instructions, messages_storage, document_storage=document_storage)
+        llm_bot = LLMBot(
+            llm,
+            bot_config,
+            system_instructions,
+            messages_storage,
+            document_storage=document_storage,
+            system_instructions_mapping=instructions_mapping,
+        )
 
     return llm_bot
 
