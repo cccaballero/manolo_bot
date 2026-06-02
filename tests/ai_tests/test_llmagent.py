@@ -205,6 +205,31 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.content, "You said 'Hello'.")
             mock_agent.ainvoke.assert_called_once()
 
+    def test_system_instructions_mapping(self):
+        # Arrange
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_bot_config = MagicMock()
+        mock_bot_config.enable_mcp = False
+        mock_bot_config.use_tools = False
+        mock_messages_storage = MagicMock()
+
+        original_content = "Hello {name}, today is {day}"
+        system_instructions = [SystemMessage(content=original_content)]
+
+        mapping = {"{name}": lambda bot: "ManoloAgent", "{day}": lambda bot: "Tuesday"}
+
+        # Act
+        agent = LLMAgent(
+            mock_llm, mock_bot_config, system_instructions, mock_messages_storage, system_instructions_mapping=mapping
+        )
+
+        # Assert
+        # Check that property returns replaced content
+        self.assertEqual(agent.system_instructions[0].content, "Hello ManoloAgent, today is Tuesday")
+        # Check that original instructions are NOT modified
+        self.assertEqual(agent._system_instructions[0].content, original_content)
+
 
 if __name__ == "__main__":
     unittest.main()

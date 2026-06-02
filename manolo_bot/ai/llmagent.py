@@ -31,9 +31,16 @@ class LLMAgent(LLMBot):
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
         document_storage: BaseDocumentStorage | None = None,
+        system_instructions_mapping=None,
     ) -> None:
         super().__init__(
-            llm, bot_config, system_instructions, messages_storage, tools=tools, document_storage=document_storage
+            llm,
+            bot_config,
+            system_instructions,
+            messages_storage,
+            tools=tools,
+            document_storage=document_storage,
+            system_instructions_mapping=system_instructions_mapping,
         )
         # Don't create agent yet - wait for async initialization
         self.agent = None

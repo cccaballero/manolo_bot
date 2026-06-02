@@ -366,6 +366,34 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Ensure no message was added to storage
         self.assertEqual(len(llm_bot.messages_storage.add_message.call_args_list), 0)
 
+    def test_system_instructions_mapping(self):
+        # Arrange
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_bot_config = MagicMock()
+        mock_bot_config.enable_mcp = False
+        mock_bot_config.use_tools = False
+        mock_messages_storage = MagicMock()
+
+        original_content = "Hello {name}, today is {day}"
+        system_instructions = [SystemMessage(content=original_content)]
+
+        mapping = {"{name}": lambda bot: "Manolo", "{day}": lambda bot: "Monday"}
+
+        # Act
+        bot = LLMBot(
+            mock_llm, mock_bot_config, system_instructions, mock_messages_storage, system_instructions_mapping=mapping
+        )
+
+        # Assert
+        # Check that property returns replaced content
+        self.assertEqual(bot.system_instructions[0].content, "Hello Manolo, today is Monday")
+        # Check that original instructions are NOT modified
+        self.assertEqual(bot._system_instructions[0].content, original_content)
+        # Check that it returns a new list (deepcopy)
+        self.assertIsNot(bot.system_instructions, bot._system_instructions)
+        self.assertIsNot(bot.system_instructions[0], bot._system_instructions[0])
+
 
 if __name__ == "__main__":
     unittest.main()

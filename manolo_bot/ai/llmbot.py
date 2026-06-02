@@ -1,4 +1,5 @@
 import base64
+import copy
 import logging
 import re
 import secrets
@@ -114,9 +115,10 @@ class LLMBot:
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
         document_storage: "BaseDocumentStorage | None" = None,
+        system_instructions_mapping=None,
     ) -> None:
         self.bot_config = bot_config
-        self.system_instructions = system_instructions
+        self._system_instructions = system_instructions
         # self.messages_buffer = messages_buffer
         self.llm = llm
         self.messages_storage: BaseMessagesStorage = messages_storage
@@ -125,9 +127,20 @@ class LLMBot:
         self.document_storage = document_storage
         self._mcp_manager: MCPManager | None = None
         self._async_resources_initialized = False
+        self.system_instructions_mapping = system_instructions_mapping or {}
 
         if self.bind_tools_on_init and self.bot_config.use_tools:
             self._load_tools()
+
+    @property
+    def system_instructions(self) -> list[BaseMessage]:
+        """Get the system instructions mapping."""
+        instructions = copy.deepcopy(self._system_instructions)
+        instructions_content = instructions[0].content
+        for old, new in self.system_instructions_mapping.items():
+            instructions_content = instructions_content.replace(old, new(self))
+        instructions[0].content = instructions_content
+        return instructions
 
     def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
         """Helper to create LangChain config with metadata and tags."""

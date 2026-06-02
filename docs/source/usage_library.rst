@@ -173,3 +173,39 @@ To add custom tools, use the ``@tool`` decorator from ``langchain_core.tools`` a
       
       all_tools = get_tools(bot_config) + [get_stock_price]
       agent = LLMAgent(..., tools=all_tools)
+
+Dynamic System Instructions
+---------------------------
+
+You can make your system instructions dynamic by using placeholders and a mapping dictionary. This is useful for injecting real-time information, such as the current date, user-specific data, or any other context that changes over time.
+
+To use this feature:
+1. Include a placeholder in your system instructions string (e.g., ``{current_time}``).
+2. Pass a ``system_instructions_mapping`` dictionary to the ``LLMBot`` or ``LLMAgent`` constructor.
+3. The keys in the mapping should match your placeholders, and the values should be callable functions that take the ``bot`` instance as their only argument.
+
+.. code-block:: python
+
+   import datetime
+   from manolo_bot.ai.llmbot import LLMBot
+   from langchain_core.messages import SystemMessage
+
+   def get_datetime(bot) -> str:
+       return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+   instructions = [SystemMessage(content="You are a helpful assistant. The current time is {time}.")]
+   
+   mapping = {
+       "{time}": get_datetime
+   }
+
+   bot = LLMBot(
+       llm=llm,
+       bot_config=bot_config,
+       system_instructions=instructions,
+       messages_storage=storage,
+       system_instructions_mapping=mapping
+   )
+
+   # Every time bot.system_instructions is accessed, the placeholder will be updated
+   # with the result of the callable function.
