@@ -3,32 +3,58 @@ Using as an App
 
 `manolo-bot` is ready to use as a standalone Telegram chat bot. It handles message queuing, multimodal inputs (images/voice), and tool execution out of the box.
 
-Quick Start
------------
+Quick Start: Your First Telegram Bot
+-----------------------------------
 
-1. **Install the package**:
+This guide will help you get a basic Telegram bot up and running in minutes.
 
-   .. code-block:: shell
+Step 1: Get a Telegram Bot Token
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-      pip install manolo-bot
+1.  Open Telegram and search for `@BotFather <https://t.me/botfather>`_.
+2.  Send the command ``/newbot``.
+3.  Follow the instructions to choose a name and a username for your bot.
+4.  BotFather will give you an **API Token**. Keep this safe!
 
-2. **Configure environment**:
-   Create a ``.env`` file in your current directory or set environment variables directly:
+Step 2: Get an AI API Key
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: text
+For this tutorial, we recommend using Google Gemini as it's easy to set up:
 
-      TELEGRAM_BOT_TOKEN=your_telegram_token
-      GOOGLE_API_KEY=your_gemini_api_key
-      # Add other configuration as needed
+1.  Go to `Google AI Studio <https://aistudio.google.com/>`_.
+2.  Create a free **API Key**.
 
-3. **Run the bot**:
+Step 3: Install and Run
+~~~~~~~~~~~~~~~~~~~~~~~
 
-   .. code-block:: shell
+1.  **Install the package**:
 
-      manolo-bot
+    .. code-block:: shell
 
-Configuration Details
----------------------
+       pip install manolo-bot
+
+2.  **Create a configuration file**:
+    Create a file named ``.env`` in your current folder and paste your keys:
+
+    .. code-block:: text
+
+       TELEGRAM_BOT_TOKEN=your_telegram_token_here
+       TELEGRAM_BOT_NAME=MyAwesomeBot
+       TELEGRAM_BOT_USERNAME=my_awesome_bot
+       GOOGLE_API_KEY=your_google_api_key_here
+       AGENT_MODE=True
+
+3.  **Run the bot**:
+
+    .. code-block:: shell
+
+       manolo-bot
+
+4.  **Start Chatting**:
+    Open Telegram, find your bot by its username, and send it a message like "Hello!".
+
+Advanced Configuration
+----------------------
 
 The bot is configured entirely via environment variables. You can set these in your terminal or, more conveniently, in a `.env` file in the project root.
 
