@@ -90,8 +90,8 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         agent = self.get_basic_llm_agent()
         agent.agent = mock_agent
-        agent.document_storage = MagicMock(spec=BaseDocumentStorage)
-        agent.document_storage.store = AsyncMock()
+        agent.documents_storage = MagicMock(spec=BaseDocumentStorage)
+        agent.documents_storage.store = AsyncMock()
 
         with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value="something"):
             with patch("manolo_bot.ai.llmbot.DocumentLoader") as mock_loader_class:
@@ -104,8 +104,8 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
                 # Assert
                 self.assertEqual(result.content, "Agent analysis")
                 # Filename is now unique (contains uuid), so we use ANY or check it starts with uuid
-                agent.document_storage.store.assert_called_once_with(1, unittest.mock.ANY, "text")
-                actual_filename = agent.document_storage.store.call_args[0][1]
+                agent.documents_storage.store.assert_called_once_with(1, unittest.mock.ANY, "text")
+                actual_filename = agent.documents_storage.store.call_args[0][1]
                 self.assertTrue(actual_filename.endswith("_file.pdf"))
                 self.assertEqual(len(actual_filename.split("_")[0]), 8)
 

@@ -196,7 +196,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             bot_config,
             system_instructions,
             messages_storage,
-            document_storage=document_storage,
+            documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
         )
     else:
@@ -205,7 +205,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             bot_config,
             system_instructions,
             messages_storage,
-            document_storage=document_storage,
+            documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
         )
 

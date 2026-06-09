@@ -114,7 +114,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
 
         bot = self.get_basic_llm_bot()
         bot.llm = mock_llm
-        bot.document_storage = mock_storage
+        bot.documents_storage = mock_storage
 
         with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=b"something"):
             with patch("manolo_bot.ai.document_loaders.DocumentLoader.extract_text_from_pdf", return_value="text"):
@@ -170,7 +170,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_document_storage = AsyncMock()
         bot = self.get_basic_llm_bot()
         bot.messages_storage = mock_messages_storage
-        bot.document_storage = mock_document_storage
+        bot.documents_storage = mock_document_storage
 
         # Act
         await bot.clean_context()

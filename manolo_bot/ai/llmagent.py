@@ -30,7 +30,7 @@ class LLMAgent(LLMBot):
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
-        document_storage: BaseDocumentStorage | None = None,
+        documents_storage: BaseDocumentStorage | None = None,
         system_instructions_mapping=None,
     ) -> None:
         super().__init__(
@@ -39,7 +39,7 @@ class LLMAgent(LLMBot):
             system_instructions,
             messages_storage,
             tools=tools,
-            document_storage=document_storage,
+            documents_storage=documents_storage,
             system_instructions_mapping=system_instructions_mapping,
         )
         # Don't create agent yet - wait for async initialization
@@ -54,7 +54,7 @@ class LLMAgent(LLMBot):
 
         # Use the tools passed in __init__ if available, otherwise get default ones
         tools = await get_all_tools(
-            self._mcp_manager, self.bot_config, document_storage=self.document_storage, custom_tools=self.tools
+            self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
 
         self.agent = create_agent(

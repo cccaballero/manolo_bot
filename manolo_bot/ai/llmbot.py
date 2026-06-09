@@ -114,7 +114,7 @@ class LLMBot:
         system_instructions: list[BaseMessage],
         messages_storage: BaseMessagesStorage,
         tools: list[BaseTool] | None = None,
-        document_storage: "BaseDocumentStorage | None" = None,
+        documents_storage: "BaseDocumentStorage | None" = None,
         system_instructions_mapping=None,
     ) -> None:
         self.bot_config = bot_config
@@ -124,7 +124,7 @@ class LLMBot:
         self.messages_storage: BaseMessagesStorage = messages_storage
         # self._load_llm()
         self.tools = tools
-        self.document_storage = document_storage
+        self.documents_storage = documents_storage
         self._mcp_manager: MCPManager | None = None
         self._async_resources_initialized = False
         self.system_instructions_mapping = system_instructions_mapping or {}
@@ -247,7 +247,7 @@ class LLMBot:
         from manolo_bot.ai.tools import get_all_tools
 
         tools = await get_all_tools(
-            self._mcp_manager, self.bot_config, document_storage=self.document_storage, custom_tools=self.tools
+            self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
         self.llm = self.llm.bind_tools(tools)
         logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
@@ -310,8 +310,8 @@ class LLMBot:
         Clean the chat context.
         """
         await self.messages_storage.clear_messages()
-        if self.document_storage:
-            await self.document_storage.clear(self.messages_storage.chat_id)
+        if self.documents_storage:
+            await self.documents_storage.clear(self.messages_storage.chat_id)
         logging.debug(f"Chat context and documents cleaned for chat {self.messages_storage.chat_id}")
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
@@ -329,7 +329,7 @@ class LLMBot:
         if ai_msg.tool_calls:
             self.messages_storage.add_message(ai_msg)
             for tool_call in ai_msg.tool_calls:
-                selected_tool = get_tool(tool_call["name"], self.bot_config, self.document_storage)
+                selected_tool = get_tool(tool_call["name"], self.bot_config, self.documents_storage)
                 tool_msg = await selected_tool.ainvoke(tool_call, config=config)
                 self.messages_storage.add_message(tool_msg)
             ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages, config=config)
@@ -449,8 +449,8 @@ class LLMBot:
         doc_key = generate_document_key(filename)
 
         # Store document text
-        if self.document_storage:
-            await self.document_storage.store(chat_id, doc_key, extracted_text)
+        if self.documents_storage:
+            await self.documents_storage.store(chat_id, doc_key, extracted_text)
 
         return doc_key, extracted_text
 
@@ -745,6 +745,8 @@ class LLMBot:
 
     def _load_tools(self) -> None:
         tools_to_bind = (
-            self.tools if self.tools is not None else get_tools(self.bot_config, document_storage=self.document_storage)
+            self.tools
+            if self.tools is not None
+            else get_tools(self.bot_config, document_storage=self.documents_storage)
         )
         self.llm = self.llm.bind_tools(tools_to_bind)  # add wikipedia?
