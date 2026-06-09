@@ -395,7 +395,7 @@ async def process_message_queue():
                             )
                         else:
                             logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
-                    # Check if the message is a reply to a message with an image
+                    # Check if the message is a reply to a voice message
                     elif (
                         is_reply(message)
                         and message.reply_to_message
