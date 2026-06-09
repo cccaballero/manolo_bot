@@ -34,12 +34,12 @@ Storage Components
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: manolo_bot.storage.messages.memory
+.. automodule:: manolo_bot.storage.messages.memory_storage
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: manolo_bot.storage.messages.redis
+.. automodule:: manolo_bot.storage.messages.redis_storage
    :members:
    :undoc-members:
    :show-inheritance:
@@ -49,7 +49,7 @@ Storage Components
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: manolo_bot.storage.documents.file
+.. automodule:: manolo_bot.storage.documents.file_storage
    :members:
    :undoc-members:
    :show-inheritance:
