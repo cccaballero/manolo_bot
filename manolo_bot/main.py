@@ -16,7 +16,7 @@ from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.config import Config
 from manolo_bot.storage.documents.file import FileDocumentStorage
-from manolo_bot.storage.messages.memory import MemoryMessagesStorage
+from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 from manolo_bot.telegram.utils import (
     get_message_from,
     get_message_text,
@@ -38,7 +38,7 @@ load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 config = Config()
 
 if config.storage_type == "redis":
-    from manolo_bot.storage.messages.redis import RedisDBHelper, RedisMessagesStorage
+    from manolo_bot.storage.messages.redis_storage import RedisDBHelper, RedisMessagesStorage
 
 document_storage = FileDocumentStorage(bot_uuid=config.bot_uuid, base_path=config.document_storage_path)
 
@@ -185,6 +185,7 @@ instructions_mapping = {
 async def instance_llm_bot(chat_id: int) -> LLMBot:
     if config.storage_type == "redis":
         bd_helper = RedisDBHelper(db_url=config.redis_url)
+        await bd_helper.connect()
         messages_storage = RedisMessagesStorage(bot_uuid=bot_config.bot_uuid, chat_id=chat_id, db=bd_helper)
     else:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
