@@ -15,7 +15,7 @@ from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.config import Config
-from manolo_bot.storage.documents.file import FileDocumentStorage
+from manolo_bot.storage.documents.file_storage import FileDocumentsStorage
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 from manolo_bot.telegram.utils import (
     get_message_from,
@@ -40,7 +40,7 @@ config = Config()
 if config.storage_type == "redis":
     from manolo_bot.storage.messages.redis_storage import RedisDBHelper, RedisMessagesStorage
 
-document_storage = FileDocumentStorage(bot_uuid=config.bot_uuid, base_path=config.document_storage_path)
+document_storage = FileDocumentsStorage(bot_uuid=config.bot_uuid, base_path=config.document_storage_path)
 
 logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
 

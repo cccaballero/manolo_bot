@@ -5,7 +5,7 @@ from pathlib import Path
 from manolo_bot.storage.documents.base import BaseDocumentStorage
 
 
-class FileDocumentStorage(BaseDocumentStorage):
+class FileDocumentsStorage(BaseDocumentStorage):
     """
     File-based implementation of document storage.
     """

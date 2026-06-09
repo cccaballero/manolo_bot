@@ -3,14 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from manolo_bot.storage.documents.file import FileDocumentStorage
+from manolo_bot.storage.documents.file_storage import FileDocumentsStorage
 
 
-class TestFileDocumentStorage(unittest.IsolatedAsyncioTestCase):
+class TestFileDocumentsStorage(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.bot_uuid = "test-bot"
         self.test_dir = Path(tempfile.mkdtemp(prefix="manolo_bot_test_docs_"))
-        self.storage = FileDocumentStorage(bot_uuid=self.bot_uuid, base_path=str(self.test_dir))
+        self.storage = FileDocumentsStorage(bot_uuid=self.bot_uuid, base_path=str(self.test_dir))
         self.chat_id = 12345
 
     def tearDown(self):
