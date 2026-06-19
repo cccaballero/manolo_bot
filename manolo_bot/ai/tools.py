@@ -11,7 +11,7 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langchain_tavily import TavilySearch
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
 from manolo_bot.ai.config import BotConfig
@@ -208,6 +208,10 @@ def get_search_instructions() -> str:
     """
 
 
+class ReadDocumentInput(BaseModel):
+    filename: str = Field(description="The name of the document file to read")
+
+
 class ReadDocumentTool(BaseTool):
     """
     Tool for reading the content of a document that the user has uploaded.
@@ -219,6 +223,7 @@ class ReadDocumentTool(BaseTool):
         "Tool for reading the content of a document that the user has uploaded. "
         "Input should be the filename provided in the pointer message."
     )
+    args_schema: type[BaseModel] = ReadDocumentInput
     document_storage: BaseDocumentStorage
     context_max_tokens: int = 4096
 
