@@ -262,6 +262,34 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 258 + 3)  # image (258) + text (3)
         mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
 
+    def test_count_tokens__with_audio_media(self):
+        # Arrange
+        llm_bot = self.get_basic_llm_bot()
+        # 16000 bytes of audio data.
+        # At 16kbps (2000 bytes/s), this is 8 seconds.
+        # 8 seconds * 32 tokens/s = 256 tokens.
+        audio_data = b"a" * 16000
+        encoded_audio = base64.b64encode(audio_data).decode("utf-8")
+
+        messages = [
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": "Listen to this"},
+                    {"type": "media", "mime_type": "audio/ogg", "data": encoded_audio},
+                ]
+            )
+        ]
+        mock_llm = unittest.mock.MagicMock()
+        llm_bot.llm = mock_llm
+        mock_llm.get_num_tokens.return_value = 1
+
+        # Act
+        result = llm_bot.count_tokens(messages)
+
+        # Assert
+        self.assertEqual(result, 256 + 1)
+        mock_llm.get_num_tokens.assert_called_once_with("\n Listen to this")
+
     async def test_generate_feedback_message__success_message(self):
         # Arrange
         mock_config = unittest.mock.MagicMock(spec=Config)
