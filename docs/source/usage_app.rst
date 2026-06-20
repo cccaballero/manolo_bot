@@ -147,7 +147,7 @@ Image and Voice
 * `WEBUI_SD_API_NEGATIVE_PROMPT`: Words or concepts you want Stable Diffusion to avoid.
 
 Document and Voice Processing
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When `DOCUMENT_MULTIMODAL` is enabled, the bot can process uploaded files. It extracts the text content, cleans it, and stores it in a temporary storage so the LLM can reference it during the conversation.
 
