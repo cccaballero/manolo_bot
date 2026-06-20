@@ -1,6 +1,6 @@
 [project]
 name = "manolo-bot"
-version = "0.2.2"
+version = "0.3.0"
 description = "AI-powered Telegram Chat Bot and Library using LLMs"
 authors = [{ name = "Carlos Cesar Caballero Díaz", email = "ccesarcaball.cc@gmail.com" }]
 readme = "README.md"
