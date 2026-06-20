@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, SystemMessage
 
 from manolo_bot.ai.llmagent import LLMAgent
+from manolo_bot.ai.llmbot import FileTooLargeError
 from manolo_bot.config import Config
 
 
@@ -29,6 +30,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.use_tools = True
         mock_config.can_use_tavily_search = False
         mock_config.max_document_size = 10 * 1024 * 1024
+        mock_config.max_voice_size = 10 * 1024 * 1024
         mock_messages_storage = MagicMock()
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
         agent = LLMAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
@@ -48,6 +50,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_config.mcp_servers_config = {}
         mock_config.can_use_tavily_search = False
         mock_config.max_document_size = 10 * 1024 * 1024
+        mock_config.max_voice_size = 10 * 1024 * 1024
         mock_messages_storage = MagicMock()
 
         mock_tools = ["tool1", "tool2"]
@@ -180,16 +183,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         chat_id = 1
         text = "What did I say?"
         audio_url = "https://example.com/audio.ogg"
-
-        # Mock aiohttp session and response
-        mock_session = unittest.mock.MagicMock()
-        mock_response = unittest.mock.AsyncMock()
-        mock_response.read.return_value = b"fake_audio_data"
-        mock_response.status = 200
-        mock_response.raise_for_status = unittest.mock.MagicMock()
-
-        mock_session.get.return_value.__aenter__.return_value = mock_response
-        mock_session.__aenter__.return_value = mock_session
+        fake_audio_data = b"fake_audio_data"
 
         # Mock agent response
         mock_ai_message = AIMessage(content="You said 'Hello'.")
@@ -197,13 +191,29 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_agent.ainvoke = unittest.mock.AsyncMock(return_value={"messages": [mock_ai_message]})
         agent.agent = mock_agent
 
-        with unittest.mock.patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch("manolo_bot.ai.llmbot.LLMBot._download_file", return_value=fake_audio_data):
             # Act
             response = await agent.answer_voice_message(chat_id, text, audio_url)
 
             # Assert
             self.assertEqual(response.content, "You said 'Hello'.")
             mock_agent.ainvoke.assert_called_once()
+
+    async def test_answer_voice_message__too_large(self):
+        # Arrange
+        agent = self.get_basic_llm_agent()
+        agent.generate_feedback_message = AsyncMock(return_value="Voice message too long")
+        agent.bot_config.max_voice_size = 100  # Small limit
+
+        with patch(
+            "manolo_bot.ai.llmbot.LLMBot._download_file",
+            side_effect=FileTooLargeError("Voice message is too large (200 bytes)"),
+        ):
+            # Act
+            response = await agent.answer_voice_message(1, "prompt", "http://example.com/audio.ogg")
+
+            # Assert
+            self.assertEqual(response.content, "Voice message too long")
 
     def test_system_instructions_mapping(self):
         # Arrange

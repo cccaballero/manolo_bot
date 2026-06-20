@@ -75,8 +75,11 @@ class Config(EnvModel):
         warning="MCP_SERVERS_CONFIG not set. MCP will be disabled.",
     )
 
-    # Document processing configuration
+    # File size limits
     max_document_size = IntegerField("MAX_DOCUMENT_SIZE_BYTES", default=2 * 1024 * 1024)  # 2MB
+    max_voice_size = IntegerField("MAX_VOICE_SIZE_BYTES", default=2 * 1024 * 1024)  # 2MB
+
+    # Document storage
     document_storage_path = StringField(
         "DOCUMENT_STORAGE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "documents")
     )

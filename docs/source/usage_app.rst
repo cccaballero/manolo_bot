@@ -146,12 +146,15 @@ Image and Voice
 * `WEBUI_SD_API_PARAMS`: A JSON string of parameters for the Stable Diffusion API (e.g., `{"steps": 20, "width": 512}`).
 * `WEBUI_SD_API_NEGATIVE_PROMPT`: Words or concepts you want Stable Diffusion to avoid.
 
-Document Processing
-~~~~~~~~~~~~~~~~~~~
+Document and Voice Processing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When `DOCUMENT_MULTIMODAL` is enabled, the bot can process uploaded files. It extracts the text content, cleans it, and stores it in a temporary storage so the LLM can reference it during the conversation.
 
+Similarly, when `AUDIO_MULTIMODAL` is enabled, the bot can process voice messages, but only up to the configured maximum size.
+
 * `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: `2097152` bytes / 2MB).
+* `MAX_VOICE_SIZE_BYTES`: Maximum size of voice messages the bot will process (default: `2097152` bytes / 2MB).
 * `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory (`/tmp/manolo_bot/documents` on Linux).
 
 Storage and Persistence

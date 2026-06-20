@@ -129,9 +129,10 @@ The document text is stored separately from chat history to keep memory clean.
 `ENABLE_GROUP_ASSISTANT`: Enable group assistant for group chats (True, False). The bot will respond to group chats with
 a question mark. The default value is False.
 
-#### Document processing configuration
+#### File size limits and document storage
 
 `MAX_DOCUMENT_SIZE_BYTES`: Maximum size of documents the bot will process (default: 2MB).
+`MAX_VOICE_SIZE_BYTES`: Maximum size of voice messages the bot will process (default: 2MB).
 `DOCUMENT_STORAGE_PATH`: Directory where extracted document text is stored. Defaults to a system temporary directory.
 
 #### Enable rate limiting

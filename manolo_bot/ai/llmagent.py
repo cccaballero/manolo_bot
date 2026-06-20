@@ -148,12 +148,8 @@ class LLMAgent(LLMBot):
 
         try:
             async with aiohttp.ClientSession() as session:
-                timeout = self._get_session_timeout()
-
-                async with session.get(audio, timeout=timeout) as response:
-                    response.raise_for_status()
-                    audio_bytes = await response.read()
-                    audio_data = base64.b64encode(audio_bytes).decode("utf-8")
+                audio_bytes = await self._download_file(audio, session, size_limit=self.bot_config.max_voice_size)
+                audio_data = base64.b64encode(audio_bytes).decode("utf-8")
 
                 llm_message = HumanMessage(
                     content=[
@@ -176,6 +172,14 @@ class LLMAgent(LLMBot):
                         {"messages": self.system_instructions + self.messages_storage.messages}, config=config
                     )
                 )["messages"][-1]
+        except FileTooLargeError:
+            error_prompt = (
+                f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
+                f"explaining that the voice message is too long and you cannot process it. "
+                f"Keep it under 150 characters and maintain your character's style."
+            )
+            feedback = await self.generate_feedback_message(error_prompt, chat_id=chat_id)
+            response = AIMessage(content=feedback)
         except (aiohttp.ClientError, Exception) as e:
             if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get audio: {audio}")
