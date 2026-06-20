@@ -17,6 +17,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_llm.bind_tools.return_value = mock_llm
         # Ensure token counting works in tests by returning an int, not a mock
         mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(return_value=10)
 
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
@@ -109,6 +110,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_llm = MagicMock()
         mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="Analysis"))
         mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(return_value=10)
 
         mock_storage = MagicMock(spec=BaseDocumentStorage)
         mock_storage.store = AsyncMock()
@@ -229,15 +231,15 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), HumanMessage(content="World")]
         llm_bot.llm = unittest.mock.MagicMock()
-        llm_bot.llm.get_num_tokens = unittest.mock.MagicMock()
-        llm_bot.llm.get_num_tokens.return_value = 2
+        llm_bot.llm.get_num_tokens_from_messages = unittest.mock.MagicMock()
+        llm_bot.llm.get_num_tokens_from_messages.return_value = 2
 
         # Act
         result = llm_bot.count_tokens(messages)
 
         # Assert
         self.assertEqual(result, 2)
-        llm_bot.llm.get_num_tokens.assert_called_once_with("\n Hello\n World")
+        llm_bot.llm.get_num_tokens_from_messages.assert_called_once_with(messages)
 
     def test_count_tokens__with_list_content(self):
         # Arrange
@@ -253,14 +255,14 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         ]
         mock_llm = unittest.mock.MagicMock()
         llm_bot.llm = mock_llm
-        mock_llm.get_num_tokens.return_value = 3
+        mock_llm.get_num_tokens_from_messages.return_value = 3
 
         # Act
         result = llm_bot.count_tokens(messages)
 
         # Assert
-        self.assertEqual(result, 258 + 3)  # image (258) + text (3)
-        mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
+        self.assertEqual(result, 3)
+        mock_llm.get_num_tokens_from_messages.assert_called_once_with(messages)
 
     def test_count_tokens__with_audio_media(self):
         # Arrange
@@ -281,14 +283,14 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         ]
         mock_llm = unittest.mock.MagicMock()
         llm_bot.llm = mock_llm
-        mock_llm.get_num_tokens.return_value = 1
+        mock_llm.get_num_tokens_from_messages.return_value = 1
 
         # Act
         result = llm_bot.count_tokens(messages)
 
         # Assert
-        self.assertEqual(result, 256 + 1)
-        mock_llm.get_num_tokens.assert_called_once_with("\n Listen to this")
+        self.assertEqual(result, 1)
+        mock_llm.get_num_tokens_from_messages.assert_called_once_with(messages)
 
     async def test_generate_feedback_message__success_message(self):
         # Arrange
@@ -348,6 +350,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         llm_bot.llm = MagicMock()
         llm_bot.llm.ainvoke = AsyncMock()
         llm_bot.llm.get_num_tokens = MagicMock(return_value=10)
+        llm_bot.llm.get_num_tokens_from_messages = MagicMock(return_value=10)
 
         chat_id = 1
         text = "Check this audio"

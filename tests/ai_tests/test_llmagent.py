@@ -16,6 +16,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
         mock_llm.bind_tools.return_value = mock_llm
         # Ensure token counting works in tests
         mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(return_value=10)
 
         mock_config = MagicMock(spec=Config)
         mock_config.ollama_model = "test_model"
@@ -70,6 +71,7 @@ class TestLlmAgent(unittest.IsolatedAsyncioTestCase):
 
         mock_llm = MagicMock()
         mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(return_value=10)
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
