@@ -37,6 +37,7 @@ class BotConfig:
     # Web content retrieval configuration
     web_content_request_timeout: int = 10
     max_document_size: int = 2 * 1024 * 1024
+    max_voice_size: int = 2 * 1024 * 1024
 
     can_use_tavily_search: bool = False
 

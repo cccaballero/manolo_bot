@@ -30,6 +30,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_config.use_tools = False
         mock_config.can_use_tavily_search = False
         mock_config.max_document_size = 10 * 1024 * 1024
+        mock_config.max_voice_size = 10 * 1024 * 1024
         mock_messages_storage = MagicMock()
         mock_messages_storage.messages = []
 
@@ -258,7 +259,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         result = llm_bot.count_tokens(messages)
 
         # Assert
-        self.assertEqual(result, 258 + 3)
+        self.assertEqual(result, 258 + 3)  # image (258) + text (3)
         mock_llm.get_num_tokens.assert_called_once_with("\n Hello\n Test")
 
     async def test_generate_feedback_message__success_message(self):
@@ -365,6 +366,22 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.content, "NO_ANSWER")
         # Ensure no message was added to storage
         self.assertEqual(len(llm_bot.messages_storage.add_message.call_args_list), 0)
+
+    async def test_answer_voice_message__too_large(self):
+        # Arrange
+        llm_bot = self.get_basic_llm_bot()
+        llm_bot.generate_feedback_message = AsyncMock(return_value="Voice message too long")
+        llm_bot.bot_config.max_voice_size = 100  # Small limit
+
+        with patch(
+            "manolo_bot.ai.llmbot.LLMBot._download_file",
+            side_effect=FileTooLargeError("Voice message is too large (200 bytes)"),
+        ):
+            # Act
+            response = await llm_bot.answer_voice_message(1, "prompt", "http://example.com/audio.ogg")
+
+            # Assert
+            self.assertEqual(response.content, "Voice message too long")
 
     def test_system_instructions_mapping(self):
         # Arrange
