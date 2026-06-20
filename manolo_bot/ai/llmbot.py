@@ -709,6 +709,18 @@ class LLMBot:
                     elif item.get("type") == "image_url":
                         # TODO: Use an LLM-based method to get the image token count.
                         extra_tokens += 258  # using gemini image context size
+                    elif item.get("type") == "media" and "audio" in item.get("mime_type", ""):
+                        # TODO: Use an LLM-based method to get the audio token count.
+                        # Estimate audio duration from raw binary size (assuming typical OGG voice at ~16kbps)
+                        # Then compute duration * 32 (Gemini tokenization rate for audio)
+                        audio_data = item.get("data", "")
+                        if audio_data:
+                            try:
+                                binary_size = len(base64.b64decode(audio_data))
+                                duration = binary_size / 2000  # 16kbps = 2000 bytes/s
+                                extra_tokens += int(duration * 32)
+                            except Exception as e:
+                                logging.error(f"Error estimating audio tokens: {e}")
             else:
                 context_text += "\n " + message.content
 
