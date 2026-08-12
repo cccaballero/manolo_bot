@@ -14,7 +14,6 @@ def _make_config(**overrides) -> BotConfig:
         bot_username="test_bot",
         bot_token="123456:ABC",
         user_id=0,
-        ollama_model="test_model",
         use_tools=False,
         enable_mcp=False,
         mcp_servers_config={},
