@@ -3,8 +3,29 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import SystemMessage
 
+from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent
-from manolo_bot.config import Config
+
+
+def _make_config(**overrides) -> BotConfig:
+    defaults = dict(
+        bot_uuid="test-bot",
+        bot_name="TestBot",
+        bot_username="test_bot",
+        bot_token="123456:ABC",
+        user_id=0,
+        ollama_model="test_model",
+        use_tools=False,
+        enable_mcp=False,
+        mcp_servers_config={},
+        context_max_tokens=4000,
+        web_content_request_timeout=30,
+        can_use_tavily_search=False,
+        max_document_size=10 * 1024 * 1024,
+        max_voice_size=10 * 1024 * 1024,
+    )
+    defaults.update(overrides)
+    return BotConfig(**defaults)
 
 
 class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
@@ -15,16 +36,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
     ):
         # Arrange
-        mock_config = MagicMock(spec=Config)
-        mock_config.ollama_model = "test_model"
-        mock_config.use_tools = True
-        mock_config.context_max_tokens = 4000
-        mock_config.web_content_request_timeout = 30
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = {}
-        mock_config.can_use_tavily_search = False
-        mock_config.max_document_size = 10 * 1024 * 1024
-        mock_config.max_voice_size = 10 * 1024 * 1024
+        bot_config = _make_config(use_tools=True)
 
         mock_messages_storage = MagicMock()
 
@@ -39,7 +51,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
         # Act
-        agent = LLMDeepAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
+        agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage)
         await agent.initialize_async_resources()
 
         # Assert
@@ -59,16 +71,12 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         """Verify backend injection works."""
         mock_backend = MagicMock()
         mock_backend.backend = MagicMock()  # the actual BackendProtocol
-        mock_config = MagicMock(spec=Config)
-        mock_config.ollama_model = "test_model"
-        mock_config.use_tools = False
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = {}
+        bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_llm = MagicMock()
         system_instructions = [SystemMessage(content="Test")]
 
-        agent = LLMDeepAgent(mock_llm, mock_config, system_instructions, mock_messages_storage, backend=mock_backend)
+        agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage, backend=mock_backend)
 
         self.assertIs(agent._backend, mock_backend.backend)
         self.assertIs(agent._backend_wrapper, mock_backend)
@@ -80,16 +88,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_agent = MagicMock()
         mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_ai_message]})
 
-        mock_config = MagicMock(spec=Config)
-        mock_config.ollama_model = "test_model"
-        mock_config.use_tools = True
-        mock_config.context_max_tokens = 4000
-        mock_config.web_content_request_timeout = 30
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = {}
-        mock_config.can_use_tavily_search = False
-        mock_config.max_document_size = 10 * 1024 * 1024
-        mock_config.max_voice_size = 10 * 1024 * 1024
+        bot_config = _make_config(use_tools=True)
 
         mock_messages_storage = MagicMock()
         mock_messages_storage.messages = []
@@ -98,7 +97,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_llm.get_num_tokens = MagicMock(return_value=10)
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
 
-        agent = LLMDeepAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
+        agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage)
         agent.agent = mock_agent
 
         response = await agent.answer_message(1, "Hello")
@@ -109,16 +108,12 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_deep_agent_defaults_to_state_backend(self, mock_create_agent):
         """When no backend is provided, defaults to StateBackend."""
-        mock_config = MagicMock(spec=Config)
-        mock_config.ollama_model = "test_model"
-        mock_config.use_tools = False
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = {}
+        bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_llm = MagicMock()
         system_instructions = [SystemMessage(content="Test")]
 
-        agent = LLMDeepAgent(mock_llm, mock_config, system_instructions, mock_messages_storage)
+        agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage)
 
         self.assertIsNone(agent._backend_wrapper)
         from deepagents.backends import StateBackend
@@ -127,11 +122,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_deep_agent_clean_context_clears_backend_wrapper(self):
         """clean_context should also clear the backend wrapper."""
-        mock_config = MagicMock(spec=Config)
-        mock_config.ollama_model = "test_model"
-        mock_config.use_tools = False
-        mock_config.enable_mcp = False
-        mock_config.mcp_servers_config = {}
+        bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_messages_storage.chat_id = 123
         mock_messages_storage.clear_messages = AsyncMock()
@@ -143,7 +134,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_backend_wrapper.clear = AsyncMock()
 
         agent = LLMDeepAgent(
-            mock_llm, mock_config, system_instructions, mock_messages_storage, backend=mock_backend_wrapper
+            mock_llm, bot_config, system_instructions, mock_messages_storage, backend=mock_backend_wrapper
         )
         agent.documents_storage = None
 
