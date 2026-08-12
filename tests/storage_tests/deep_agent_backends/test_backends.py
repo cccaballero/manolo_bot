@@ -35,6 +35,7 @@ class TestMemoryDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
 
     async def test_backend_is_state_backend(self):
         from deepagents.backends import StateBackend
+
         backend = MemoryDeepAgentBackend(self.bot_uuid, 12345)
         self.assertIsInstance(backend.backend, StateBackend)
 
@@ -74,6 +75,7 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
 
     async def test_backend_is_filesystem_backend(self):
         from deepagents.backends.filesystem import FilesystemBackend
+
         backend = FilesystemDeepAgentBackend(self.bot_uuid, 12345, self.workspace)
         self.assertIsInstance(backend.backend, FilesystemBackend)
 

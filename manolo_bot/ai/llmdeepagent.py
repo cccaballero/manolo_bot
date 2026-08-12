@@ -63,7 +63,7 @@ class LLMDeepAgent(LLMAgent):
             system_instructions_mapping=system_instructions_mapping,
         )
         self._backend_wrapper = backend
-        self._backend: "BackendProtocol" = backend.backend if backend else StateBackend()
+        self._backend: BackendProtocol = backend.backend if backend else StateBackend()
         self.agent = None
 
     async def initialize_async_resources(self) -> None:

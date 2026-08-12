@@ -122,6 +122,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(agent._backend_wrapper)
         from deepagents.backends import StateBackend
+
         self.assertIsInstance(agent._backend, StateBackend)
 
     async def test_deep_agent_clean_context_clears_backend_wrapper(self):
@@ -141,7 +142,9 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_backend_wrapper.backend = MagicMock()
         mock_backend_wrapper.clear = AsyncMock()
 
-        agent = LLMDeepAgent(mock_llm, mock_config, system_instructions, mock_messages_storage, backend=mock_backend_wrapper)
+        agent = LLMDeepAgent(
+            mock_llm, mock_config, system_instructions, mock_messages_storage, backend=mock_backend_wrapper
+        )
         agent.documents_storage = None
 
         await agent.clean_context()
