@@ -46,6 +46,10 @@ class BotConfig:
     sdapi_params: dict = field(default_factory=dict)
     sdapi_negative_prompt: str = ""
 
+    # Deep Agent workspace (virtual filesystem root)
+    deep_agent_workspace_path: str = ""
+    deep_agent_backend: str = "local_fs"
+
 
 @dataclass
 class LLMConfig:

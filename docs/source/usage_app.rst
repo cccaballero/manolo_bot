@@ -42,7 +42,7 @@ Step 3: Install and Run
        TELEGRAM_BOT_NAME=MyAwesomeBot
        TELEGRAM_BOT_USERNAME=my_awesome_bot
        GOOGLE_API_KEY=your_google_api_key_here
-       AGENT_MODE=True
+       AI_MODE=agent
 
 3.  **Run the bot**:
 
@@ -124,9 +124,16 @@ Agent and Tools
 .. note::
    Using **Agent Mode** is highly recommended for a better experience, as it allows the bot to reason and use tools effectively.
 
-* `AGENT_MODE`: Set to `True` (recommended) to enable "Agentic" behavior. In this mode, the bot doesn't just respond; it thinks and acts. It will use the LLM to reason about your request and can perform multiple iterations (like searching the internet, reading web pages, and refining its search) until it completes the task.
+* `AI_MODE`: Selects the bot's AI mode (default: `agent`).
+
+  * `agent`: LangGraph-based agent with an automatic tool loop. The bot uses the LLM to reason about your request and can perform multiple iterations (like searching the internet, reading web pages, and refining its search) until it completes the task.
+  * `deep_agent`: The full `Deep Agents <https://www.langchain.com/deep-agents>`_ harness on top of the agent mode. Adds to-do list planning, a virtual filesystem, and sub-agent support for complex, multi-step tasks.
+  * `llm`: Simple LLM with a manual tool loop. Best for models without tool-calling support or simpler use cases.
+
+* `AGENT_MODE`: (Deprecated) Old boolean switch for agent mode. Use `AI_MODE` instead. When `AI_MODE` is not set, `AGENT_MODE=True` selects `agent`.
 * `USE_TOOLS`: Set to `True` to allow the bot to use tools. In non-agent mode, it uses tools in a more direct, single-step way.
-* `AGENT_INSTRUCTIONS`: Custom rules that guide how the agent should reason and prioritize its actions when `AGENT_MODE` is active.
+* `AGENT_INSTRUCTIONS`: Custom rules that guide how the agent should reason and prioritize its actions when in an agent mode.
+* `DEEP_AGENT_WORKSPACE_PATH`: Directory used as the virtual filesystem root for the `deep_agent` mode. Defaults to a system temporary directory. Separate from `DOCUMENT_STORAGE_PATH`, which handles temporarily uploaded documents.
 
 Search Configuration
 ~~~~~~~~~~~~~~~~~~~~

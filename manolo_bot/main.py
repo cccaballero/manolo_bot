@@ -14,7 +14,10 @@ from langchain_core.messages import AIMessage, SystemMessage
 from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
+from manolo_bot.ai.llmdeepagent import LLMDeepAgent
 from manolo_bot.config import Config
+from manolo_bot.storage.deep_agent_backends.filesystem_backend import FilesystemDeepAgentBackend
+from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
 from manolo_bot.storage.documents.file_storage import FileDocumentsStorage
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 from manolo_bot.telegram.utils import (
@@ -117,8 +120,8 @@ Instructions:
 {newline + no_answer_instructions + newline if config.add_no_answer else ""}
 You should not include your user name or identifier at the beginning of your response, like "@{config.bot_username}:".
 
-{agent_instructions if config.agent_mode else ""}
-{pseudotools_instructions if not (config.use_tools or config.agent_mode) else tools_instructions}
+{agent_instructions if config.effective_ai_mode in ("agent", "deep_agent") else ""}
+    {pseudotools_instructions if not (config.use_tools or config.effective_ai_mode in ("agent", "deep_agent")) else tools_instructions}
 {generate_image_instructions if config.sdapi_url else ""}
 
 The current datetime is: [datetime]
@@ -171,6 +174,8 @@ bot_config = BotConfig(
     sdapi_negative_prompt=config.sdapi_negative_prompt,
     max_document_size=config.max_document_size,
     max_voice_size=config.max_voice_size,
+    deep_agent_workspace_path=config.deep_agent_workspace_path,
+    deep_agent_backend=config.deep_agent_backend,
 )
 
 
@@ -191,7 +196,21 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
     else:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
-    if config.agent_mode:
+    if config.effective_ai_mode == "deep_agent":
+        if bot_config.deep_agent_backend == "in_memory":
+            backend = MemoryDeepAgentBackend(config.bot_uuid, chat_id)
+        else:
+            backend = FilesystemDeepAgentBackend(config.bot_uuid, chat_id, bot_config.deep_agent_workspace_path)
+        llm_bot = LLMDeepAgent(
+            llm,
+            bot_config,
+            system_instructions,
+            messages_storage,
+            documents_storage=document_storage,
+            system_instructions_mapping=instructions_mapping,
+            backend=backend,
+        )
+    elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
             llm,
             bot_config,

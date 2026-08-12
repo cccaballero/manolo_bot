@@ -69,13 +69,30 @@ history in storage.
 
 `GOOGLE_API_MODEL`: LLM to use for Google API; if not provided, the default model will be used.
 
-#### Enabling Agent Mode
+#### Selecting AI Mode
 
-`AGENT_MODE`: Enable agent mode (True, False). Default is False. When agent mode is enabled, the bot will use **agentic
-capabilities**. This means the bot will use the LLM as a reasoning engine, allowing it to iterate through multiple
-steps (like searching the internet and analyzing results) to complete complex tasks.
+`AI_MODE`: Selects the bot's AI mode (`llm`, `agent`, `deep_agent`). Default is `agent`.
+
+| Mode | Class | Description |
+|------|-------|-------------|
+| `agent` | `LLMAgent` | LangGraph-based agent with an automatic tool loop. Uses the LLM as a reasoning engine, iterating through multiple steps (like searching the internet and analyzing results) to complete complex tasks. |
+| `deep_agent` | `LLMDeepAgent` | Full Deep Agents harness on top of `LLMAgent`. Adds to-do list planning, a virtual filesystem, and sub-agent support for complex, multi-step tasks. |
+| `llm` | `LLMBot` | Simple LLM with a manual tool loop. Best for models that don't support tool calling or simpler use cases. |
+
+`AGENT_MODE`: (Deprecated) Enable agent mode (True, False). Use `AI_MODE` instead. When `AI_MODE` is not set,
+`AGENT_MODE=True` selects `agent`.
 
 `AGENT_INSTRUCTIONS`: (Optional) Custom instructions to guide the agent's behavior and reasoning when in agent mode.
+
+#### Deep Agent Filesystem Workspace
+
+`DEEP_AGENT_WORKSPACE_PATH`: Directory used as the virtual filesystem root for the `deep_agent` mode.
+Defaults to a system temporary directory. This is separate from `DOCUMENT_STORAGE_PATH`, which handles
+temporarily uploaded documents.
+
+`DEEP_AGENT_BACKEND`: Filesystem backend type for the `deep_agent` mode (`in_memory` or `local_fs`).
+Default is `local_fs`. The `local_fs` backend persists scratch files per chat across messages.
+The `in_memory` backend is ephemeral (reset per message).
 
 #### Enabling image Generation with Stable Diffusion
 
@@ -346,9 +363,67 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Using LLMDeepAgent (Deep Agents Harness)
+
+For the most advanced use case, `LLMDeepAgent` extends `LLMAgent` with the full Deep Agents harness: to-do list
+planning, a virtual filesystem, and sub-agent support. It is ideal for complex, multi-step tasks that benefit from
+planning and persistent scratch space.
+
+```python
+import asyncio
+from manolo_bot.ai.llmdeepagent import LLMDeepAgent
+from manolo_bot.ai.llmbot import LLMBuilder
+from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
+from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
+
+
+async def main():
+    # 1. Configure LLM (Google, OpenAI, or Ollama)
+    llm_config = LLMConfig(google_api_key="your_api_key")
+    llm = LLMBuilder(llm_config).get_llm()
+
+    # 2. Define Bot identity
+    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
+
+    # 3. Setup Storage for a specific conversation
+    storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
+    await storage.refresh_messages()
+
+    # 4. Setup the deep agent filesystem backend (in-memory or filesystem)
+    backend = MemoryDeepAgentBackend(bot_uuid="my-bot", chat_id=123)
+    # For a persistent filesystem workspace instead:
+    # backend = FilesystemDeepAgentBackend("my-bot", 123, "/path/to/workspace")
+
+    # 5. Initialize the Deep Agent
+    agent = LLMDeepAgent(
+        llm=llm,
+        config=bot_config,
+        system_instructions="You are a helpful assistant.",
+        storage=storage,
+        backend=backend,
+    )
+    await agent.initialize_async_resources()
+
+    # 6. Interact
+    response = await agent.answer_message(chat_id=123, message="Research and summarize the current state of LLM agents.")
+    print(f"Agent: {response.content}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+The deep agent virtual filesystem uses a pluggable backend, similar to how message and document storage work:
+
+- `MemoryDeepAgentBackend`: In-memory virtual filesystem. Ephemeral state shared per chat across `LLMDeepAgent` instances.
+- `FilesystemDeepAgentBackend`: Persistent virtual filesystem stored under `workspace_path/bot_uuid/chat_id`.
+
+If no `backend` is provided, `LLMDeepAgent` falls back to an in-memory `StateBackend`.
+
 ### Custom Tools
 
-You can provide your own tools when initializing `LLMAgent` or `LLMBot`:
+You can provide your own tools when initializing `LLMAgent`, `LLMDeepAgent`, or `LLMBot`:
 
 ```python
 from langchain_core.tools import tool

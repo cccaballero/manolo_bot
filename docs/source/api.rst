@@ -29,6 +29,21 @@ AI Components
 Storage Components
 ------------------
 
+.. automodule:: manolo_bot.storage.deep_agent_backends.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.deep_agent_backends.memory_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.deep_agent_backends.filesystem_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.storage.messages.base
    :members:
    :undoc-members:

@@ -23,6 +23,10 @@ class LLMAgent(LLMBot):
 
     bind_tools_on_init = False
 
+    def _base_messages(self) -> list[BaseMessage]:
+        """Hook for subclasses to customise the messages prepended before every agent call."""
+        return self.system_instructions
+
     def __init__(
         self,
         llm: BaseChatModel,
@@ -85,7 +89,7 @@ class LLMAgent(LLMBot):
 
         config = self._get_langchain_config(chat_id)
         ai_msg = await self.agent.ainvoke(
-            {"messages": self.system_instructions + self.messages_storage.messages},
+            {"messages": self._base_messages() + self.messages_storage.messages},
             config=config,
         )
         return ai_msg["messages"][-1]
@@ -169,7 +173,7 @@ class LLMAgent(LLMBot):
                 config = self._get_langchain_config(chat_id)
                 response = (
                     await self.agent.ainvoke(
-                        {"messages": self.system_instructions + self.messages_storage.messages}, config=config
+                        {"messages": self._base_messages() + self.messages_storage.messages}, config=config
                     )
                 )["messages"][-1]
         except FileTooLargeError:
@@ -219,7 +223,7 @@ class LLMAgent(LLMBot):
             config = self._get_langchain_config(chat_id)
             response = (
                 await self.agent.ainvoke(
-                    {"messages": self.system_instructions + self.messages_storage.messages}, config=config
+                    {"messages": self._base_messages() + self.messages_storage.messages}, config=config
                 )
             )["messages"][-1]
         except UnsupportedFileError:
