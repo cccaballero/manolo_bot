@@ -86,13 +86,22 @@ history in storage.
 
 #### Deep Agent Filesystem Workspace
 
-`DEEP_AGENT_WORKSPACE_PATH`: Directory used as the virtual filesystem root for the `deep_agent` mode.
-Defaults to a system temporary directory. This is separate from `DOCUMENT_STORAGE_PATH`, which handles
+`DEEP_AGENT_WORKSPACE_PATH`: Directory used as the virtual filesystem root for the `deep_agent` mode
+(only used by the `local_fs` backend). Defaults to a system temporary directory
+(e.g. `/tmp/manolo_bot/workspace`). This is separate from `DOCUMENT_STORAGE_PATH`, which handles
 temporarily uploaded documents.
 
+> **Security note:** the default workspace lives under the system temp directory, which on Linux is
+> world-readable. Files the deep-agent writes there (chat working notes, file extracts, data echoed
+> back from tool results) can be read by any local user on a shared host. On multi-tenant or shared
+> machines set this to a path only the bot process can read, e.g.
+> `$HOME/.local/share/manolo_bot/workspace` with mode `0700`.
+
 `DEEP_AGENT_BACKEND`: Filesystem backend type for the `deep_agent` mode (`in_memory` or `local_fs`).
-Default is `local_fs`. The `local_fs` backend persists scratch files per chat across messages.
-The `in_memory` backend is ephemeral (reset per message).
+Default is `local_fs`. The `local_fs` backend persists scratch files per chat under
+`DEEP_AGENT_WORKSPACE_PATH/bot_uuid/chat_id` and refuses to delete anything outside that workspace.
+The `in_memory` backend keeps the virtual filesystem in process memory, scoped per
+`(bot_uuid, chat_id)`; state is cleared on `clean_context()` or process restart.
 
 #### Enabling image Generation with Stable Diffusion
 
@@ -344,9 +353,9 @@ async def main():
     tools = get_tools()
     agent = LLMAgent(
         llm=llm,
-        config=bot_config,
+        bot_config=bot_config,
         system_instructions="You are a helpful assistant.",
-        storage=storage,
+        messages_storage=storage,
         tools=tools
     )
 
@@ -398,9 +407,9 @@ async def main():
     # 5. Initialize the Deep Agent
     agent = LLMDeepAgent(
         llm=llm,
-        config=bot_config,
+        bot_config=bot_config,
         system_instructions="You are a helpful assistant.",
-        storage=storage,
+        messages_storage=storage,
         backend=backend,
     )
     await agent.initialize_async_resources()
@@ -416,7 +425,7 @@ if __name__ == "__main__":
 
 The deep agent virtual filesystem uses a pluggable backend, similar to how message and document storage work:
 
-- `MemoryDeepAgentBackend`: In-memory virtual filesystem. Ephemeral state shared per chat across `LLMDeepAgent` instances.
+- `MemoryDeepAgentBackend`: In-memory virtual filesystem. State is scoped per `(bot_uuid, chat_id)` and shared across `LLMDeepAgent` instances in the same process; cleared on `clean_context()` or process restart.
 - `FilesystemDeepAgentBackend`: Persistent virtual filesystem stored under `workspace_path/bot_uuid/chat_id`.
 
 If no `backend` is provided, `LLMDeepAgent` falls back to an in-memory `StateBackend`.
@@ -451,9 +460,9 @@ from manolo_bot.ai.llmbot import LLMBot
 
 bot = LLMBot(
     llm=llm,
-    config=bot_config,
+    bot_config=bot_config,
     system_instructions="You are a simple assistant.",
-    storage=storage
+    messages_storage=storage
 )
 
 response = await bot.answer_message(chat_id=123, message="Hello!")

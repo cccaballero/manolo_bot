@@ -108,6 +108,40 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         backend = FilesystemDeepAgentBackend(self.bot_uuid, 12345, self.workspace, virtual_mode=False)
         self.assertFalse(backend._virtual_mode)
 
+    async def test_clear_refuses_path_outside_workspace(self):
+        """Regression: clear() must not rmtree anything outside workspace_path.
+
+        Simulates bot_uuid carrying a traversal sequence that escapes the
+        configured workspace. The old code blindly joined and rmtree'd; the
+        new code resolves the path and refuses anything not inside the
+        workspace root.
+        """
+        # Plant a victim directory OUTSIDE the workspace.
+        outside_base = tempfile.mkdtemp(prefix="manolo_bot_test_outside_")
+        victim = os.path.join(outside_base, "victim_dir")
+        os.makedirs(victim)
+        victim_file = os.path.join(victim, "important.txt")
+        with open(victim_file, "w") as f:
+            f.write("do-not-delete")
+
+        try:
+            # Workspace lives somewhere else; bot_uuid contains a traversal
+            # sequence that would, under the old code, have resolved into
+            # outside_base.
+            workspace = tempfile.mkdtemp(prefix="manolo_bot_test_ws_")
+            traversal_uuid = os.pardir + os.sep + os.path.basename(outside_base) + os.sep + "victim_dir"
+            try:
+                backend = FilesystemDeepAgentBackend(traversal_uuid, 0, workspace)
+                await backend.clear()
+                self.assertTrue(
+                    os.path.exists(victim_file),
+                    "clear() must not delete files outside the workspace",
+                )
+            finally:
+                shutil.rmtree(workspace)
+        finally:
+            shutil.rmtree(outside_base)
+
 
 if __name__ == "__main__":
     unittest.main()

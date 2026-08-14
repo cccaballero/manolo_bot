@@ -12,6 +12,12 @@ class FilesystemDeepAgentBackend(BaseDeepAgentBackend):
 
     Builds a per-chat filesystem path from bot_uuid and chat_id,
     mirroring the pattern used by FileDocumentsStorage.
+
+    Security note: ``workspace_path`` should be a directory only the bot
+    process can read. The default (``/tmp/manolo_bot/workspace``) lives
+    under the system temp directory, which on Linux is world-readable;
+    on shared hosts set ``DEEP_AGENT_WORKSPACE_PATH`` to a private path
+    (e.g. ``~/.local/share/manolo_bot/workspace`` with mode ``0700``).
     """
 
     def __init__(self, bot_uuid: str, chat_id: int, workspace_path: str, virtual_mode: bool = True) -> None:

@@ -41,10 +41,18 @@ class Config(EnvModel):
 
     @property
     def effective_ai_mode(self) -> str:
-        """Resolve the effective AI mode, handling backward compatibility with AGENT_MODE."""
+        """Resolve the effective AI mode, handling backward compatibility with AGENT_MODE.
+
+        Precedence:
+          1. ``AI_MODE`` if set to a non-empty value
+          2. ``"agent"`` when ``AGENT_MODE`` is True (backward-compat)
+          3. ``"agent"`` by default (documented default)
+        """
         if self.ai_mode:
             return self.ai_mode
-        return "agent" if self.agent_mode else "agent"
+        # Backward compatibility: AGENT_MODE=True selects "agent".
+        # The default is "agent" (per docs in env.example).
+        return "agent"
 
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)

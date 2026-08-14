@@ -132,8 +132,8 @@ This makes it ideal for complex, long-horizon tasks that benefit from planning a
 
 The virtual filesystem uses a pluggable backend, similar to how message and document storage work:
 
-* ``MemoryDeepAgentBackend``: In-memory virtual filesystem. Ephemeral state shared per chat across instances.
-* ``FilesystemDeepAgentBackend``: Persistent virtual filesystem stored under ``workspace_path/bot_uuid/chat_id``.
+* ``MemoryDeepAgentBackend``: In-memory virtual filesystem. State is scoped per ``(bot_uuid, chat_id)`` and shared across instances in the same process; cleared on ``clean_context()`` or process restart.
+* ``FilesystemDeepAgentBackend``: Persistent virtual filesystem stored under ``workspace_path/bot_uuid/chat_id``. ``clear()`` resolves the chat path and refuses to delete anything outside the configured workspace.
 
 If no backend is provided, ``LLMDeepAgent`` falls back to an in-memory ``StateBackend``.
 
@@ -167,9 +167,9 @@ If no backend is provided, ``LLMDeepAgent`` falls back to an in-memory ``StateBa
        # 5. Initialize the Deep Agent
        agent = LLMDeepAgent(
            llm=llm,
-           config=bot_config,
+           bot_config=bot_config,
            system_instructions="You are a helpful assistant.",
-           storage=storage,
+           messages_storage=storage,
            backend=backend,
        )
        await agent.initialize_async_resources()
