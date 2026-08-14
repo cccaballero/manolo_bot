@@ -33,6 +33,27 @@ class TestMemoryDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         b2 = MemoryDeepAgentBackend(self.bot_uuid, 12345)
         self.assertIsNot(backend_instance, b2.backend)
 
+    async def test_different_bot_uuid_same_chat_id_isolated(self):
+        """Regression: the same chat_id under different bot_uuids must not share state."""
+        b1 = MemoryDeepAgentBackend("bot-a", 12345)
+        b2 = MemoryDeepAgentBackend("bot-b", 12345)
+        self.assertIsNot(b1.backend, b2.backend)
+
+    async def test_clear_is_scoped_to_bot_uuid(self):
+        """Regression: clearing one bot's state must not touch another's."""
+        b_a = MemoryDeepAgentBackend("bot-a", 12345)
+        b_b = MemoryDeepAgentBackend("bot-b", 12345)
+        b_b_instance = b_b.backend
+        await b_a.clear()
+        # bot-b is untouched
+        self.assertIs(MemoryDeepAgentBackend("bot-b", 12345).backend, b_b_instance)
+
+    async def test_clear_is_idempotent_and_safe_when_missing(self):
+        """Clearing an unknown key must not raise."""
+        backend = MemoryDeepAgentBackend("never-seen", 99999)
+        await backend.clear()  # no prior _build_backend call
+        await backend.clear()  # twice, still safe
+
     async def test_backend_is_state_backend(self):
         from deepagents.backends import StateBackend
 
