@@ -10,6 +10,7 @@ dependencies = [
     "aiogram>=3.17.0",
     "beautifulsoup4>=4.13.3",
     "ddgs>=9.6.0",
+    "deepagents>=0.7",
     "envmodel>=0.2",
     "google-generativeai>=0.8.4",
     "langchain>=0.3.20",

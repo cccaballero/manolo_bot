@@ -115,6 +115,74 @@ Implementation Example
 
        await storage.commit()
 
+if __name__ == "__main__":
+        asyncio.run(main())
+
+Advanced Component: LLMDeepAgent (Deep Agents Harness)
+-------------------------------------------------------
+
+The `LLMDeepAgent` extends `LLMAgent` with the full `Deep Agents <https://www.langchain.com/deep-agents>`_ harness.
+It adds three capabilities on top of the agent loop:
+
+* **To-do list planning**: A no-op todo list tool that helps the agent keep track of multi-step tasks.
+* **Virtual filesystem**: Read, write, edit, and search files on a pluggable backend (in-memory or local filesystem).
+* **Sub-agents**: The ability to spawn isolated sub-agents for focused subtasks.
+
+This makes it ideal for complex, long-horizon tasks that benefit from planning and scratch space.
+
+The virtual filesystem uses a pluggable backend, similar to how message and document storage work:
+
+* ``MemoryDeepAgentBackend``: In-memory virtual filesystem. State is scoped per ``(bot_uuid, chat_id)`` and shared across instances in the same process; cleared on ``clean_context()`` or process restart.
+* ``FilesystemDeepAgentBackend``: Persistent virtual filesystem stored under ``workspace_path/bot_uuid/chat_id``. ``clear()`` resolves the chat path and refuses to delete anything outside the configured workspace.
+
+If no backend is provided, ``LLMDeepAgent`` falls back to an in-memory ``StateBackend``.
+
+.. code-block:: python
+
+   import asyncio
+   from manolo_bot.ai.llmdeepagent import LLMDeepAgent
+   from manolo_bot.ai.llmbot import LLMBuilder
+   from manolo_bot.ai.config import LLMConfig, BotConfig
+   from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
+   from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
+
+   async def main():
+       # 1. Setup LLM (Must support Tool Calling)
+       llm_config = LLMConfig(google_api_key="your_key")
+       llm = LLMBuilder(llm_config).get_llm()
+
+       # 2. Setup Bot Identity
+       bot_config = BotConfig(bot_uuid="bot-1", bot_name="Assistant")
+
+       # 3. Setup Storage
+       chat_id = 1001
+       storage = MemoryMessagesStorage(bot_uuid="bot-1", chat_id=chat_id)
+       await storage.refresh_messages()
+
+       # 4. Setup the deep agent filesystem backend
+       backend = MemoryDeepAgentBackend(bot_uuid="bot-1", chat_id=chat_id)
+       # For a persistent workspace instead:
+       # backend = FilesystemDeepAgentBackend("bot-1", chat_id, "/path/to/workspace")
+
+       # 5. Initialize the Deep Agent
+       agent = LLMDeepAgent(
+           llm=llm,
+           bot_config=bot_config,
+           system_instructions="You are a helpful assistant.",
+           messages_storage=storage,
+           backend=backend,
+       )
+       await agent.initialize_async_resources()
+
+       # 6. Answer a message
+       response = await agent.answer_message(
+           chat_id=chat_id,
+           message="Research and summarise the latest developments in AI agents."
+       )
+       print(f"Agent: {response.content}")
+
+       await storage.commit()
+
    if __name__ == "__main__":
        asyncio.run(main())
 

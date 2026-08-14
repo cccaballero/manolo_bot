@@ -48,4 +48,5 @@ autodoc_mock_imports = [
     "langchain_mcp_adapters",
     "mcp",
     "langgraph",
+    "deepagents",
 ]

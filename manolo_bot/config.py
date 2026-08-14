@@ -35,8 +35,24 @@ class Config(EnvModel):
     is_document_multimodal = BooleanField("DOCUMENT_MULTIMODAL", default=False)
     is_group_assistant = BooleanField("ENABLE_GROUP_ASSISTANT", default=False)
     agent_mode = BooleanField("AGENT_MODE", default=False)
+    ai_mode = StringField("AI_MODE", default="", allowed_values=["", "llm", "agent", "deep_agent"])
     agent_instructions = StringField("AGENT_INSTRUCTIONS")
     allow_private_chats = BooleanField("ALLOW_PRIVATE_CHATS", default=True)
+
+    @property
+    def effective_ai_mode(self) -> str:
+        """Resolve the effective AI mode, handling backward compatibility with AGENT_MODE.
+
+        Precedence:
+          1. ``AI_MODE`` if set to a non-empty value
+          2. ``"agent"`` when ``AGENT_MODE`` is True (backward-compat)
+          3. ``"agent"`` by default (documented default)
+        """
+        if self.ai_mode:
+            return self.ai_mode
+        # Backward compatibility: AGENT_MODE=True selects "agent".
+        # The default is "agent" (per docs in env.example).
+        return "agent"
 
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)
@@ -83,6 +99,12 @@ class Config(EnvModel):
     document_storage_path = StringField(
         "DOCUMENT_STORAGE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "documents")
     )
+
+    # Deep Agent workspace (virtual filesystem root, separate from document storage)
+    deep_agent_workspace_path = StringField(
+        "DEEP_AGENT_WORKSPACE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "workspace")
+    )
+    deep_agent_backend = StringField("DEEP_AGENT_BACKEND", default="local_fs", allowed_values=["in_memory", "local_fs"])
 
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]

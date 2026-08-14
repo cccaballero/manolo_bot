@@ -107,6 +107,55 @@ class TestConfig(unittest.TestCase):
         except Exception as e:
             self.fail(f"Non-required fields raised exception: {e}")
 
+    def set_telegram_env(self):
+        os.environ["TELEGRAM_BOT_NAME"] = "Manolo"
+        os.environ["TELEGRAM_BOT_USERNAME"] = "ManoloBot"
+        os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890"
+
+    def clear_ai_mode_env(self):
+        os.environ.pop("AI_MODE", None)
+        os.environ.pop("AGENT_MODE", None)
+
+    def test_ai_mode_defaults_to_agent(self):
+        self.set_telegram_env()
+        self.clear_ai_mode_env()
+        config = Config(lazy=True)
+        self.assertEqual(config.effective_ai_mode, "agent")
+
+    def test_ai_mode_explicit_value(self):
+        self.set_telegram_env()
+        self.clear_ai_mode_env()
+        os.environ["AI_MODE"] = "deep_agent"
+        config = Config(lazy=True)
+        self.assertEqual(config.effective_ai_mode, "deep_agent")
+
+    def test_ai_mode_wins_over_agent_mode(self):
+        self.set_telegram_env()
+        os.environ["AI_MODE"] = "llm"
+        os.environ["AGENT_MODE"] = "True"
+        config = Config(lazy=True)
+        self.assertEqual(config.effective_ai_mode, "llm")
+        os.environ.pop("AI_MODE", None)
+        os.environ.pop("AGENT_MODE", None)
+
+    def test_agent_mode_backward_compat(self):
+        self.set_telegram_env()
+        self.clear_ai_mode_env()
+        os.environ["AGENT_MODE"] = "True"
+        config = Config(lazy=True)
+        os.environ.pop("AGENT_MODE", None)
+        self.assertEqual(config.effective_ai_mode, "agent")
+
+    def test_deep_agent_workspace_path_default(self):
+        import os.path
+        import tempfile
+
+        self.set_telegram_env()
+        config = Config(lazy=True)
+        self.assertEqual(
+            config.deep_agent_workspace_path, os.path.join(tempfile.gettempdir(), "manolo_bot", "workspace")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
