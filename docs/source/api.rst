@@ -16,6 +16,11 @@ AI Components
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: manolo_bot.ai.llmdeepagent
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.ai.mcp_manager
    :members:
    :undoc-members:
@@ -40,6 +45,11 @@ Storage Components
    :show-inheritance:
 
 .. automodule:: manolo_bot.storage.deep_agent_backends.filesystem_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.storage.deep_agent_backends.skills_filesystem_backend
    :members:
    :undoc-members:
    :show-inheritance:

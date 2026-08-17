@@ -137,6 +137,72 @@ The virtual filesystem uses a pluggable backend, similar to how message and docu
 
 If no backend is provided, ``LLMDeepAgent`` falls back to an in-memory ``StateBackend``.
 
+Skills (progressive disclosure)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The deep agent loads Agent Skills (capability bundles described by ``SKILL.md`` files) via ``deepagents``' ``SkillsMiddleware``. Two optional parameters on ``LLMDeepAgent.__init__`` mirror the backend-injection pattern used by ``backend=``:
+
+* ``skills_paths``: A sequence of source paths. Each entry is a bare path (``str``) or a ``(path, label)`` tuple. Bare paths get a default label derived from the final path component. The optional ``<path>::LABEL=<text>`` syntax is also accepted and split into a tuple under the hood, so the same string format works for env-var-driven configuration.
+* ``skills_backend``: An instance of :class:`BaseSkillsBackend` (typically :class:`SkillsFilesystemDeepAgentBackend`) — explicitly injected by the caller. ``LLMDeepAgent`` does **not** instantiate a skills backend itself: if you don't pass one, ``SkillsMiddleware`` is omitted entirely, even when ``skills_paths`` is set. A ``WARNING`` is logged so the misconfiguration is loud, not silent.
+
+When ``skills_paths`` is empty (or neither ``skills_paths`` nor ``bot_config.deep_agent_skills_paths`` is set), no ``SkillsMiddleware`` is added and behavior is identical to a deep-agent instance without skills.
+
+Skills are operator-provided, not per-chat state. They are intentionally **not** cleared by ``clean_context()`` — wiping operator content when a user runs ``/flushcontext`` would be destructive. ``SkillsMiddleware`` owns its own per-session lifecycle via the ``before_agent`` hook, so a fresh chat context simply re-reads skill metadata on the next session.
+
+The skills backend
+++++++++++++++++++
+
+Skills are *global* — shared across all chats and bot instances in the same process. The canonical wrapper is :class:`SkillsFilesystemDeepAgentBackend` (a :class:`BaseSkillsBackend` subclass), which wraps ``deepagents.backends.filesystem.FilesystemBackend`` with ``virtual_mode=False`` so absolute skill source paths (e.g. ``/etc/manolo_bot/skills``) resolve directly on the host filesystem. The unrestricted read access is safe because the wrapper is only handed to ``SkillsMiddleware``, which only calls ``ls()`` and ``download_files()`` (read-only) at the configured source paths.
+
+For a standalone bot, construct one instance at module load and pass it to every agent:
+
+.. code-block:: python
+
+   from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
+       SkillsFilesystemDeepAgentBackend,
+   )
+
+   skills_backend = SkillsFilesystemDeepAgentBackend()
+   llm_bot = LLMDeepAgent(
+       ...,
+       skills_paths=["/etc/manolo_bot/skills", ("$HOME/.local/share/manolo_bot/skills", "User")],
+       skills_backend=skills_backend,
+   )
+
+To use a custom workspace path (e.g. relative paths anchored at a project root):
+
+.. code-block:: python
+
+   skills_backend = SkillsFilesystemDeepAgentBackend(workspace_path="/opt/mybot/skills")
+   llm_bot = LLMDeepAgent(
+       ...,
+       skills_paths=["/opt/mybot/skills", ("/etc/manolo_bot/skills", "System")],
+       skills_backend=skills_backend,
+   )
+
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSkillsBackend` and implement ``.backend`` (a ``BackendProtocol``) and an async ``.clear()``. ``clear()`` should typically be a no-op — skills are operator-provided and must never be wiped by ``clean_context()``:
+
+.. code-block:: python
+
+   from manolo_bot.storage.deep_agent_backends.base import BaseSkillsBackend
+
+   class RedisSkillsBackend(BaseSkillsBackend):
+       def __init__(self, client):
+           self._client = client
+           self._backend = ...  # your BackendProtocol implementation
+
+       @property
+       def backend(self):
+           return self._backend
+
+       async def clear(self):
+           pass  # operator-provided content; never wipe
+
+Skill-file routing for the agent's runtime tools
++++++++++++++++++++++++++++++++++++++++++++++++++
+
+When ``skills_paths`` is configured, ``LLMDeepAgent`` wraps the agent's main filesystem backend with a :class:`deepagents.backends.composite.CompositeBackend` that adds one route per skill source. Each route's backend is a sandboxed :class:`FilesystemBackend` rooted at that source with ``virtual_mode=True``. This lets the agent's runtime ``read_file`` / ``ls`` / ``glob`` / ``grep`` tools access skill files at their absolute paths — without it, the chat-scoped backend's ``virtual_mode=True`` root would reject any path outside the chat workspace and ``read_file`` calls to skill files would silently fail with "file not found". The per-chat scratch behaviour for non-skill paths is unchanged.
+
 .. code-block:: python
 
    import asyncio
@@ -185,6 +251,29 @@ If no backend is provided, ``LLMDeepAgent`` falls back to an in-memory ``StateBa
 
    if __name__ == "__main__":
        asyncio.run(main())
+
+To enable skills in your own bot, construct a skills backend and pass it explicitly:
+
+.. code-block:: python
+
+   from manolo_bot.ai.llmdeepagent import LLMDeepAgent
+   from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
+       SkillsFilesystemDeepAgentBackend,
+   )
+
+   skills_backend = SkillsFilesystemDeepAgentBackend()
+   llm_bot = LLMDeepAgent(
+       llm,
+       bot_config,
+       system_instructions,
+       messages_storage,
+       backend=backend,
+       skills_paths=[
+           "/etc/manolo_bot/skills",
+           ("/opt/skills/research", "Research"),
+       ],
+       skills_backend=skills_backend,
+   )
 
 Simple Alternative: LLMBot
 --------------------------

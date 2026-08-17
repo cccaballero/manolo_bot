@@ -103,6 +103,8 @@ Default is `local_fs`. The `local_fs` backend persists scratch files per chat un
 The `in_memory` backend keeps the virtual filesystem in process memory, scoped per
 `(bot_uuid, chat_id)`; state is cleared on `clean_context()` or process restart.
 
+`DEEP_AGENT_SKILLS_PATHS`: Comma-separated list of skill source paths for the `deep_agent` mode; skills are loaded into the agent's system prompt via progressive disclosure.
+
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the

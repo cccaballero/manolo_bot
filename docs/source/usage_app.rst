@@ -143,6 +143,7 @@ Agent and Tools
      ``$HOME/.local/share/manolo_bot/workspace`` with mode ``0700``.
 
 * `DEEP_AGENT_BACKEND`: Filesystem backend type for the `deep_agent` mode (`in_memory` or `local_fs`, default `local_fs`). The `local_fs` backend persists scratch files per chat and refuses to delete anything outside the workspace. The `in_memory` backend keeps the virtual filesystem in process memory, scoped per ``(bot_uuid, chat_id)``; state is cleared on ``clean_context()`` or process restart.
+* `DEEP_AGENT_SKILLS_PATHS`: Comma-separated list of skill source paths for the `deep_agent` mode. Each entry is a bare path to a directory whose subdirectories contain `SKILL.md` files, or `<path>::LABEL=<text>` to give the source a label. Skills are loaded into the agent's system prompt via progressive disclosure (metadata at startup, full `SKILL.md` bodies on demand via `read_file`). Empty by default; no skills middleware is added when unset. See the Agent Skills spec at https://agentskills.io/specification for the `SKILL.md` frontmatter format (`name` and `description` required).
 
 Search Configuration
 ~~~~~~~~~~~~~~~~~~~~

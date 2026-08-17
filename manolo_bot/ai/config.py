@@ -50,6 +50,9 @@ class BotConfig:
     deep_agent_workspace_path: str = ""
     deep_agent_backend: str = "local_fs"
 
+    # Deep Agent skills (progressive-disclosure capability bundles loaded via SkillsMiddleware)
+    deep_agent_skills_paths: list[str] = field(default_factory=list)
+
 
 @dataclass
 class LLMConfig:

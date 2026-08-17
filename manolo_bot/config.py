@@ -106,6 +106,9 @@ class Config(EnvModel):
     )
     deep_agent_backend = StringField("DEEP_AGENT_BACKEND", default="local_fs", allowed_values=["in_memory", "local_fs"])
 
+    # Deep Agent skills (comma-separated paths; entries may be `<path>::LABEL=<text>`)
+    deep_agent_skills_paths = StringListField("DEEP_AGENT_SKILLS_PATHS", default=[])
+
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )
