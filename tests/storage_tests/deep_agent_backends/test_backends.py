@@ -109,12 +109,14 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(backend._virtual_mode)
 
     async def test_clear_refuses_path_outside_workspace(self):
-        """Regression: clear() must not rmtree anything outside workspace_path.
+        """Regression: bot_uuid carrying path-traversal characters is rejected
+        at construction (Layer 1 of the security model), so ``clear()`` never
+        has the chance to operate on a path outside the workspace.
 
-        Simulates bot_uuid carrying a traversal sequence that escapes the
-        configured workspace. The old code blindly joined and rmtree'd; the
-        new code resolves the path and refuses anything not inside the
-        workspace root.
+        The original regression test assumed Layer 2 (containment check at
+        ``clear()`` time) was the primary defense. After adding Layer 1, the
+        unsafe ``bot_uuid`` never makes it past ``__init__``, but Layer 2
+        still exists as defense in depth (see ``test_clear_layer2_refuses_runtime_workspace_mutation``).
         """
         # Plant a victim directory OUTSIDE the workspace.
         outside_base = tempfile.mkdtemp(prefix="manolo_bot_test_outside_")
@@ -125,22 +127,94 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
             f.write("do-not-delete")
 
         try:
-            # Workspace lives somewhere else; bot_uuid contains a traversal
-            # sequence that would, under the old code, have resolved into
-            # outside_base.
             workspace = tempfile.mkdtemp(prefix="manolo_bot_test_ws_")
             traversal_uuid = os.pardir + os.sep + os.path.basename(outside_base) + os.sep + "victim_dir"
-            try:
-                backend = FilesystemDeepAgentBackend(traversal_uuid, 0, workspace)
-                await backend.clear()
-                self.assertTrue(
-                    os.path.exists(victim_file),
-                    "clear() must not delete files outside the workspace",
-                )
-            finally:
-                shutil.rmtree(workspace)
+            with self.assertRaises(ValueError) as cm:
+                FilesystemDeepAgentBackend(traversal_uuid, 0, workspace)
+            self.assertIn("bot_uuid", str(cm.exception))
+            # Victim file is preserved because construction failed.
+            self.assertTrue(os.path.exists(victim_file))
         finally:
+            shutil.rmtree(workspace)
             shutil.rmtree(outside_base)
+
+    def test_bot_uuid_with_path_traversal_raises_at_construction(self):
+        """Layer 1: bot_uuid containing '..' is rejected at construction."""
+        with self.assertRaises(ValueError) as cm:
+            FilesystemDeepAgentBackend("../etc", 12345, self.workspace)
+        self.assertIn("bot_uuid", str(cm.exception))
+
+    def test_bot_uuid_with_slash_raises_at_construction(self):
+        """Layer 1: bot_uuid containing '/' is rejected."""
+        with self.assertRaises(ValueError):
+            FilesystemDeepAgentBackend("foo/bar", 12345, self.workspace)
+
+    def test_bot_uuid_with_dot_only_raises_at_construction(self):
+        """Layer 1: bot_uuid equal to '.' is rejected."""
+        with self.assertRaises(ValueError):
+            FilesystemDeepAgentBackend(".", 12345, self.workspace)
+
+    def test_empty_bot_uuid_raises_at_construction(self):
+        """Layer 1: empty bot_uuid is rejected."""
+        with self.assertRaises(ValueError):
+            FilesystemDeepAgentBackend("", 12345, self.workspace)
+
+    def test_bot_uuid_with_non_string_raises_at_construction(self):
+        """Layer 1: non-string bot_uuid is rejected."""
+        with self.assertRaises(ValueError):
+            FilesystemDeepAgentBackend(None, 12345, self.workspace)  # type: ignore[arg-type]
+
+    def test_relative_workspace_path_raises_at_construction(self):
+        """Layer 1: relative workspace_path is rejected."""
+        with self.assertRaises(ValueError) as cm:
+            FilesystemDeepAgentBackend("ok-bot", 12345, "relative/path")
+        self.assertIn("workspace_path", str(cm.exception))
+
+    def test_empty_workspace_path_raises_at_construction(self):
+        """Layer 1: empty workspace_path is rejected."""
+        with self.assertRaises(ValueError):
+            FilesystemDeepAgentBackend("ok-bot", 12345, "")
+
+    def test_valid_config_passes_validation(self):
+        """Layer 1: realistic bot_uuid (with dashes and underscores) and absolute
+        workspace_path construct successfully."""
+        backend = FilesystemDeepAgentBackend("valid-bot_123", 456, self.workspace)
+        self.assertEqual(backend.bot_uuid, "valid-bot_123")
+        self.assertEqual(backend.chat_id, 456)
+
+    async def test_layer2_refuses_symlink_escape_at_construction(self):
+        """Layer 2 (defense in depth): if the workspace contains a symlink
+        pointing outside, a valid ``bot_uuid`` whose name matches that
+        symlink makes the resolved ``chat_path`` escape the workspace root.
+        ``os.path.realpath`` follows the symlink during construction (via
+        ``_build_backend``); the containment check rejects the backend
+        before any agent can run.
+        """
+        workspace = tempfile.mkdtemp(prefix="manolo_bot_test_ws_")
+        outside = tempfile.mkdtemp(prefix="manolo_bot_test_outside_")
+        # Plant a symlink inside the workspace that points outside.
+        os.symlink(outside, os.path.join(workspace, "escape_link"))
+        try:
+            # Layer 1 passes (bot_uuid matches the regex), Layer 2 must catch
+            # the symlink escape at construction.
+            with self.assertRaises(ValueError) as cm:
+                FilesystemDeepAgentBackend("escape_link", 12345, workspace)
+            self.assertIn("outside workspace_path", str(cm.exception))
+        finally:
+            shutil.rmtree(workspace)
+            shutil.rmtree(outside)
+
+    def test_layer2_passes_for_normal_chat_path(self):
+        """Smoke test: Layer 2 must NOT raise for an ordinary chat path
+        (no symlink escape, no traversal)."""
+        workspace = tempfile.mkdtemp(prefix="manolo_bot_test_ws_")
+        try:
+            backend = FilesystemDeepAgentBackend("ok-bot", 12345, workspace)
+            chat_path = backend._safe_chat_path()
+            self.assertIn("ok-bot", chat_path)
+            self.assertIn("12345", chat_path)
+        finally:
+            shutil.rmtree(workspace)
 
 
 if __name__ == "__main__":

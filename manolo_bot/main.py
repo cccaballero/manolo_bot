@@ -18,6 +18,9 @@ from manolo_bot.ai.llmdeepagent import LLMDeepAgent
 from manolo_bot.config import Config
 from manolo_bot.storage.deep_agent_backends.filesystem_backend import FilesystemDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
+from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
+    SkillsFilesystemDeepAgentBackend,
+)
 from manolo_bot.storage.documents.file_storage import FileDocumentsStorage
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 from manolo_bot.telegram.utils import (
@@ -142,6 +145,16 @@ flush_context_failure_instructions = f"Generate a short, friendly message in {co
 system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 message_queue = asyncio.Queue()
 
+# Shared skills backend — operator-provided, versioned, auditable capability bundles
+# described by SKILL.md files. One instance is reused across every chat in this
+# process so the same skills are visible to every conversation. ``LLMDeepAgent``
+# does not instantiate skills backends itself; it requires the caller to pass
+# one explicitly (same pattern as the main ``backend=`` parameter). When
+# ``DEEP_AGENT_SKILLS_PATHS`` is empty, the backend is still constructed but
+# ``SkillsMiddleware`` is omitted from the agent's middleware list because
+# ``skills_paths`` resolves to an empty list.
+skills_backend = SkillsFilesystemDeepAgentBackend()
+
 llm_config = LLMConfig(
     google_api_key=config.google_api_key,
     google_api_model=config.google_api_model,
@@ -176,6 +189,7 @@ bot_config = BotConfig(
     max_voice_size=config.max_voice_size,
     deep_agent_workspace_path=config.deep_agent_workspace_path,
     deep_agent_backend=config.deep_agent_backend,
+    deep_agent_skills_paths=config.deep_agent_skills_paths,
 )
 
 
@@ -209,6 +223,8 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
             backend=backend,
+            skills_paths=bot_config.deep_agent_skills_paths,
+            skills_backend=skills_backend,
         )
     elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
