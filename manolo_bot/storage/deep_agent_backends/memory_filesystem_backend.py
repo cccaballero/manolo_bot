@@ -38,6 +38,8 @@ empty) and would render "(No memory loaded)" while hiding the source path
 from the agent.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 from collections.abc import Sequence

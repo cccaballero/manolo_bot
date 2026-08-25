@@ -180,7 +180,7 @@ To use a custom workspace path (e.g. relative paths anchored at a project root):
        skills_backend=skills_backend,
    )
 
-For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSkillsBackend` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach skill content — see `Skill/memory-file routing`_ below) and an async ``.clear()``. ``clear()`` should typically be a no-op — skills are operator-provided and must never be wiped by ``clean_context()``:
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSkillsBackend` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach skill content — see `Skill/memory-file routing for the agent's runtime tools`_ below) and an async ``.clear()``. ``clear()`` should typically be a no-op — skills are operator-provided and must never be wiped by ``clean_context()``:
 
 .. code-block:: python
 
@@ -325,7 +325,7 @@ For a standalone bot, construct one instance per chat (typically inside ``instan
        memory_add_cache_control=True,
    )
 
-For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMemoryBackend` with a per-chat constructor contract ``(bot_uuid, chat_id, ...)`` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach the memory file — see `Skill/memory-file routing`_ below) and an async ``.clear()``. Add a ``.store`` property (a langgraph ``BaseStore`` or ``None``) when your backend needs persistent agent state. ``clear()`` semantics are implementation-defined: the filesystem implementation deletes the chat's memory directory (``/flushcontext`` wipes chat memory along with the workspace):
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMemoryBackend` with a per-chat constructor contract ``(bot_uuid, chat_id, ...)`` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach the memory file — see `Skill/memory-file routing for the agent's runtime tools`_ below) and an async ``.clear()``. Add a ``.store`` property (a langgraph ``BaseStore`` or ``None``) when your backend needs persistent agent state. ``clear()`` semantics are implementation-defined: the filesystem implementation deletes the chat's memory directory (``/flushcontext`` wipes chat memory along with the workspace):
 
 .. code-block:: python
 
