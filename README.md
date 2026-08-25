@@ -76,7 +76,7 @@ history in storage.
 | Mode | Class | Description |
 |------|-------|-------------|
 | `agent` | `LLMAgent` | LangGraph-based agent with an automatic tool loop. Uses the LLM as a reasoning engine, iterating through multiple steps (like searching the internet and analyzing results) to complete complex tasks. |
-| `deep_agent` | `LLMDeepAgent` | Full Deep Agents harness on top of `LLMAgent`. Adds to-do list planning, a virtual filesystem, and sub-agent support for complex, multi-step tasks. |
+| `deep_agent` | `LLMDeepAgent` | Full Deep Agents harness on top of `LLMAgent`. Adds to-do list planning, a virtual filesystem, sub-agent support, skills, and long-term memory for complex, multi-step tasks. |
 | `llm` | `LLMBot` | Simple LLM with a manual tool loop. Best for models that don't support tool calling or simpler use cases. |
 
 `AGENT_MODE`: (Deprecated) Enable agent mode (True, False). Use `AI_MODE` instead. When `AI_MODE` is not set,
@@ -104,6 +104,10 @@ The `in_memory` backend keeps the virtual filesystem in process memory, scoped p
 `(bot_uuid, chat_id)`; state is cleared on `clean_context()` or process restart.
 
 `DEEP_AGENT_SKILLS_PATHS`: Comma-separated list of skill source paths for the `deep_agent` mode; skills are loaded into the agent's system prompt via progressive disclosure.
+
+`DEEP_AGENT_MEMORY_PATH`: Root directory for per-chat long-term memory in the `deep_agent` mode; each chat gets its own independent, seeded `AGENTS.md` file at `DEEP_AGENT_MEMORY_PATH/bot_uuid/chat_id/AGENTS.md` (no cross-chat leakage). Memory files are fully loaded into the agent's system prompt on every turn (keep them concise — they cost tokens on every message, unlike skills). The bot constructs a per-chat `MemoryFilesystemDeepAgentBackend` with a default process-local `InMemoryStore`; `/flushcontext` wipes the chat's memory along with its workspace.
+
+`DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL`: Add an Anthropic prompt-cache breakpoint on the memory block (default `False`; no-op on non-Anthropic models). Fed to `LLMDeepAgent(memory_add_cache_control=...)` at agent construction.
 
 #### Enabling image Generation with Stable Diffusion
 

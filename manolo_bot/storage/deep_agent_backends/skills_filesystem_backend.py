@@ -18,6 +18,8 @@ to ``SkillsMiddleware``, which only calls ``ls()`` and ``download_files()``
 invoked through this backend.
 """
 
+from collections.abc import Sequence
+
 from deepagents.backends.filesystem import FilesystemBackend
 
 from manolo_bot.storage.deep_agent_backends.base import BaseSkillsBackend
@@ -60,6 +62,30 @@ class SkillsFilesystemDeepAgentBackend(BaseSkillsBackend):
     def backend(self) -> FilesystemBackend:
         """The underlying :class:`deepagents.backends.filesystem.FilesystemBackend` instance."""
         return self._backend
+
+    def routes(self, sources: Sequence[str | tuple[str, str]]) -> dict[str, FilesystemBackend]:
+        """Build CompositeBackend routes for the given skill source paths.
+
+        Each source (bare path or ``(path, label)`` tuple) becomes a route
+        prefix ``<path>/`` mapped to a sandboxed :class:`FilesystemBackend`
+        rooted at that source with ``virtual_mode=True``. ``CompositeBackend``
+        strips the prefix before delegating, so the agent's runtime
+        ``read_file`` / ``ls`` / ``glob`` / ``grep`` tools reach skill files at
+        their absolute paths — the per-chat backend's ``virtual_mode=True``
+        root would otherwise reject any path outside the chat workspace.
+        Repeated prefixes are deduped.
+        """
+        routes: dict[str, FilesystemBackend] = {}
+        for source in sources:
+            path = source[0] if isinstance(source, tuple) else source
+            route_prefix = path.rstrip("/") + "/"
+            if route_prefix in routes:
+                continue
+            routes[route_prefix] = FilesystemBackend(
+                root_dir=path.rstrip("/"),
+                virtual_mode=True,
+            )
+        return routes
 
     async def clear(self) -> None:
         """No-op.

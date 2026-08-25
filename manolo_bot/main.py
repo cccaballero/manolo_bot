@@ -18,6 +18,7 @@ from manolo_bot.ai.llmdeepagent import LLMDeepAgent
 from manolo_bot.config import Config
 from manolo_bot.storage.deep_agent_backends.filesystem_backend import FilesystemDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
+from manolo_bot.storage.deep_agent_backends.memory_filesystem_backend import MemoryFilesystemDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
     SkillsFilesystemDeepAgentBackend,
 )
@@ -187,9 +188,6 @@ bot_config = BotConfig(
     sdapi_negative_prompt=config.sdapi_negative_prompt,
     max_document_size=config.max_document_size,
     max_voice_size=config.max_voice_size,
-    deep_agent_workspace_path=config.deep_agent_workspace_path,
-    deep_agent_backend=config.deep_agent_backend,
-    deep_agent_skills_paths=config.deep_agent_skills_paths,
 )
 
 
@@ -211,10 +209,21 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
     if config.effective_ai_mode == "deep_agent":
-        if bot_config.deep_agent_backend == "in_memory":
+        if config.deep_agent_backend == "in_memory":
             backend = MemoryDeepAgentBackend(config.bot_uuid, chat_id)
         else:
-            backend = FilesystemDeepAgentBackend(config.bot_uuid, chat_id, bot_config.deep_agent_workspace_path)
+            backend = FilesystemDeepAgentBackend(config.bot_uuid, chat_id, config.deep_agent_workspace_path)
+        # Per-chat memory backend — one independent, seeded AGENTS.md per chat
+        # under DEEP_AGENT_MEMORY_PATH, so chats never share or leak memory.
+        # Constructed alongside the main backend (same per-chat pattern) and
+        # passed to this chat's agent; the agent derives the memory source
+        # from the wrapper. ``LLMDeepAgent`` does not instantiate memory
+        # backends itself; it requires the caller to pass one explicitly.
+        memory_backend = MemoryFilesystemDeepAgentBackend(
+            bot_uuid=config.bot_uuid,
+            chat_id=chat_id,
+            memory_root=config.deep_agent_memory_path,
+        )
         llm_bot = LLMDeepAgent(
             llm,
             bot_config,
@@ -223,8 +232,10 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
             backend=backend,
-            skills_paths=bot_config.deep_agent_skills_paths,
+            skills_paths=config.deep_agent_skills_paths,
             skills_backend=skills_backend,
+            memory_backend=memory_backend,
+            memory_add_cache_control=config.deep_agent_memory_add_cache_control,
         )
     elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
