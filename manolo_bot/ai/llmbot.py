@@ -12,7 +12,8 @@ from google.genai.types import HarmBlockThreshold, HarmCategory
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages.utils import get_buffer_string
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
@@ -297,13 +298,148 @@ class LLMBot:
             text,
         )
 
-    def truncate_chat_context(self) -> None:
+    async def truncate_chat_context(self) -> None:
         """
-        Truncate the chat context if it is too long.
+        Compact the chat context when it exceeds the token limit.
+
+        When summarization is enabled, the oldest messages are folded into an
+        incremental LLM-generated summary that is persisted at the front of the
+        message list and included in subsequent prompts. At most **one**
+        summarization LLM call is made per invocation: the number of recent
+        messages kept intact is reduced (down to a floor of 2) to the largest
+        retention that can plausibly fit together with a summary capped at
+        ``summary_max_tokens``, so a single pass has the best chance to bring
+        the context under budget. Drop-oldest is only used as a last resort:
+        when summarization is disabled, fails, or is exhausted.
+        """
+        if self.count_tokens(self.messages_storage.messages) <= self.bot_config.context_max_tokens:
+            return
+
+        if not self.bot_config.context_summarization:
+            self._drop_oldest_messages()
+            return
+
+        try:
+            messages = self.messages_storage.messages
+            summary = self.messages_storage.get_summary()
+            keep_n = max(self.bot_config.summary_keep_messages, 2)
+            # Reduce retention to the largest value that still fits together
+            # with a worst-case (capped) summary, so one summarization call
+            # suffices instead of looping with repeated LLM invocations.
+            while (
+                keep_n > 2
+                and self.count_tokens(messages[-keep_n:]) + self.bot_config.summary_max_tokens
+                > self.bot_config.context_max_tokens
+            ):
+                keep_n -= 1
+            # The summary (if any) lives at the front; never fold it into itself.
+            fold_start = 1 if summary else 0
+            fold_end = len(messages) - keep_n
+            if fold_end > fold_start:
+                fold_messages = messages[fold_start:fold_end]
+                prompt = self._build_summary_prompt(fold_messages, summary)
+                response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+                text = self._cap_summary(self._extract_summary_text(response))
+                if not text:
+                    logging.warning(
+                        f"Context summarization returned an empty summary for chat "
+                        f"{self.messages_storage.chat_id}, falling back to drop-oldest"
+                    )
+                else:
+                    # Delete folded messages from the highest index down so the
+                    # non-deleted indices used by delete_message stay valid.
+                    for i in range(fold_end - 1, fold_start - 1, -1):
+                        self.messages_storage.delete_message(i)
+                    self.messages_storage.set_summary(text)
+                    logging.debug(f"Chat context summarized for chat {self.messages_storage.chat_id}")
+        except Exception as e:
+            logging.warning(
+                f"Context summarization failed for chat {self.messages_storage.chat_id}, "
+                f"falling back to drop-oldest: {e}",
+                exc_info=True,
+            )
+
+        # Last-resort safety net: a no-op when summarization succeeded and
+        # brought the context under budget. Only actually deletes when
+        # summarization is disabled, failed, or was not enough (only the
+        # summary and the kept recent messages are left and they still exceed
+        # the limit). Never makes LLM calls.
+        if self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
+            logging.warning(
+                f"Context still over the token limit for chat "
+                f"{self.messages_storage.chat_id} after summarization; "
+                f"dropping oldest messages as a last resort"
+            )
+            self._drop_oldest_messages()
+
+    def _drop_oldest_messages(self) -> None:
+        """
+        Drop the oldest messages until the context fits within the token limit.
+
+        The persisted conversation summary (if any) is preserved.
         """
         while self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
-            self.messages_storage.delete_message(0)
+            messages = self.messages_storage.messages
+            drop_index = 1 if self.messages_storage.get_summary() is not None else 0
+            if drop_index >= len(messages):
+                # Only the summary remains and it still exceeds the limit; stop.
+                break
+            self.messages_storage.delete_message(drop_index)
             logging.debug(f"Chat context truncated for chat {self.messages_storage.chat_id}")
+
+    def _build_summary_prompt(self, messages: list[BaseMessage], summary: str | None) -> str:
+        """
+        Build the prompt used to (incrementally) summarize the given messages.
+        """
+        buffer = get_buffer_string(messages)
+        if summary:
+            instruction = (
+                "This is a summary of the conversation to date:\n"
+                f"{summary}\n\n"
+                "Extend the summary by taking into account the new messages above:"
+            )
+        else:
+            instruction = (
+                "Summarize the key information of the conversation above in a concise paragraph, "
+                "focusing on essential facts, decisions and user preferences."
+            )
+        return f"{buffer}\n\n{instruction}"
+
+    def _extract_summary_text(self, response: BaseMessage) -> str:
+        """
+        Extract plain text from an LLM response, handling both string and
+        list-of-content-block content.
+        """
+        content = response.content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                else:
+                    parts.append(block.get("text", ""))
+            return "".join(parts)
+        if content is None:
+            return ""
+        return str(content)
+
+    def _cap_summary(self, text: str) -> str:
+        """
+        Hard-truncate the summary so it fits within ``summary_max_tokens``.
+
+        Uses a simple proportional character cut when the summary exceeds the
+        configured token budget.
+        """
+        max_tokens = self.bot_config.summary_max_tokens
+        try:
+            tokens = self.count_tokens([SystemMessage(content=text)])
+        except Exception:
+            tokens = len(text.split())
+        if tokens > max_tokens:
+            ratio = max_tokens / max(tokens, 1)
+            cut = max(int(len(text) * ratio), 0)
+            text = text[:cut]
+        return text
 
     async def clean_context(self) -> None:
         """
@@ -323,7 +459,7 @@ class LLMBot:
         :return: The response message from the LLM.
         """
         self.messages_storage.add_message(HumanMessage(content=message))
-        self.truncate_chat_context()
+        await self.truncate_chat_context()
         config = self._get_langchain_config(chat_id)
         ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages)
         if ai_msg.tool_calls:
@@ -363,7 +499,7 @@ class LLMBot:
                     ]
                 )
                 self.messages_storage.add_message(llm_message)
-                self.truncate_chat_context()
+                await self.truncate_chat_context()
                 response = await self.llm.ainvoke(
                     self.messages_storage.messages,
                     config=self._get_langchain_config(chat_id),
@@ -404,7 +540,7 @@ class LLMBot:
                     ]
                 )
                 self.messages_storage.add_message(llm_message)
-                self.truncate_chat_context()
+                await self.truncate_chat_context()
                 response = await self.llm.ainvoke(
                     self.system_instructions + self.messages_storage.messages,
                     config=self._get_langchain_config(chat_id),
@@ -491,7 +627,7 @@ class LLMBot:
                 f"Use the read_document tool with filename '{doc_key}' to access it."
             )
             self.messages_storage.add_message(pointer_message)
-            self.truncate_chat_context()
+            await self.truncate_chat_context()
 
             # We invoke with the stuffed prompt for this specific turn
             messages = self.system_instructions + self.messages_storage.messages[:-1] + [HumanMessage(content=prompt)]
@@ -610,7 +746,7 @@ class LLMBot:
                 prompt = PromptTemplate.from_template(template)
                 logging.debug(f"Web content prompt: {prompt}")
 
-                self.truncate_chat_context()
+                await self.truncate_chat_context()
 
                 # TODO: Add full chat context
                 stuff_chain = create_stuff_documents_chain(

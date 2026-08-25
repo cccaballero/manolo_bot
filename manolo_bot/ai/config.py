@@ -26,6 +26,9 @@ class BotConfig:
     mcp_servers_config: dict = field(default_factory=dict)
 
     context_max_tokens: int = 4096
+    context_summarization: bool = True
+    summary_max_tokens: int = 512
+    summary_keep_messages: int = 6
     preferred_language: str = "English"
     add_no_answer: bool = False
     is_image_multimodal: bool = False

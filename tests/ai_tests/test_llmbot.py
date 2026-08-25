@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.config import Config
+from manolo_bot.storage.messages.base import SUMMARY_PREFIX
+from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
 
 class TestLlmBot(unittest.IsolatedAsyncioTestCase):
@@ -441,6 +444,167 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Check that it returns a new list (deepcopy)
         self.assertIsNot(bot.system_instructions, bot._system_instructions)
         self.assertIsNot(bot.system_instructions[0], bot._system_instructions[0])
+
+    def _make_summarization_bot(self, messages, *, context_max_tokens=800, summarization=True, summary_max_tokens=512):
+        """Build an LLMBot with a real MemoryMessagesStorage and a token-counting
+        mock that forces truncation (100 tokens per message)."""
+        storage = MemoryMessagesStorage(bot_uuid="test-bot", chat_id=424242)
+        for msg in messages:
+            storage.add_message(msg)
+
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="SUMMARIZED CONTENT"))
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
+
+        bot_config = BotConfig(
+            bot_uuid="test-bot",
+            bot_name="TestBot",
+            bot_username="test_bot",
+            bot_token="123456:ABC",
+            user_id=0,
+            context_max_tokens=context_max_tokens,
+            context_summarization=summarization,
+            summary_max_tokens=summary_max_tokens,
+            summary_keep_messages=6,
+        )
+        bot = LLMBot(mock_llm, bot_config, [SystemMessage(content="You are a helpful assistant")], storage)
+        return bot, storage
+
+    async def test_truncate_chat_context_summarizes_oldest_messages(self):
+        # Arrange: 10 messages, 100 tokens each = 1000 > 800 limit. Retention
+        # is reduced so that kept messages + a worst-case capped summary fit
+        # in a single summarization pass: 600+512 > 800 -> keep_n shrinks to 2.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(10)]
+        bot, storage = self._make_summarization_bot(messages)
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: a summarization prompt was sent containing the dropped messages.
+        call_args = bot.llm.ainvoke.call_args[0][0]
+        self.assertEqual(len(call_args), 1)
+        prompt = call_args[0].content
+        self.assertIn("message-0", prompt)
+        self.assertIn("message-7", prompt)
+        self.assertIn("Summarize the key information", prompt)
+        # The most recent 2 messages are kept intact.
+        self.assertNotIn("message-8", prompt)
+
+        # Assert: summary persisted at the front, folded messages removed.
+        self.assertEqual(storage.get_summary(), "SUMMARIZED CONTENT")
+        remaining = storage.messages
+        self.assertEqual(len(remaining), 3)
+        self.assertIsInstance(remaining[0], SystemMessage)
+        self.assertTrue(remaining[0].content.startswith(SUMMARY_PREFIX))
+        self.assertEqual([m.content for m in remaining[1:]], ["message-8", "message-9"])
+
+    async def test_truncate_chat_context_does_not_drop_when_summarization_succeeds(self):
+        # Arrange: 50 messages x100 tokens = 5000 > 4000 limit. One summarization
+        # pass (fold all but the last 6) must bring it under budget, so no
+        # message may be dropped without summarization.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(50)]
+        bot, storage = self._make_summarization_bot(messages, context_max_tokens=4000)
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: exactly one summarization call, summary + kept recent
+        # messages remain, nothing silently dropped.
+        self.assertEqual(bot.llm.ainvoke.await_count, 1)
+        remaining = storage.messages
+        self.assertEqual(len(remaining), 7)
+        self.assertEqual(storage.get_summary(), "SUMMARIZED CONTENT")
+        self.assertEqual([m.content for m in remaining[1:]], [f"message-{i}" for i in range(44, 50)])
+
+    async def test_truncate_chat_context_summarizes_few_large_messages(self):
+        # Arrange: only 8 messages but over the limit (8 x100 = 800 tokens,
+        # limit 500). Retention shrinks to the floor of 2 so that everything
+        # else is summarized in a single pass instead of being dropped.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(8)]
+        bot, storage = self._make_summarization_bot(messages, context_max_tokens=500)
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: exactly one summarization call; most content was summarized
+        # and nothing had to be dropped.
+        self.assertEqual(bot.llm.ainvoke.await_count, 1)
+        self.assertEqual(storage.get_summary(), "SUMMARIZED CONTENT")
+        remaining = storage.messages
+        self.assertEqual(len(remaining), 3)
+        self.assertIsInstance(remaining[0], SystemMessage)
+        self.assertTrue(remaining[0].content.startswith(SUMMARY_PREFIX))
+        # Only the floor retention (2 newest messages) is kept intact.
+        self.assertEqual([m.content for m in remaining[1:]], ["message-6", "message-7"])
+
+    async def test_truncate_chat_context_falls_back_to_drop_oldest_on_failure(self):
+        # Arrange: summarizer raises -> old drop-oldest behavior.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(10)]
+        bot, storage = self._make_summarization_bot(messages)
+        bot.llm.ainvoke = AsyncMock(side_effect=Exception("summarizer boom"))
+
+        # Act: must not raise.
+        await bot.truncate_chat_context()
+
+        # Assert: dropped oldest until under budget (1000 -> 800 = 8 messages).
+        self.assertEqual(len(storage.messages), 8)
+        self.assertIsNone(storage.get_summary())
+
+    async def test_truncate_chat_context_disabled_drops_oldest(self):
+        # Arrange: summarization disabled -> drop-oldest directly.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(10)]
+        bot, storage = self._make_summarization_bot(messages, summarization=False)
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: dropped oldest until under budget.
+        self.assertEqual(len(storage.messages), 8)
+        bot.llm.ainvoke.assert_not_awaited()
+
+    async def test_truncate_chat_context_incremental_summary(self):
+        # Arrange: an existing summary plus 10 messages -> incremental prompt.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(10)]
+        bot, storage = self._make_summarization_bot(messages)
+        storage.set_summary("OLD SUMMARY")
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: prompt references the existing summary and asks to extend it.
+        call_args = bot.llm.ainvoke.call_args[0][0]
+        prompt = call_args[0].content
+        self.assertIn("OLD SUMMARY", prompt)
+        self.assertIn("Extend the summary", prompt)
+        # The summary itself is never folded into the new summary.
+        self.assertNotIn("CONVERSATION SUMMARY", prompt)
+        # New summary replaces the old one.
+        self.assertEqual(storage.get_summary(), "SUMMARIZED CONTENT")
+
+    async def test_truncate_chat_context_caps_summary_length(self):
+        # Arrange: summary token count is huge -> hard-truncated proportionally.
+        messages = [HumanMessage(content=f"message-{i}") for i in range(10)]
+        bot, storage = self._make_summarization_bot(messages)
+
+        def token_count(msgs):
+            if len(msgs) == 1 and isinstance(msgs[0], SystemMessage):
+                return 10000  # summary far over the 512 budget
+            return 100 * len(msgs)
+
+        bot.llm.get_num_tokens_from_messages = MagicMock(side_effect=token_count)
+        bot.llm.ainvoke = AsyncMock(return_value=AIMessage(content="X" * 1000))
+
+        # Act
+        await bot.truncate_chat_context()
+
+        # Assert: summary truncated to ~len * 512/10000 = 51 chars.
+        summary = storage.get_summary()
+        self.assertIsNotNone(summary)
+        assert summary is not None
+        self.assertEqual(len(summary), 51)
+        self.assertEqual(summary, "X" * 51)
 
 
 if __name__ == "__main__":

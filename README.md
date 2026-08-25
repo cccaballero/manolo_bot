@@ -181,6 +181,20 @@ a question mark. The default value is False.
 
 `CONTEXT_MAX_TOKENS`: The maximum number of tokens allowed for the bot's context.
 
+#### Context summarization
+
+When the chat context exceeds `CONTEXT_MAX_TOKENS`, the bot can summarize the oldest
+messages instead of silently dropping them, and include that summary in subsequent prompts.
+
+`ENABLE_CONTEXT_SUMMARIZATION`: Enable incremental LLM summarization of the oldest messages
+when the context limit is reached (True, False). Default is True. When disabled (or when
+summarization fails), the bot falls back to dropping the oldest messages.
+
+`SUMMARY_MAX_TOKENS`: Maximum number of tokens allowed for the generated summary (default: `512`).
+
+`SUMMARY_KEEP_MESSAGES`: How many of the most recent messages to keep intact when summarizing
+(minimum `2`, default: `6`).
+
 #### Web Content Retrieval Configuration
 
 `WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for HTTP requests when retrieving web content. Default is 10
