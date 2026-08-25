@@ -145,7 +145,7 @@ The deep agent loads Agent Skills (capability bundles described by ``SKILL.md`` 
 * ``skills_paths``: A sequence of source paths. Each entry is a bare path (``str``) or a ``(path, label)`` tuple. Bare paths get a default label derived from the final path component. The optional ``<path>::LABEL=<text>`` syntax is also accepted and split into a tuple under the hood, so the same string format works for env-var-driven configuration.
 * ``skills_backend``: An instance of :class:`BaseSkillsBackend` (typically :class:`SkillsFilesystemDeepAgentBackend`) — explicitly injected by the caller. ``LLMDeepAgent`` does **not** instantiate a skills backend itself: if you don't pass one, ``SkillsMiddleware`` is omitted entirely, even when ``skills_paths`` is set. A ``WARNING`` is logged so the misconfiguration is loud, not silent.
 
-When ``skills_paths`` is empty (or neither ``skills_paths`` nor ``bot_config.deep_agent_skills_paths`` is set), no ``SkillsMiddleware`` is added and behavior is identical to a deep-agent instance without skills.
+When ``skills_paths`` is not set, no ``SkillsMiddleware`` is added and behavior is identical to a deep-agent instance without skills. Configuration (e.g. the ``DEEP_AGENT_SKILLS_PATHS`` env var) flows in through the caller, which reads it and passes it explicitly — ``LLMDeepAgent`` does not read configuration itself.
 
 Skills are operator-provided, not per-chat state. They are intentionally **not** cleared by ``clean_context()`` — wiping operator content when a user runs ``/flushcontext`` would be destructive. ``SkillsMiddleware`` owns its own per-session lifecycle via the ``before_agent`` hook, so a fresh chat context simply re-reads skill metadata on the next session.
 
@@ -180,7 +180,7 @@ To use a custom workspace path (e.g. relative paths anchored at a project root):
        skills_backend=skills_backend,
    )
 
-For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSkillsBackend` and implement ``.backend`` (a ``BackendProtocol``) and an async ``.clear()``. ``clear()`` should typically be a no-op — skills are operator-provided and must never be wiped by ``clean_context()``:
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSkillsBackend` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach skill content — see `Skill/memory-file routing`_ below) and an async ``.clear()``. ``clear()`` should typically be a no-op — skills are operator-provided and must never be wiped by ``clean_context()``:
 
 .. code-block:: python
 
@@ -195,13 +195,23 @@ For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseSk
        def backend(self):
            return self._backend
 
+       def routes(self, sources):
+           # Map each source prefix to a backend rooted at the routed location
+           # (CompositeBackend strips the prefix before delegating). Return {}
+           # if skill content is served exclusively through SkillsMiddleware.
+           return {f"{s.rstrip('/')}/": self._backend for s in sources}
+
        async def clear(self):
            pass  # operator-provided content; never wipe
 
-Skill-file routing for the agent's runtime tools
-+++++++++++++++++++++++++++++++++++++++++++++++++
+Skill/memory-file routing for the agent's runtime tools
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-When ``skills_paths`` is configured, ``LLMDeepAgent`` wraps the agent's main filesystem backend with a :class:`deepagents.backends.composite.CompositeBackend` that adds one route per skill source. Each route's backend is a sandboxed :class:`FilesystemBackend` rooted at that source with ``virtual_mode=True``. This lets the agent's runtime ``read_file`` / ``ls`` / ``glob`` / ``grep`` tools access skill files at their absolute paths — without it, the chat-scoped backend's ``virtual_mode=True`` root would reject any path outside the chat workspace and ``read_file`` calls to skill files would silently fail with "file not found". The per-chat scratch behaviour for non-skill paths is unchanged.
+When ``skills_paths`` or ``memory_paths`` is configured, ``LLMDeepAgent`` wraps the agent's main filesystem backend with a :class:`deepagents.backends.composite.CompositeBackend` whose routes come from the injected wrappers' ``routes()`` factories — the path→backend mapping is storage-specific knowledge owned by each wrapper, not by the agent. The filesystem wrappers (:class:`SkillsFilesystemDeepAgentBackend`, :class:`MemoryFilesystemDeepAgentBackend`) return one route per skill source directory / memory file's parent directory: a sandboxed :class:`FilesystemBackend` rooted at that path with ``virtual_mode=True``. This lets the agent's runtime ``read_file`` / ``write_file`` / ``edit_file`` / ``ls`` / ``glob`` / ``grep`` tools reach those files at their absolute paths — without it, the chat-scoped backend's ``virtual_mode=True`` root would reject any path outside the chat workspace and ``read_file`` calls to skill or memory paths would silently fail with "file not found" (writes would silently land in in-memory state instead of disk). The per-chat scratch behaviour for non-skill/non-memory paths is unchanged.
+
+For skills this routing is read-only access to capability bundles. For memory it also enables **durable write-back**: the agent persists learnings via ``edit_file`` / ``write_file``, and because the memory file's parent directory is routed to a real ``FilesystemBackend``, those updates land on the actual ``AGENTS.md`` file on disk — the same file ``MemoryMiddleware`` loads at the start of every turn. Repeated parent directories (multiple memory files in one directory, or a skill source and a memory file sharing a directory) are deduped into a single route.
+
+Custom backends (Redis, S3, DB-backed, virtual filesystems) implement ``routes(sources)`` to expose their content to the runtime tools: keys are virtual path prefixes ending in ``"/"`` and values are backends rooted at the routed location (``CompositeBackend`` strips the prefix before delegating, so each value must resolve the stripped path inside its own root — e.g. a ``StoreBackend``-style backend). A backend may return ``{}`` if its content is served exclusively through the middleware (``SkillsMiddleware`` / ``MemoryMiddleware``) and the runtime tools should not reach it.
 
 .. code-block:: python
 
@@ -274,6 +284,84 @@ To enable skills in your own bot, construct a skills backend and pass it explici
        ],
        skills_backend=skills_backend,
    )
+
+Memory (long-term memory)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The deep agent can load long-term memory from a per-chat ``AGENTS.md`` file via ``deepagents``' ``MemoryMiddleware``. Two optional parameters on ``LLMDeepAgent.__init__`` control it, mirroring the backend-injection pattern used by ``backend=`` and ``skills_backend=``:
+
+* ``memory_backend``: An instance of :class:`BaseMemoryBackend` (typically a per-chat :class:`MemoryFilesystemDeepAgentBackend`) — explicitly injected by the caller. ``LLMDeepAgent`` does **not** instantiate a memory backend itself; the injected wrapper supplies the backend used to read the memory file, the chat-scoped source path (derived automatically when ``memory_paths`` is not given), and the langgraph store forwarded to ``create_deep_agent(store=...)``. The ``MemoryMiddleware`` itself is constructed by the agent, exactly like ``SkillsMiddleware``. If you don't pass one, ``MemoryMiddleware`` is omitted entirely. A ``WARNING`` is logged so the misconfiguration is loud, not silent.
+* ``memory_paths``: Optional explicit sequence of memory file paths (advanced use) that overrides the wrapper-derived source. When ``None`` and a ``memory_backend`` is present, the agent uses the wrapper's chat-scoped ``AGENTS.md``.
+* ``memory_add_cache_control``: ``bool``, default ``False``. Passed through to the ``MemoryMiddleware`` the agent constructs; adds an Anthropic prompt-cache breakpoint on the memory block. No-op on non-Anthropic models.
+
+.. warning::
+   Unlike skills (progressive disclosure — metadata at startup, full bodies on demand), memory files are **fully loaded into the system prompt on every turn**. Keep them concise: every token in a memory file is paid on every message, so prefer skills for large capability bundles and reserve memory for small, durable facts and preferences.
+
+The memory backend
+++++++++++++++++++
+
+Memory is **per-chat** — each chat gets its own independent, seeded ``AGENTS.md`` file under ``DEEP_AGENT_MEMORY_PATH``, so no information leaks between chats. The canonical wrapper is :class:`MemoryFilesystemDeepAgentBackend` (a :class:`BaseMemoryBackend` subclass), scoped by ``(bot_uuid, chat_id)`` exactly like :class:`FilesystemDeepAgentBackend` and sharing its two-layer security model (``bot_uuid`` validated against ``[A-Za-z0-9_-]+``, plus a realpath containment check). On construction it creates the chat memory directory (``memory_root/bot_uuid/chat_id``) and seeds a minimal **non-empty** ``AGENTS.md`` template — deepagents' ``MemoryMiddleware`` skips empty sources (HTML comments are stripped) and would otherwise render "(No memory loaded)" while hiding the source path from the agent. It also owns the langgraph store: by default a process-local ``InMemoryStore()`` created at construction time, or any ``BaseStore`` you inject via ``store=``. Like the skills wrapper, the memory wrapper separates two backend roles: ``backend`` is a ``virtual_mode=False`` ``FilesystemBackend`` handed to ``MemoryMiddleware`` (whose raw absolute source paths must pass through unchanged), while ``routes()`` provides a separate ``virtual_mode=True`` instance for the agent's ``CompositeBackend`` (whose route targets receive leading-slash-stripped keys).
+
+For a standalone bot, construct one instance per chat (typically inside ``instance_llm_bot``, alongside the main backend) and pass it to that chat's agent:
+
+.. code-block:: python
+
+   from manolo_bot.ai.llmdeepagent import LLMDeepAgent
+   from manolo_bot.storage.deep_agent_backends.memory_filesystem_backend import (
+       MemoryFilesystemDeepAgentBackend,
+   )
+
+   # One instance per chat — pass it to that chat's agent.
+   memory_backend = MemoryFilesystemDeepAgentBackend(
+       bot_uuid="bot-1", chat_id=1001, memory_root="/var/lib/manolo_bot/memory"
+   )
+   llm_bot = LLMDeepAgent(
+       llm,
+       bot_config,
+       system_instructions,
+       messages_storage,
+       backend=backend,
+       memory_backend=memory_backend,
+       memory_add_cache_control=True,
+   )
+
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMemoryBackend` with a per-chat constructor contract ``(bot_uuid, chat_id, ...)`` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach the memory file — see `Skill/memory-file routing`_ below) and an async ``.clear()``. Add a ``.store`` property (a langgraph ``BaseStore`` or ``None``) when your backend needs persistent agent state. ``clear()`` semantics are implementation-defined: the filesystem implementation deletes the chat's memory directory (``/flushcontext`` wipes chat memory along with the workspace):
+
+.. code-block:: python
+
+   from manolo_bot.storage.deep_agent_backends.base import BaseMemoryBackend
+
+   class RedisMemoryBackend(BaseMemoryBackend):
+       def __init__(self, bot_uuid, chat_id, client):
+           self.bot_uuid = bot_uuid
+           self.chat_id = chat_id
+           self._client = client
+           self._backend = ...  # your BackendProtocol implementation
+           self._store = ...    # your BaseStore implementation, or None
+
+       @property
+       def backend(self):
+           return self._backend
+
+       @property
+       def store(self):
+           return self._store
+
+       def routes(self, sources):
+           # Map the chat's memory path prefix to a backend rooted at the
+           # routed location (CompositeBackend strips the prefix before
+           # delegating). Unlike skills, memory routes must support WRITE
+           # (durable edit_file write-back), not just read. Return {} if memory
+           # is served exclusively through MemoryMiddleware.
+           return {f"/memory/{self.bot_uuid}/{self.chat_id}/": self._backend}
+
+       async def clear(self):
+           # Per-chat state: drop this chat's memory keys.
+           ...
+
+Memory is per-chat state and is cleared by ``clean_context()`` — ``/flushcontext`` wipes the chat's memory along with its workspace.
+
+Memory files are also routed into the agent's main backend ``CompositeBackend`` (see `Skill/memory-file routing for the agent's runtime tools`_ above): the memory backend wrapper's ``routes()`` factory maps the chat memory directory to a real ``FilesystemBackend`` route, so the agent's runtime ``read_file`` / ``write_file`` / ``edit_file`` tools reach the actual file on disk. This is what makes durable write-back work — learnings the agent saves via ``edit_file`` persist to the same seeded ``AGENTS.md`` file ``MemoryMiddleware`` loads every turn. Token-cost behavior is unchanged from the notes above.
 
 Simple Alternative: LLMBot
 --------------------------

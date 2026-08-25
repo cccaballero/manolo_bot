@@ -54,6 +54,11 @@ Storage Components
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: manolo_bot.storage.deep_agent_backends.memory_filesystem_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.storage.messages.base
    :members:
    :undoc-members:

@@ -109,6 +109,12 @@ class Config(EnvModel):
     # Deep Agent skills (comma-separated paths; entries may be `<path>::LABEL=<text>`)
     deep_agent_skills_paths = StringListField("DEEP_AGENT_SKILLS_PATHS", default=[])
 
+    # Deep Agent memory (per-chat AGENTS.md files rooted under this directory)
+    deep_agent_memory_path = StringField(
+        "DEEP_AGENT_MEMORY_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "memory")
+    )
+    deep_agent_memory_add_cache_control = BooleanField("DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL", default=False)
+
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )

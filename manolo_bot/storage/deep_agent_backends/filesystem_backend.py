@@ -1,19 +1,9 @@
 import os
-import re
 import shutil
 
 from deepagents.backends.filesystem import FilesystemBackend
 
-from manolo_bot.storage.deep_agent_backends.base import BaseDeepAgentBackend
-
-# Path-traversal characters are forbidden in bot_uuid. The character class is
-# chosen to match realistic identifiers (alphanumeric, dash, underscore) while
-# excluding ``/``, ``.``, and everything else that could escape the chat
-# directory under ``workspace_path``. ``bot_uuid`` is operator-provided via
-# ``BOT_UUID`` — a typo or attacker-controlled env var must not be able to
-# trick ``/flushcontext`` (which calls ``clear()`` → ``shutil.rmtree``) into
-# deleting directories outside the configured workspace.
-_BOT_UUID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+from manolo_bot.storage.deep_agent_backends.base import _BOT_UUID_PATTERN, BaseDeepAgentBackend
 
 
 class FilesystemDeepAgentBackend(BaseDeepAgentBackend):

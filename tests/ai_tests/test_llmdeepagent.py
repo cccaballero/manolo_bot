@@ -1,3 +1,4 @@
+import os
 import pathlib
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,12 +7,20 @@ from deepagents.backends import StateBackend
 from deepagents.backends.composite import CompositeBackend
 from deepagents.backends.filesystem import FilesystemBackend
 from deepagents.middleware import FilesystemMiddleware
+from deepagents.middleware.memory import MemoryMiddleware
 from deepagents.middleware.skills import SkillsMiddleware
 from langchain_core.messages import SystemMessage
+from langgraph.store.memory import InMemoryStore
 
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent, _resolve_skills_sources
 from manolo_bot.storage.deep_agent_backends.base import BaseDeepAgentBackend
+from manolo_bot.storage.deep_agent_backends.memory_filesystem_backend import (
+    MemoryFilesystemDeepAgentBackend,
+)
+from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
+    SkillsFilesystemDeepAgentBackend,
+)
 
 
 def _make_config(**overrides) -> BotConfig:
@@ -70,6 +79,9 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         middleware_names = [type(m).__name__ for m in middleware]
         self.assertIn("FilesystemMiddleware", middleware_names)
         self.assertIn("TodoListMiddleware", middleware_names)
+        # No memory configured → no MemoryMiddleware, behavior identical to today.
+        self.assertNotIn("MemoryMiddleware", middleware_names)
+        self.assertNotIn("store", call_kwargs)
         self.assertEqual(agent.agent, mock_agent)
 
     @patch("manolo_bot.ai.llmagent.create_agent")
@@ -186,8 +198,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_get_all_tools.return_value = []
         mock_create_deep_agent.return_value = MagicMock()
 
-        skills_wrapper = MagicMock()
-        skills_wrapper.backend = StateBackend()
+        skills_wrapper = SkillsFilesystemDeepAgentBackend()
 
         agent = LLMDeepAgent(
             mock_llm,
@@ -246,12 +257,13 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
     @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
-    async def test_deep_agent_skills_use_bot_config_when_ctor_arg_none(
+    async def test_deep_agent_skills_label_parsing_via_ctor(
         self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
     ):
-        """When skills_paths is None, skills come from bot_config.deep_agent_skills_paths
-        with ::LABEL= parsing — provided a skills_backend is also injected."""
-        bot_config = _make_config(deep_agent_skills_paths=["/a::LABEL=Alpha", "/b"])
+        """skills_paths passed via ctor supports ::LABEL= parsing — provided a
+        skills_backend is also injected. Configuration flows in through the
+        caller (main.py reads Config and passes it explicitly)."""
+        bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_llm = MagicMock()
         mock_llm.get_num_tokens = MagicMock(return_value=10)
@@ -259,14 +271,14 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         mock_get_all_tools.return_value = []
         mock_create_deep_agent.return_value = MagicMock()
 
-        skills_wrapper = MagicMock()
-        skills_wrapper.backend = StateBackend()
+        skills_wrapper = SkillsFilesystemDeepAgentBackend()
 
         agent = LLMDeepAgent(
             mock_llm,
             bot_config,
             system_instructions,
             mock_messages_storage,
+            skills_paths=["/a::LABEL=Alpha", "/b"],
             skills_backend=skills_wrapper,
         )
         await agent.initialize_async_resources()
@@ -285,7 +297,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
     async def test_deep_agent_omits_skills_when_neither_set(
         self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
     ):
-        """When neither skills_paths nor deep_agent_skills_paths is set, no skills kwarg is passed."""
+        """When skills_paths is not set, no SkillsMiddleware is passed."""
         bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_llm = MagicMock()
@@ -325,6 +337,9 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
             async def clear(self):
                 pass
 
+            def routes(self, sources):
+                return {f"{s.rstrip('/')}/": skills_backend for s in sources}
+
         bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_llm = MagicMock()
@@ -361,7 +376,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_deep_agent_clean_context_does_not_clear_skills_backend(self):
         """Skills are operator-provided, not per-chat state — clean_context must not clear them."""
-        bot_config = _make_config(deep_agent_skills_paths=["/etc/manolo_bot/skills"])
+        bot_config = _make_config()
         mock_messages_storage = MagicMock()
         mock_messages_storage.chat_id = 123
         mock_messages_storage.clear_messages = AsyncMock()
@@ -370,6 +385,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
         skills_wrapper = MagicMock()
         skills_wrapper.backend = StateBackend()
+        skills_wrapper.routes.return_value = {}
         skills_wrapper.clear = AsyncMock()
 
         agent = LLMDeepAgent(
@@ -408,8 +424,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
             mock_get_all_tools.return_value = []
             mock_create_deep_agent.return_value = MagicMock()
 
-            skills_wrapper = MagicMock()
-            skills_wrapper.backend = StateBackend()
+            skills_wrapper = SkillsFilesystemDeepAgentBackend()
 
             agent = LLMDeepAgent(
                 mock_llm,
@@ -454,6 +469,414 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
             read_result = fs_mw.backend.read(skill_root + "/my-skill/SKILL.md")
             self.assertIsNone(getattr(read_result, "error", None))
             self.assertIn("demo", read_result.file_data["content"])
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_main_backend_has_memory_route_for_chat_dir(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """The per-chat memory wrapper contributes a single CompositeBackend
+        route for the chat memory dir, rooted there with virtual_mode=True.
+        This is what lets the agent's runtime read_file/write_file/edit_file
+        tools reach the real seeded AGENTS.md on disk."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_llm = MagicMock()
+            mock_llm.get_num_tokens = MagicMock(return_value=10)
+            system_instructions = [SystemMessage(content="Test")]
+            mock_get_all_tools.return_value = []
+            mock_create_deep_agent.return_value = MagicMock()
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=memory_backend,
+            )
+            await agent.initialize_async_resources()
+
+            middleware = mock_create_deep_agent.call_args.kwargs["middleware"]
+            fs_mw = next(m for m in middleware if isinstance(m, FilesystemMiddleware))
+
+            # A CompositeBackend wraps the default (per-chat) backend.
+            self.assertIsInstance(fs_mw.backend, CompositeBackend)
+            self.assertIsInstance(fs_mw.backend.default, StateBackend)
+            # Single route for the chat memory dir.
+            chat_dir = os.path.dirname(memory_backend.source)
+            self.assertEqual(set(fs_mw.backend.routes.keys()), {chat_dir + "/"})
+            route_backend = fs_mw.backend.routes[chat_dir + "/"]
+            self.assertIsInstance(route_backend, FilesystemBackend)
+            self.assertTrue(route_backend.virtual_mode)
+            self.assertEqual(str(route_backend.cwd.resolve()), chat_dir)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_routes_reach_real_files_on_disk(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """End-to-end: the routed main backend reads the seeded memory file and
+        write_file/edit_file updates persist to disk — the durable write-back
+        path the agent uses to save learnings."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_llm = MagicMock()
+            mock_llm.get_num_tokens = MagicMock(return_value=10)
+            system_instructions = [SystemMessage(content="Test")]
+            mock_get_all_tools.return_value = []
+            mock_create_deep_agent.return_value = MagicMock()
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+            mem_file = memory_backend.source
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=memory_backend,
+            )
+            await agent.initialize_async_resources()
+
+            middleware = mock_create_deep_agent.call_args.kwargs["middleware"]
+            fs_mw = next(m for m in middleware if isinstance(m, FilesystemMiddleware))
+
+            # read_file via the routed main backend reaches the real file.
+            read_result = fs_mw.backend.read(mem_file)
+            self.assertIsNone(getattr(read_result, "error", None))
+            self.assertIn("Learnings from this conversation", read_result.file_data["content"])
+
+            # write_file via the routed main backend updates the real file.
+            write_result = fs_mw.backend.write(mem_file, "# updated fact")
+            self.assertIsNone(getattr(write_result, "error", None))
+            self.assertEqual(pathlib.Path(mem_file).read_text(encoding="utf-8"), "# updated fact")
+
+            # edit_file via the routed main backend updates the real file.
+            edit_result = fs_mw.backend.edit(mem_file, "updated", "edited")
+            self.assertIsNone(getattr(edit_result, "error", None))
+            self.assertEqual(pathlib.Path(mem_file).read_text(encoding="utf-8"), "# edited fact")
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_explicit_injection(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """Per-chat wrapper injection (main-style wiring): with no memory_paths,
+        the agent derives the source from the wrapper's chat-scoped AGENTS.md,
+        constructs MemoryMiddleware from the wrapper's backend, and forwards
+        the wrapper's store to create_deep_agent."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_llm = MagicMock()
+            mock_llm.get_num_tokens = MagicMock(return_value=10)
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+            mock_get_all_tools.return_value = []
+            mock_create_deep_agent.return_value = MagicMock()
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=memory_backend,
+            )
+            await agent.initialize_async_resources()
+
+            call_kwargs = mock_create_deep_agent.call_args.kwargs
+            memory_mw = next((m for m in call_kwargs["middleware"] if isinstance(m, MemoryMiddleware)), None)
+            self.assertIsNotNone(memory_mw, "MemoryMiddleware not in middleware list")
+            # Source derived from the wrapper's chat-scoped AGENTS.md.
+            self.assertEqual(memory_mw.sources, [memory_backend.source])
+            # The agent constructs MemoryMiddleware from the injected wrapper's
+            # backend (mirroring SkillsMiddleware).
+            self.assertIs(memory_mw._backend, memory_backend.backend)
+            # The wrapper's store is forwarded to create_deep_agent(store=...).
+            self.assertIs(call_kwargs["store"], memory_backend.store)
+            self.assertIsInstance(call_kwargs["store"], InMemoryStore)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_explicit_paths_override_wrapper_source(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """Explicit memory_paths (advanced use) override the wrapper-derived
+        source."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_llm = MagicMock()
+            mock_llm.get_num_tokens = MagicMock(return_value=10)
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+            mock_get_all_tools.return_value = []
+            mock_create_deep_agent.return_value = MagicMock()
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_paths=["/abs/AGENTS.md"],
+                memory_backend=memory_backend,
+            )
+            await agent.initialize_async_resources()
+
+            memory_mw = next(
+                (m for m in mock_create_deep_agent.call_args.kwargs["middleware"] if isinstance(m, MemoryMiddleware)),
+                None,
+            )
+            self.assertIsNotNone(memory_mw)
+            self.assertEqual(memory_mw.sources, ["/abs/AGENTS.md"])
+            self.assertIs(memory_mw._backend, memory_backend.backend)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_warns_and_omits_when_no_backend(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """memory_paths without memory_backend produces NO MemoryMiddleware and
+        no store kwarg. LLMDeepAgent does not instantiate a memory backend
+        itself — the caller must inject one. A warning is logged so
+        misconfigurations are loud, not silent."""
+        bot_config = _make_config()
+        mock_messages_storage = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        mock_get_all_tools.return_value = []
+        mock_create_deep_agent.return_value = MagicMock()
+
+        with self.assertLogs("manolo_bot.ai.llmdeepagent", level="WARNING") as captured:
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_paths=["/abs/AGENTS.md"],
+                # No memory_backend injected.
+            )
+        await agent.initialize_async_resources()
+
+        self.assertEqual(agent._memory_backend, None)
+        call_kwargs = mock_create_deep_agent.call_args.kwargs
+        self.assertEqual(
+            [m for m in call_kwargs["middleware"] if isinstance(m, MemoryMiddleware)],
+            [],
+            "MemoryMiddleware must be omitted when no memory_backend was injected",
+        )
+        self.assertNotIn("store", call_kwargs)
+        # Warning was emitted at construction time.
+        self.assertTrue(any("memory_backend" in m for m in captured.output))
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_backend_independent_from_main_and_skills(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """memory_backend is independent from the agent's main filesystem backend
+        and from skills_backend — all three backends can be distinct."""
+        import tempfile
+
+        main_backend = StateBackend()
+        skills_backend = StateBackend()
+
+        class _MainBackendWrapper(BaseDeepAgentBackend):
+            def _build_backend(self):
+                return main_backend
+
+            async def clear(self):
+                pass
+
+        class _SkillsBackendWrapper(BaseDeepAgentBackend):
+            def _build_backend(self):
+                return skills_backend
+
+            async def clear(self):
+                pass
+
+            def routes(self, sources):
+                return {f"{s.rstrip('/')}/": skills_backend for s in sources}
+
+        bot_config = _make_config()
+        mock_messages_storage = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+        system_instructions = [SystemMessage(content="Test")]
+        mock_get_all_tools.return_value = []
+        mock_create_deep_agent.return_value = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                backend=_MainBackendWrapper(bot_uuid="b", chat_id=1),
+                skills_paths=["/path/to/skills"],
+                skills_backend=_SkillsBackendWrapper(bot_uuid="b", chat_id=1),
+                memory_backend=memory_backend,
+            )
+            await agent.initialize_async_resources()
+
+            middleware = mock_create_deep_agent.call_args.kwargs["middleware"]
+            fs_mw = next(m for m in middleware if isinstance(m, FilesystemMiddleware))
+            skills_mw = next(m for m in middleware if isinstance(m, SkillsMiddleware))
+            memory_mw = next(m for m in middleware if isinstance(m, MemoryMiddleware))
+
+            self.assertIs(fs_mw.backend.default, main_backend)
+            self.assertIs(skills_mw._backend, skills_backend)
+            self.assertIs(memory_mw._backend, memory_backend.backend)
+            self.assertIsNot(memory_mw._backend, fs_mw.backend)
+            self.assertIsNot(memory_mw._backend, skills_mw._backend)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_omits_memory_when_unset(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """When no memory_backend is injected, no MemoryMiddleware is added and
+        no store kwarg is passed — behavior identical to today."""
+        bot_config = _make_config()
+        mock_messages_storage = MagicMock()
+        mock_llm = MagicMock()
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
+        mock_get_all_tools.return_value = []
+        mock_create_deep_agent.return_value = MagicMock()
+
+        agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage)
+        await agent.initialize_async_resources()
+
+        call_kwargs = mock_create_deep_agent.call_args.kwargs
+        memory_mw = [m for m in call_kwargs["middleware"] if isinstance(m, MemoryMiddleware)]
+        self.assertEqual(memory_mw, [], "MemoryMiddleware should not be present")
+        self.assertNotIn("store", call_kwargs)
+        # No memory (or skills) configured → the main backend is NOT wrapped in
+        # a CompositeBackend; no routes are added.
+        fs_mw = next(m for m in call_kwargs["middleware"] if isinstance(m, FilesystemMiddleware))
+        self.assertNotIsInstance(fs_mw.backend, CompositeBackend)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_memory_add_cache_control_passthrough(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        """memory_add_cache_control is an LLMDeepAgent ctor param passed through
+        to the MemoryMiddleware the agent constructs."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_llm = MagicMock()
+            mock_llm.get_num_tokens = MagicMock(return_value=10)
+            system_instructions = [SystemMessage(content="You are a helpful assistant")]
+            mock_get_all_tools.return_value = []
+            mock_create_deep_agent.return_value = MagicMock()
+
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp),
+                memory_add_cache_control=True,
+            )
+            await agent.initialize_async_resources()
+
+            memory_mw = next(
+                (m for m in mock_create_deep_agent.call_args.kwargs["middleware"] if isinstance(m, MemoryMiddleware)),
+                None,
+            )
+            self.assertIsNotNone(memory_mw)
+            self.assertTrue(memory_mw._add_cache_control)
+
+            # Default is False.
+            agent2 = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp),
+            )
+            await agent2.initialize_async_resources()
+            memory_mw2 = next(
+                (m for m in mock_create_deep_agent.call_args.kwargs["middleware"] if isinstance(m, MemoryMiddleware)),
+                None,
+            )
+            self.assertFalse(memory_mw2._add_cache_control)
+
+    async def test_deep_agent_clean_context_clears_memory_backend(self):
+        """clean_context clears the per-chat memory backend (mirroring the main
+        backend wrapper) so /flushcontext wipes chat memory along with the
+        workspace."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_messages_storage.chat_id = 123
+            mock_messages_storage.clear_messages = AsyncMock()
+            mock_llm = MagicMock()
+            system_instructions = [SystemMessage(content="Test")]
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                memory_backend=memory_backend,
+            )
+            agent.documents_storage = None
+            self.assertTrue(os.path.exists(memory_backend.source))
+
+            await agent.clean_context()
+
+            self.assertFalse(os.path.exists(memory_backend.source))
+
+    def test_deep_agent_memory_before_agent_loads_real_file(self):
+        """REGRESSION: MemoryMiddleware fed the wrapper's backend + absolute
+        source path must load the seeded AGENTS.md — a virtual_mode=True
+        backend would append the absolute path under its root and silently
+        report "(No memory loaded)"."""
+        import tempfile
+
+        from deepagents.middleware.memory import MemoryMiddleware
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wrapper = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=tmp)
+            mw = MemoryMiddleware(backend=wrapper.backend, sources=[wrapper.source])
+            update = mw.before_agent({}, MagicMock(), MagicMock())
+            self.assertIsNotNone(update)
+            self.assertIn(wrapper.source, update["memory_contents"])
+            self.assertIn("Learnings from this conversation", update["memory_contents"][wrapper.source])
 
 
 if __name__ == "__main__":
