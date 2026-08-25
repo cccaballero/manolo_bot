@@ -117,7 +117,7 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
         agent = LLMDeepAgent(mock_llm, bot_config, system_instructions, mock_messages_storage)
         agent.agent = mock_agent
-        agent.truncate_chat_context = MagicMock()  # isolate from token counting
+        agent.truncate_chat_context = AsyncMock()  # isolate from token counting
 
         response = await agent.answer_message(1, "Hello")
 

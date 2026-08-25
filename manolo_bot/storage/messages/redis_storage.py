@@ -73,12 +73,15 @@ class RedisMessagesStorage(BaseMessagesStorage):
 
     async def commit(self) -> None:
         """
-        Include new messages and remove deleted messages from the Redis database.
+        Persist the current in-memory message list to Redis.
+
+        The whole list is rewritten (delete + rpush in order) so that messages
+        inserted mid-list — e.g. the conversation summary placed at the front by
+        ``set_summary`` — keep their relative order after a refresh.
         """
         key = get_messages_key(self.bot_uuid, self.chat_id)
-        for storage_message in self._messages:
-            if storage_message.new:
-                await self.client.rpush(key, storage_message.message.model_dump_json())
-            elif storage_message.deleted:
-                await self.client.lrem(key, 1, storage_message.message.model_dump_json())
-        # await self.refresh_messages()
+        serialized = [sm.message.model_dump_json() for sm in self._messages if not sm.deleted]
+        await self.client.delete(key)
+        if serialized:
+            await self.client.rpush(key, *serialized)
+        await self.refresh_messages()

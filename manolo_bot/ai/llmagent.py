@@ -85,7 +85,7 @@ class LLMAgent(LLMBot):
 
     async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
         self.messages_storage.add_message(HumanMessage(content=message))
-        self.truncate_chat_context()
+        await self.truncate_chat_context()
 
         config = self._get_langchain_config(chat_id)
         ai_msg = await self.agent.ainvoke(
@@ -126,7 +126,7 @@ class LLMAgent(LLMBot):
                     ]
                 )
                 self.messages_storage.add_message(llm_message)
-                self.truncate_chat_context()
+                await self.truncate_chat_context()
                 config = self._get_langchain_config(chat_id)
                 response = (await self.agent.ainvoke({"messages": self.messages_storage.messages}, config=config))[
                     "messages"
@@ -169,7 +169,7 @@ class LLMAgent(LLMBot):
                     ]
                 )
                 self.messages_storage.add_message(llm_message)
-                self.truncate_chat_context()
+                await self.truncate_chat_context()
                 config = self._get_langchain_config(chat_id)
                 response = (
                     await self.agent.ainvoke(
@@ -214,7 +214,7 @@ class LLMAgent(LLMBot):
                 f"Use the read_document tool with filename '{doc_key}' to access it."
             )
             self.messages_storage.add_message(pointer_message)
-            self.truncate_chat_context()
+            await self.truncate_chat_context()
 
             # We don't stuff the prompt for the agent, we just add the user message
             # and the agent will use the tool if needed.

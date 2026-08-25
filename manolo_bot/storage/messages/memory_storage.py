@@ -33,16 +33,10 @@ class MemoryMessagesStorage(BaseMessagesStorage):
     async def commit(self) -> None:
         """
         Include new messages and remove deleted messages from the memory storage.
+
+        The persisted list is rebuilt from the in-memory non-deleted messages so
+        that insertion order is preserved — including summaries inserted at the
+        front via ``set_summary``.
         """
-        if not _chats.get(self.chat_id, None):
-            _chats[self.chat_id] = []
-        for storage_message in self._messages:
-            if storage_message.new:
-                _chats[self.chat_id].append(storage_message.message)
-            elif storage_message.deleted:
-                try:
-                    _chats[self.chat_id].remove(storage_message.message)
-                except ValueError:
-                    # Message might have been removed already
-                    pass
+        _chats[self.chat_id] = [sm.message for sm in self._messages if not sm.deleted]
         await self.refresh_messages()

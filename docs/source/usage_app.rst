@@ -218,6 +218,9 @@ Fine-tune the bot's performance and logging.
 
 * `LOGGING_LEVEL`: Set the verbosity of logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
 * `CONTEXT_MAX_TOKENS`: Maximum number of tokens to keep in conversation memory (default: `4096`).
+* `ENABLE_CONTEXT_SUMMARIZATION`: When the context limit is reached, summarize the oldest messages instead of dropping them (default: `True`).
+* `SUMMARY_MAX_TOKENS`: Maximum number of tokens allowed for the generated summary (default: `512`).
+* `SUMMARY_KEEP_MESSAGES`: Number of most recent messages to keep intact when summarizing (default: `6`).
 * `WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout for tools that fetch web content (default: `10`).
 * `RATE_LIMITER_REQUESTS_PER_SECOND`: Max requests per second (default: `0.25`).
 * `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).

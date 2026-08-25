@@ -16,6 +16,9 @@ class TestConfig(unittest.TestCase):
         os.environ["TELEGRAM_BOT_USERNAME"] = "ManoloBot"
         os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890"
         os.environ["CONTEXT_MAX_TOKENS"] = "5007"
+        os.environ["ENABLE_CONTEXT_SUMMARIZATION"] = "True"
+        os.environ["SUMMARY_MAX_TOKENS"] = "256"
+        os.environ["SUMMARY_KEEP_MESSAGES"] = "8"
         os.environ["PREFERRED_LANGUAGE"] = "Spanish"
         os.environ["ADD_NO_ANSWER"] = "False"
         os.environ["RATE_LIMITER_REQUESTS_PER_SECOND"] = "0.25"
@@ -41,6 +44,9 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.bot_username, "ManoloBot")
         self.assertEqual(config.bot_token, "1234567890")
         self.assertEqual(config.context_max_tokens, 5007)
+        self.assertEqual(config.enable_context_summarization, True)
+        self.assertEqual(config.summary_max_tokens, 256)
+        self.assertEqual(config.summary_keep_messages, 8)
         self.assertEqual(config.preferred_language, "Spanish")
         self.assertEqual(config.add_no_answer, False)
         self.assertEqual(config.rate_limiter_requests_per_second, 0.25)
@@ -67,6 +73,9 @@ class TestConfig(unittest.TestCase):
         del os.environ["TELEGRAM_BOT_USERNAME"]
         del os.environ["TELEGRAM_BOT_TOKEN"]
         del os.environ["CONTEXT_MAX_TOKENS"]
+        del os.environ["ENABLE_CONTEXT_SUMMARIZATION"]
+        del os.environ["SUMMARY_MAX_TOKENS"]
+        del os.environ["SUMMARY_KEEP_MESSAGES"]
         del os.environ["PREFERRED_LANGUAGE"]
         del os.environ["ADD_NO_ANSWER"]
         del os.environ["RATE_LIMITER_REQUESTS_PER_SECOND"]
