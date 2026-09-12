@@ -494,8 +494,9 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Could not extract a valid YouTube video ID", result)
 
     @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
-    @patch("manolo_bot.ai.tools.BotConfig")
-    async def test_get_youtube_transcript__truncates_long_transcripts(self, mock_config, mock_transcript_api):
+    async def test_get_youtube_transcript__truncates_long_transcripts(self, mock_transcript_api):
+        from manolo_bot.ai.tools import YouTubeTranscriptTool
+
         # Arrange
         url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         # Create a very long transcript
@@ -504,11 +505,11 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_transcript.fetch.return_value = [type("obj", (object,), {"text": long_text})]
         mock_transcript_api.return_value.list.return_value = [mock_transcript]
 
-        # Set max tokens to a small number to force truncation
-        mock_config.return_value.context_max_tokens = 100
+        # Use a small limit to force truncation via the configured tool instance
+        configured_tool = YouTubeTranscriptTool(context_max_tokens=100)
 
         # Act
-        result = await get_youtube_transcript.ainvoke({"url": url})
+        result = await configured_tool.ainvoke({"url": url})
 
         # Assert
         self.assertLess(len(result), len(long_text))

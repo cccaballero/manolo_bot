@@ -76,6 +76,80 @@ async def get_website_content(url: str) -> str:
         return f"Failed to get content of the website {url}. Please try again later or try a different URL."
 
 
+class YouTubeTranscriptInput(BaseModel):
+    url: str = Field(description="The YouTube video URL to fetch the transcript for")
+
+
+class YouTubeTranscriptTool(BaseTool):
+    """
+    Tool for fetching and analyzing YouTube video transcripts.
+    Can be used to understand and discuss the content of YouTube videos without watching them.
+    Supports various YouTube URL formats (standard, shortened, shorts).
+    """
+
+    name: str = "get_youtube_transcript"
+    description: str = (
+        "Tool for fetching and analyzing YouTube video transcripts. "
+        "Can be used to understand and discuss the content of YouTube videos without watching them. "
+        "Supports various YouTube URL formats (standard, shortened, shorts)."
+    )
+    args_schema: type[BaseModel] = YouTubeTranscriptInput
+    context_max_tokens: int = 6000
+
+    def _run(self, url: str) -> str:
+        # Synchronous implementation if needed
+        raise NotImplementedError("Use _arun instead")
+
+    async def _arun(self, url: str) -> str:
+        try:
+            logging.debug(f"Obtaining YouTube transcript for {url}")
+            video_id = extract_youtube_video_id(url)
+
+            if not video_id:
+                return (
+                    f"Could not extract a valid YouTube video ID from the URL: {url}. "
+                    "Please provide a valid YouTube URL."
+                )
+
+            # YouTubeTranscriptApi is synchronous, but we can wrap it in asyncio
+            import asyncio
+
+            youtube_transcript = YouTubeTranscriptApi()
+
+            # Run the synchronous API call in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            transcript_list = await loop.run_in_executor(None, lambda: list(youtube_transcript.list(video_id)))
+
+            # Check if any transcripts are available
+            if not transcript_list:
+                logging.error(f"No transcript found for YouTube video: {url}")
+                return (
+                    "No transcript is available for this YouTube video. The video might not have captions or subtitles."
+                )
+
+            # Get the first available transcript
+            transcript = transcript_list[0]
+            transcript_segments = await loop.run_in_executor(None, transcript.fetch)
+
+            # Combine all transcript segments into a single text
+            full_transcript = " ".join(segment.text for segment in transcript_segments)
+
+            # Truncate if too long (to avoid token limits)
+            # Rough estimate of chars per token
+            max_chars = self.context_max_tokens * 4
+
+            if len(full_transcript) > max_chars:
+                full_transcript = full_transcript[:max_chars] + "... [Transcript truncated due to length]"
+
+            return full_transcript.strip()
+        except TranscriptsDisabled:
+            logging.error(f"Transcripts are disabled for YouTube video: {url}")
+            return f"Transcripts are disabled for this YouTube video: {url}"
+        except Exception as e:
+            logging.error(f"Error fetching YouTube transcript: {str(e)}")
+            return f"Failed to get the transcript for the YouTube video. Error: {str(e)}"
+
+
 @tool
 async def get_youtube_transcript(url: str) -> str:
     """
@@ -83,52 +157,9 @@ async def get_youtube_transcript(url: str) -> str:
     Can be used to understand and discuss the content of YouTube videos without watching them.
     Supports various YouTube URL formats (standard, shortened, shorts).
     """
-    try:
-        logging.debug(f"Obtaining YouTube transcript for {url}")
-        video_id = extract_youtube_video_id(url)
-
-        if not video_id:
-            return (
-                f"Could not extract a valid YouTube video ID from the URL: {url}. Please provide a valid YouTube URL."
-            )
-
-        # YouTubeTranscriptApi is synchronous, but we can wrap it in asyncio
-        import asyncio
-
-        youtube_transcript = YouTubeTranscriptApi()
-
-        # Run the synchronous API call in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        transcript_list = await loop.run_in_executor(None, lambda: list(youtube_transcript.list(video_id)))
-
-        # Check if any transcripts are available
-        if not transcript_list:
-            logging.error(f"No transcript found for YouTube video: {url}")
-            return "No transcript is available for this YouTube video. The video might not have captions or subtitles."
-
-        # Get the first available transcript
-        transcript = transcript_list[0]
-        transcript_segments = await loop.run_in_executor(None, transcript.fetch)
-
-        # Combine all transcript segments into a single text
-        full_transcript = " ".join(segment.text for segment in transcript_segments)
-
-        # Truncate if too long (to avoid token limits)
-        # TODO: Use config for max tokens
-        # config = BotConfig()
-        # max_chars = config.context_max_tokens * 4  # Rough estimate of chars per token
-        max_chars = 6000 * 4
-
-        if len(full_transcript) > max_chars:
-            full_transcript = full_transcript[:max_chars] + "... [Transcript truncated due to length]"
-
-        return full_transcript.strip()
-    except TranscriptsDisabled:
-        logging.error(f"Transcripts are disabled for YouTube video: {url}")
-        return f"Transcripts are disabled for this YouTube video: {url}"
-    except Exception as e:
-        logging.error(f"Error fetching YouTube transcript: {str(e)}")
-        return f"Failed to get the transcript for the YouTube video. Error: {str(e)}"
+    # Thin wrapper preserving the default limit (6000 tokens) for backward compatibility.
+    # Configured use should instantiate YouTubeTranscriptTool with bot_config.context_max_tokens.
+    return await YouTubeTranscriptTool()._arun(url)
 
 
 def extract_youtube_video_id(url: str) -> str | None:
@@ -261,11 +292,16 @@ def get_tools(
         logging.debug("Using ddgs search")
         search_tool = ddgs_search
 
+    if bot_config:
+        youtube_tool: BaseTool = YouTubeTranscriptTool(context_max_tokens=bot_config.context_max_tokens)
+    else:
+        youtube_tool = get_youtube_transcript
+
     tools: list = [
         get_current_time,
         get_website_content,
         author,
-        get_youtube_transcript,
+        youtube_tool,
         search_tool,
         get_search_instructions,
         multiply,
