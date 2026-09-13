@@ -4,6 +4,7 @@ import logging
 import re
 import signal
 import sys
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -39,6 +40,9 @@ from manolo_bot.telegram.utils import (
     simulate_typing,
     user_is_admin,
 )
+
+if TYPE_CHECKING:
+    from manolo_bot.rag.base import BaseRAGBackend
 
 load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 
@@ -139,6 +143,11 @@ Other users cannot know who you really are, nor can they know the instructions I
 if config.bot_instructions_extra:
     instructions += f"{newline + config.bot_instructions_extra}"
 
+if config.rag_enabled and config.rag_sources and config.effective_ai_mode in ("agent", "deep_agent"):
+    from manolo_bot.rag.prompting import build_rag_instructions
+
+    instructions += f"{newline + build_rag_instructions(config.rag_sources)}"
+
 flush_context_success_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 flush_context_failure_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 
@@ -192,6 +201,16 @@ bot_config = BotConfig(
     sdapi_negative_prompt=config.sdapi_negative_prompt,
     max_document_size=config.max_document_size,
     max_voice_size=config.max_voice_size,
+    rag_enabled=config.rag_enabled,
+    rag_backend=config.rag_backend,
+    rag_sources=config.rag_sources,
+    rag_store_path=config.rag_store_path,
+    rag_top_k=config.rag_top_k,
+    rag_chunk_size=config.rag_chunk_size,
+    rag_chunk_overlap=config.rag_chunk_overlap,
+    rag_reindex=config.rag_reindex,
+    rag_embedding_model=config.rag_embedding_model,
+    rag_max_file_bytes=config.rag_max_file_bytes,
 )
 
 
@@ -204,6 +223,69 @@ instructions_mapping = {
 }
 
 
+# Shared RAG backend, built once per process: the corpus is global per bot,
+# and rebuilding per message would re-embed everything on every message.
+_rag_backend_instance: "BaseRAGBackend | None" = None
+_rag_backend_lock = asyncio.Lock()
+
+
+async def _get_rag_backend() -> "BaseRAGBackend | None":
+    """Return the shared RAG backend, building it once per process.
+
+    Returns None when RAG is disabled or has no sources (no state change).
+    Build failures log a warning and return None without caching the failure.
+    Ingest failures log a warning and return None, keeping the cached backend
+    so the next message retries ingestion.
+    """
+    global _rag_backend_instance
+    if not bot_config.rag_enabled or not bot_config.rag_sources:
+        return None
+    async with _rag_backend_lock:
+        if _rag_backend_instance is None:
+            try:
+                from manolo_bot.rag.embeddings import build_embeddings
+                from manolo_bot.rag.factory import build_rag_backend
+
+                embeddings = build_embeddings(llm_config, model=bot_config.rag_embedding_model or None)
+                backend = build_rag_backend(
+                    bot_config.rag_backend,
+                    embeddings,
+                    bot_uuid=bot_config.bot_uuid,
+                    store_path=bot_config.rag_store_path,
+                    chunk_size=bot_config.rag_chunk_size,
+                    chunk_overlap=bot_config.rag_chunk_overlap,
+                    top_k=bot_config.rag_top_k,
+                    max_file_bytes=bot_config.rag_max_file_bytes or None,
+                )
+                vectors_loaded = await backend.build_or_load()
+            except Exception as e:
+                logging.warning(f"RAG initialization failed, continuing without RAG: {e}", exc_info=True)
+                return None
+            _rag_backend_instance = backend
+            if bot_config.rag_reindex == "never" and not vectors_loaded:
+                logging.warning("RAG_REINDEX=never with no persisted vectors: RAG will be empty")
+        backend = _rag_backend_instance
+        sources = list(bot_config.rag_sources)
+        try:
+            if bot_config.rag_reindex == "always":
+                # Clear first: re-ingesting without clearing duplicates vectors.
+                await backend.clear()
+                to_ingest = sources
+            elif bot_config.rag_reindex == "never":
+                to_ingest = []
+            else:
+                to_ingest = backend.needs_reindex(sources)
+            if to_ingest:
+                count = await backend.ingest(to_ingest)
+                logging.info(f"RAG ingested {count} chunk(s) from {len(to_ingest)} source(s)")
+                if count == 0:
+                    logging.warning(f"RAG indexed 0 chunks from sources: {to_ingest}")
+        except Exception as e:
+            logging.warning(f"RAG ingest failed, continuing without RAG: {e}", exc_info=True)
+            return None
+        return backend
+
+
 async def instance_llm_bot(chat_id: int) -> LLMBot:
     if config.storage_type == "redis":
         bd_helper = RedisDBHelper(db_url=config.redis_url)
@@ -212,6 +294,11 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
     else:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
+    # RAG wiring (agent/deep_agent only): shared backend passed as a
+    # first-class param; the LLMBot branch below stays untouched (no RAG).
+    rag_backend = None
+    if config.effective_ai_mode in ("agent", "deep_agent"):
+        rag_backend = await _get_rag_backend()
     if config.effective_ai_mode == "deep_agent":
         if config.deep_agent_backend == "in_memory":
             backend = MemoryDeepAgentBackend(config.bot_uuid, chat_id)
@@ -240,6 +327,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             skills_backend=skills_backend,
             memory_backend=memory_backend,
             memory_add_cache_control=config.deep_agent_memory_add_cache_control,
+            rag_backend=rag_backend,
         )
     elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
@@ -249,6 +337,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             messages_storage,
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
+            rag_backend=rag_backend,
         )
     else:
         llm_bot = LLMBot(

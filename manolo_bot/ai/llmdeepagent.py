@@ -25,6 +25,8 @@ from manolo_bot.storage.messages.base import BaseMessagesStorage
 if TYPE_CHECKING:
     from deepagents.backends.protocol import BackendProtocol
 
+    from manolo_bot.rag.base import BaseRAGBackend
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,6 +148,7 @@ class LLMDeepAgent(LLMAgent):
         memory_paths: Sequence[str] | None = None,
         memory_backend: BaseMemoryBackend | None = None,
         memory_add_cache_control: bool = False,
+        rag_backend: "BaseRAGBackend | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -155,6 +158,7 @@ class LLMDeepAgent(LLMAgent):
             tools=tools,
             documents_storage=documents_storage,
             system_instructions_mapping=system_instructions_mapping,
+            rag_backend=rag_backend,
         )
         self._backend_wrapper = backend
         self._backend: BackendProtocol = backend.backend if backend else StateBackend()
@@ -251,6 +255,7 @@ class LLMDeepAgent(LLMAgent):
         tools = await get_all_tools(
             self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
+        tools = self._resolve_rag_tool(tools)
 
         instructions_text = self._system_instructions[0].content if self._system_instructions else ""
 

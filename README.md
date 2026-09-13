@@ -109,6 +109,47 @@ The `in_memory` backend keeps the virtual filesystem in process memory, scoped p
 
 `DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL`: Add an Anthropic prompt-cache breakpoint on the memory block (default `False`; no-op on non-Anthropic models). Fed to `LLMDeepAgent(memory_add_cache_control=...)` at agent construction.
 
+#### RAG (Retrieval-Augmented Generation)
+
+Local document knowledge base, wired into the `agent` and `deep_agent` modes only
+(the `llm` mode ignores these settings). When enabled with non-empty `RAG_SOURCES`,
+documents are chunked, embedded and indexed at startup, and a `rag_search` retriever
+tool is appended to the agent's tools. Failures degrade gracefully (the bot continues
+without RAG).
+
+`RAG_ENABLED`: Enable RAG indexing (True, False). Default is False.
+
+`RAG_BACKEND`: RAG backend type (`in_memory`, `local_fs`). Default is `in_memory` (opt-in persistence).
+- `in_memory`: ephemeral vectors, kept for debugging and tests; re-ingests on every restart.
+- `local_fs`: persists the index as JSON under `RAG_STORE_PATH` for simple single-node
+  deployments (not horizontally scalable; distributed backends such as `chroma`/`pgvector`
+  may follow).
+
+`RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index.
+
+`RAG_STORE_PATH`: Directory for RAG index state. Defaults to a system temporary directory
+(e.g. `/tmp/manolo_bot/rag`).
+
+`RAG_TOP_K`: Number of chunks retrieved per query (default: `5`).
+
+`RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: Chunking settings (defaults: `1000` / `200`).
+
+`RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`). Default is `auto`
+(only new or changed files are ingested; the ephemeral `in_memory` backend still
+re-ingests everything on each restart since vectors are not persisted).
+
+`RAG_EMBEDDING_MODEL`: Optional embedding model for the configured provider
+(defaults: `models/gemini-embedding-001` for Google, `text-embedding-ada-002` for
+OpenAI, `nomic-embed-text` for Ollama). Set this when your endpoint does not host
+the default — e.g. an OpenAI-compatible server (LM Studio, vLLM) with its own
+embedding model.
+
+Ingest is per-file isolated: one bad file can't kill the index — failures are logged
+with a warning and retried on the next run, while good files are indexed normally.
+`RAG_MAX_FILE_BYTES`: per-file size cap in bytes (default `10485760`, i.e. 10MB;
+`0` = unlimited); oversized sources are skipped with a warning. Keep `RAG_CHUNK_SIZE` well below your
+provider's per-request token limit; the defaults are safe.
+
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the
@@ -392,6 +433,61 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+#### Using RAG with LLMAgent
+
+A local knowledge base can be attached to `LLMAgent` (or `LLMDeepAgent`) via the
+`manolo_bot.rag` package. RAG is only wired for agent modes — `LLMBot` ignores it.
+
+```python
+import asyncio
+from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.llmagent import LLMAgent
+from manolo_bot.ai.llmbot import LLMBuilder
+from manolo_bot.rag.embeddings import build_embeddings
+from manolo_bot.rag.factory import build_rag_backend
+from manolo_bot.rag.prompting import build_rag_instructions
+from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
+
+
+async def main():
+    llm_config = LLMConfig(
+        google_api_key="your_api_key",
+        google_api_model="",
+        openai_api_key="",
+        openai_api_model="",
+        openai_api_base_url="",
+        ollama_model="",
+    )
+    llm = LLMBuilder(llm_config).get_llm()
+    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
+    storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
+    await storage.refresh_messages()
+
+    # Build the RAG backend and index local documents.
+    backend = build_rag_backend("in_memory", build_embeddings(llm_config), bot_uuid="my-bot")
+    await backend.build_or_load()
+    await backend.ingest(["docs/handbook.md", "docs/policies/"])
+
+    # Pass the backend explicitly; the agent appends the rag_search tool itself.
+    # Append build_rag_instructions() to the system prompt so the agent knows when to use it.
+    system_instructions = "You are a helpful assistant." + build_rag_instructions(
+        ["docs/handbook.md", "docs/policies/"]
+    )
+    agent = LLMAgent(
+        llm=llm,
+        bot_config=bot_config,
+        system_instructions=system_instructions,
+        messages_storage=storage,
+        rag_backend=backend,
+    )
+    response = await agent.answer_message(chat_id=123, message="What does the handbook say?")
+    print(f"Agent: {response.content}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 ### Using LLMDeepAgent (Deep Agents Harness)
 
 For the most advanced use case, `LLMDeepAgent` extends `LLMAgent` with the full Deep Agents harness: to-do list
@@ -452,7 +548,10 @@ If no `backend` is provided, `LLMDeepAgent` falls back to an in-memory `StateBac
 
 ### Custom Tools
 
-You can provide your own tools when initializing `LLMAgent`, `LLMDeepAgent`, or `LLMBot`:
+You can provide your own tools when initializing `LLMAgent`, `LLMDeepAgent`, or `LLMBot`.
+Note that `tools=` **replaces** the default tool set — passing a list does NOT append
+to the defaults. MCP tools are still merged on top afterwards, and an MCP tool wins
+on name conflicts.
 
 ```python
 from langchain_core.tools import tool
@@ -465,7 +564,22 @@ def my_tool(query: str) -> str:
     return "Result"
 
 
+# Full replacement: the agent only sees my_tool (+ MCP tools).
 agent = LLMAgent(..., tools=[my_tool])
+```
+
+Recipes for combining custom tools with the defaults (defaults + extra is NOT automatic —
+compose explicitly):
+
+```python
+from manolo_bot.ai.tools import get_tools
+
+# Defaults + extra.
+agent = LLMAgent(..., tools=get_tools(bot_config) + [my_tool])
+
+# Drop one default: filter by name.
+tools = [t for t in get_tools(bot_config) if t.name != "multiply"]
+agent = LLMAgent(..., tools=tools)
 ```
 
 ### Using LLMBot (Simple)

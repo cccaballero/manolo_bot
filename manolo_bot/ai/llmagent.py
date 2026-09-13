@@ -1,5 +1,6 @@
 import base64
 import logging
+from typing import TYPE_CHECKING
 
 import aiohttp
 from langchain.agents import create_agent
@@ -12,6 +13,9 @@ from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
 from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.storage.documents.base import BaseDocumentStorage
 from manolo_bot.storage.messages.base import BaseMessagesStorage
+
+if TYPE_CHECKING:
+    from manolo_bot.rag.base import BaseRAGBackend
 
 
 class LLMAgent(LLMBot):
@@ -36,6 +40,7 @@ class LLMAgent(LLMBot):
         tools: list[BaseTool] | None = None,
         documents_storage: BaseDocumentStorage | None = None,
         system_instructions_mapping=None,
+        rag_backend: "BaseRAGBackend | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -48,6 +53,22 @@ class LLMAgent(LLMBot):
         )
         # Don't create agent yet - wait for async initialization
         self.agent = None
+        # First-class RAG backend (appended as a retriever tool at init time,
+        # separate from the `tools=` custom-tools channel).
+        self._rag_backend = rag_backend
+
+    def _resolve_rag_tool(self, tools: list[BaseTool]) -> list[BaseTool]:
+        """Append the RAG retriever tool unless absent or shadowed by MCP."""
+        if self._rag_backend is None:
+            return tools
+        from manolo_bot.rag.base import RAG_TOOL_NAME
+        from manolo_bot.rag.prompting import build_rag_tool_description
+
+        if any(getattr(t, "name", None) == RAG_TOOL_NAME for t in tools):
+            logging.info("RAG tool %r already provided (e.g. by MCP); skipping backend tool", RAG_TOOL_NAME)
+            return tools
+        description = build_rag_tool_description(list(self.bot_config.rag_sources or []))
+        return tools + [self._rag_backend.as_tool(RAG_TOOL_NAME, description)]
 
     async def initialize_async_resources(self) -> None:
         """Initialize async resources and create agent with all tools."""
@@ -60,6 +81,7 @@ class LLMAgent(LLMBot):
         tools = await get_all_tools(
             self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
+        tools = self._resolve_rag_tool(tools)
 
         self.agent = create_agent(
             model=self.llm,

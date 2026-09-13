@@ -118,6 +118,18 @@ class Config(EnvModel):
     )
     deep_agent_memory_add_cache_control = BooleanField("DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL", default=False)
 
+    # RAG (Retrieval-Augmented Generation) — agent/deep_agent modes only
+    rag_enabled = BooleanField("RAG_ENABLED", default=False)
+    rag_backend = StringField("RAG_BACKEND", default="in_memory", allowed_values=["in_memory", "local_fs"])
+    rag_sources = StringListField("RAG_SOURCES", default=[])
+    rag_store_path = StringField("RAG_STORE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "rag"))
+    rag_top_k = IntegerField("RAG_TOP_K", default=5)
+    rag_chunk_size = IntegerField("RAG_CHUNK_SIZE", default=1000)
+    rag_chunk_overlap = IntegerField("RAG_CHUNK_OVERLAP", default=200)
+    rag_reindex = StringField("RAG_REINDEX", default="auto", allowed_values=["auto", "always", "never"])
+    rag_embedding_model = StringField("RAG_EMBEDDING_MODEL", default="")
+    rag_max_file_bytes = IntegerField("RAG_MAX_FILE_BYTES", default=10 * 1024 * 1024)  # 10MB
+
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )
