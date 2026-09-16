@@ -124,6 +124,8 @@ class TestRAGWiring(unittest.TestCase):
         source = (REPO_ROOT / "manolo_bot" / "main.py").read_text(encoding="utf-8")
         self.assertIn("manolo_bot.rag", source)
         self.assertIn("async def _get_rag_backend", source)
+        # auto mode mirrors the configured sources: vanished files are pruned.
+        self.assertIn("find_removed", source)
         # Agent branches pass the shared backend as a first-class param...
         self.assertEqual(source.count("rag_backend=rag_backend"), 2)
         # ...and no longer ride the `tools=` custom-tools channel.

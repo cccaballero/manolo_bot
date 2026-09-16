@@ -160,11 +160,11 @@ gracefully (the bot keeps running without RAG).
 * `RAG_BACKEND`: Index backend (default: `in_memory`).
     * `in_memory`: Ephemeral vectors, kept for debugging and tests; re-ingests on every restart.
     * `local_fs`: Persists the index as JSON under `RAG_STORE_PATH`. Simple single-node persistence, not horizontally scalable (distributed backends such as `chroma`/`pgvector` may follow).
-* `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index (default: empty). Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool (e.g. ``docs/handbook.md::DESC=Employee handbook``). Descriptions must not contain commas. Each per-source tool searches only its own files; with more than 8 sources only the global `rag_search` tool is exposed.
+* `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index (default: empty). Supported formats are ``.txt``, ``.md``, ``.pdf`` and ``.docx`` (anything else is attempted as plain text). Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool (e.g. ``docs/handbook.md::DESC=Employee handbook``). Descriptions must not contain commas. Each per-source tool searches only its own files; with more than 8 sources only the global `rag_search` tool is exposed.
 * `RAG_STORE_PATH`: Directory for RAG index state. Defaults to a system temporary directory (``/tmp/manolo_bot/rag`` on Linux).
 * `RAG_TOP_K`: Number of chunks retrieved per query (default: `5`).
 * `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: Chunking settings (defaults: `1000` / `200`).
-* `RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`; default: `auto`). Only new or changed files are ingested; the ephemeral `in_memory` backend still re-ingests everything on each restart since vectors are not persisted.
+* `RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`; default: `auto`). Only new or changed files are ingested; files removed from the configuration are pruned from the index automatically; the ephemeral `in_memory` backend still re-ingests everything on each restart since vectors are not persisted.
 * `RAG_EMBEDDING_MODEL`: Optional embedding model override for the configured provider (defaults: `models/gemini-embedding-001` for Google, `text-embedding-ada-002` for OpenAI, `nomic-embed-text` for Ollama). Set this when your endpoint does not host the default — e.g. an OpenAI-compatible server (LM Studio, vLLM) with its own embedding model.
 * `RAG_MAX_FILE_BYTES`: Per-file size cap in bytes (default: `10485760`, i.e. 10MB; `0` = unlimited). Oversized sources are skipped with a warning.
 

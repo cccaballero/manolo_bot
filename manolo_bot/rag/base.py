@@ -111,7 +111,10 @@ def save_manifest(store_path: str | Path, bot_uuid: str, manifest: dict[str, dic
 def find_stale_paths(paths: Sequence[str | Path], manifest: dict[str, dict[str, Any]]) -> list[str]:
     """Return the subset of paths that are new or changed vs. the manifest.
 
-    Missing files are skipped (they cannot be ingested).
+    Missing files are skipped (they cannot be ingested). A fingerprint match
+    means fresh, with two exceptions: entries recording ``chunks == 0`` never
+    indexed anything, so they are always retried; entries without a ``chunks``
+    key predate chunk-count tracking and are re-ingested once to heal them.
 
     :param paths: Concrete file paths to check (already glob-expanded).
     :param manifest: Previously stored fingerprints keyed by resolved path.
@@ -134,6 +137,11 @@ def find_stale_paths(paths: Sequence[str | Path], manifest: dict[str, dict[str, 
             or previous.get("size") != current["size"]
             or previous.get("sha256") != current["sha256"]
         ):
+            stale.append(str(file_path))
+            continue
+        if previous.get("chunks", 0) == 0:
+            # Fingerprint matches but nothing was ever indexed (or the entry
+            # predates chunk-count tracking): retry instead of staying empty.
             stale.append(str(file_path))
     return stale
 
@@ -199,6 +207,16 @@ class BaseRAGBackend(ABC):
     @abstractmethod
     def needs_reindex(self, paths: Sequence[RAGSource]) -> list[RAGSource]:
         """Return the subset of records with new or changed files."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_removed(self, paths: Sequence[RAGSource]) -> list[str]:
+        """Return indexed files matching none of the given records.
+
+        Compares manifest keys (resolved paths) against the currently expanded
+        records: anything indexed but no longer configured. Used by ``auto``
+        reindexing to mirror the configured sources.
+        """
         raise NotImplementedError
 
     @abstractmethod

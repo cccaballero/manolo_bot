@@ -609,8 +609,8 @@ per-file isolated, so one bad file can't fail the whole index.
 
 For a custom index (e.g. Chroma, pgvector), subclass ``BaseRAGBackend`` from
 ``manolo_bot.rag.base`` and implement ``build_or_load()``, ``ingest()``, ``query()``,
-``clear()``, ``remove()``, ``list_sources()``, ``needs_reindex()``, ``as_tool()`` and
-``as_source_tools()``; wire it up through ``build_rag_backend()``.
+``clear()``, ``remove()``, ``list_sources()``, ``needs_reindex()``, ``find_removed()``,
+``as_tool()`` and ``as_source_tools()``; wire it up through ``build_rag_backend()``.
 
 Dynamic System Instructions
 ---------------------------

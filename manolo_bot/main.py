@@ -280,6 +280,14 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
             elif bot_config.rag_reindex == "never":
                 to_ingest = []
             else:
+                # auto: mirror the configured sources — drop whatever is indexed
+                # but no longer configured, then ingest what's new or changed.
+                vanished = backend.find_removed(records)
+                if vanished:
+                    from manolo_bot.rag.sources import RAGSource as _RAGSource
+
+                    logging.info(f"RAG pruning {len(vanished)} source(s) no longer configured")
+                    await backend.remove([_RAGSource(path=path) for path in vanished])
                 to_ingest = backend.needs_reindex(records)
             if to_ingest:
                 count = await backend.ingest(to_ingest)

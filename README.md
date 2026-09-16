@@ -126,6 +126,8 @@ without RAG).
   may follow).
 
 `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index.
+Supported formats are `.txt`, `.md`, `.pdf` and `.docx` (anything else is attempted
+as plain text).
 Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool
 (e.g. `docs/handbook.md::DESC=Employee handbook`); descriptions must not contain commas.
 Tool slugs derive from the filename (stable); the description carries the routing meaning.
@@ -140,7 +142,8 @@ Each per-source tool searches only its own files; with more than 8 sources only 
 `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: Chunking settings (defaults: `1000` / `200`).
 
 `RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`). Default is `auto`
-(only new or changed files are ingested; the ephemeral `in_memory` backend still
+(only new or changed files are ingested; files removed from the configuration are
+pruned from the index automatically; the ephemeral `in_memory` backend still
 re-ingests everything on each restart since vectors are not persisted).
 
 `RAG_EMBEDDING_MODEL`: Optional embedding model for the configured provider
@@ -151,6 +154,7 @@ embedding model.
 
 Ingest is per-file isolated: one bad file can't kill the index — failures are logged
 with a warning and retried on the next run, while good files are indexed normally.
+Files yielding no content warn loudly and are retried (never silently kept).
 `ingest()` is idempotent: unchanged files are skipped without any embedding call,
 changed files are replaced (never duplicated), so re-ingesting is free of charge.
 `remove()` is the inverse — drop documents without touching the rest — and

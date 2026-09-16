@@ -18,7 +18,7 @@ from manolo_bot.rag.base import (
     BaseRAGBackend,
     RAGChunk,
     find_stale_paths,
-    fingerprint_paths,
+    fingerprint_file,
     load_manifest,
     manifest_path,
     save_manifest,
@@ -105,6 +105,22 @@ async def _drop_source_vectors(store: InMemoryVectorStore, allowed_resolved: set
     if stale_ids:
         await store.adelete(stale_ids)
     return len(stale_ids)
+
+
+def _fingerprinted(file: Path, chunks: int) -> dict[str, dict]:
+    """Fingerprint one file, recording how many chunks it produced.
+
+    ``chunks`` is the indexed chunk count, or -1 for intentionally skipped
+    files (size cap): -1 reads as fresh so the skip warning fires once, while
+    0 (or a missing key on pre-existing entries) always reads as stale so
+    empty results are retried instead of silently kept.
+    """
+    try:
+        entry = fingerprint_file(file)
+    except OSError:
+        return {}
+    entry["chunks"] = chunks
+    return {entry["path"]: entry}
 
 
 def _load_documents(files: list[Path]) -> list[Document]:
@@ -199,41 +215,44 @@ class InMemoryRAGBackend(BaseRAGBackend):
             dropped = await _drop_source_vectors(self._store, previously_indexed)
             logger.debug(f"Dropped {dropped} stale vector(s) before re-ingest")
         total = 0
-        succeeded: list[Path] = []
+        succeeded: dict[str, dict] = {}
         for file in files:
             if str(file) not in stale:
                 continue
             try:
                 if self._max_file_bytes and file.stat().st_size > self._max_file_bytes:
                     logger.warning(f"Skipping RAG file over RAG_MAX_FILE_BYTES ({self._max_file_bytes}): {file}")
-                    # Fingerprint it so the warning fires once, not every run. NOTE:
-                    # raising the cap later needs RAG_REINDEX=always once to pick the file up.
-                    succeeded.append(file)
+                    # Fingerprint with a -1 sentinel so the warning fires once, not
+                    # every run. NOTE: raising the cap later needs RAG_REINDEX=always
+                    # once to pick the file up.
+                    succeeded.update(_fingerprinted(file, -1))
                     continue
                 documents = _load_documents([file])
                 chunks = self._splitter.split_documents(documents)
-                if chunks:
-                    await self._store.aadd_documents(chunks)
-                    total += len(chunks)
-                # Fingerprint whenever load+split succeeded without exception
-                # (even with 0 chunks — deterministic, don't retry forever).
-                succeeded.append(file)
+                if not chunks:
+                    # Zero chunks indexed: warn loudly and do NOT fingerprint, so
+                    # the file is retried (a silent 0-chunk fingerprint once hid a
+                    # missing loader dependency forever).
+                    logger.warning(f"RAG file yielded 0 chunks, will retry next run: {file}")
+                    continue
+                await self._store.aadd_documents(chunks)
+                total += len(chunks)
+                succeeded.update(_fingerprinted(file, len(chunks)))
             except Exception as e:
                 logger.warning(f"Skipping RAG file {file} after ingest error: {e}")
         if succeeded:
-            fresh = fingerprint_paths(succeeded)
             if self._persist_manifest:
                 try:
                     # Refresh in-memory manifest from disk first to avoid clobbering,
                     # then merge fingerprints for the files just ingested.
                     on_disk = load_manifest(self.store_path, self.bot_uuid)
-                    on_disk.update(fresh)
+                    on_disk.update(succeeded)
                     save_manifest(self.store_path, self.bot_uuid, on_disk)
                     self._manifest = on_disk
                 except OSError as e:
                     # Vectors stay indexed; worst case is rework later.
                     logger.warning(f"Could not persist RAG manifest: {e}")
-            self._manifest.update(fresh)
+            self._manifest.update(succeeded)
         return total
 
     async def query(self, query: str, top_k: int | None = None) -> list[RAGChunk]:
@@ -266,16 +285,20 @@ class InMemoryRAGBackend(BaseRAGBackend):
     async def remove(self, paths: Sequence[RAGSource]) -> int:
         """Drop indexed documents without touching anything else.
 
-        Unknown or never-indexed entries warn and are skipped. Manifest
-        fingerprints are pruned (and persisted when applicable) so removed
-        files are treated as new if added back later.
+        Matches expanded files AND manifest keys directly, so entries pointing
+        at files deleted from disk are still forgotten. Unknown or
+        never-indexed entries warn and are skipped. Manifest fingerprints are
+        pruned (and persisted when applicable) so removed files are treated as
+        new if added back later.
         """
         files = _expand_paths(_entry_patterns(paths))
         if self._persist_manifest:
             manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
         else:
             manifest = self._manifest
-        targets = {str(f.resolve()) for f in files} & set(manifest.keys())
+        expanded = {str(f.resolve()) for f in files}
+        direct = {_normalize_source(record.path) for record in paths if record.path.strip()}
+        targets = (expanded | direct) & set(manifest.keys())
         if not targets:
             logger.warning(f"RAG remove matched nothing indexed: {[r.path for r in paths]}")
             return 0
@@ -307,6 +330,19 @@ class InMemoryRAGBackend(BaseRAGBackend):
             manifest = self._manifest
         stale = set(find_stale_paths([str(f) for _, files in expanded for f in files], manifest))
         return [record for record, files in expanded if any(str(f) in stale for f in files)]
+
+    def find_removed(self, paths: Sequence[RAGSource]) -> list[str]:
+        """Return indexed files matching none of the given records."""
+        configured: set[str] = set()
+        for record in paths:
+            if not record.path.strip():
+                continue
+            configured.update(str(f.resolve()) for f in _expand_paths([record.path]))
+        if self._persist_manifest:
+            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
+        else:
+            manifest = self._manifest
+        return sorted(set(manifest.keys()) - configured)
 
     def as_tool(self, name: str, description: str) -> BaseTool:
         """Expose the backend as a LangChain retriever tool."""

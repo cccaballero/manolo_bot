@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,6 +171,98 @@ class TestRemove(unittest.IsolatedAsyncioTestCase, LifecycleCase):
             backend = _make_backend("in_memory", tmp, embeddings)
             await backend.build_or_load()
             self.assertEqual(backend.list_sources(), [])
+
+
+class TestZeroChunkRetry(unittest.IsolatedAsyncioTestCase, LifecycleCase):
+    async def test_empty_file_warns_and_stays_stale(self) -> None:
+        # A file yielding 0 chunks must NOT be fingerprinted as done: it warns
+        # loudly and is retried (this once hid a missing loader dependency).
+        with tempfile.TemporaryDirectory() as tmp:
+            embeddings, calls = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            await backend.build_or_load()
+            empty = self._write(tmp, "empty.md", "")
+            record = RAGSource(path=str(empty))
+            with self.assertLogs("manolo_bot.rag.inmemory_backend", level="WARNING") as logs:
+                self.assertEqual(await backend.ingest([record]), 0)
+            self.assertTrue(any("0 chunks" in line for line in logs.output))
+            self.assertEqual(backend.needs_reindex([record]), [record])
+            self.assertEqual(calls, [])
+
+    async def test_missing_chunks_key_reads_as_stale(self) -> None:
+        # Manifest entries predating chunk-count tracking heal with one re-ingest.
+        with tempfile.TemporaryDirectory() as tmp:
+            embeddings, _ = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            await backend.build_or_load()
+            doc = self._write(tmp, "doc.md", "Content here.\n")
+            record = RAGSource(path=str(doc))
+            await backend.ingest([record])
+            key = str(doc.resolve())
+            del backend._manifest[key]["chunks"]
+            self.assertEqual(backend.needs_reindex([record]), [record])
+
+    async def test_size_skipped_file_warns_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            embeddings, _ = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            backend._max_file_bytes = 10
+            await backend.build_or_load()
+            big = self._write(tmp, "big.md", "x" * 100)
+            record = RAGSource(path=str(big))
+            with self.assertLogs("manolo_bot.rag.inmemory_backend", level="WARNING"):
+                self.assertEqual(await backend.ingest([record]), 0)
+            # Fingerprinted as intentionally skipped: no warning storm afterwards.
+            self.assertEqual(backend.needs_reindex([record]), [])
+
+
+class TestFindRemoved(unittest.IsolatedAsyncioTestCase, LifecycleCase):
+    async def test_reports_indexed_but_unconfigured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            embeddings, _ = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            await backend.build_or_load()
+            alpha = self._write(tmp, "alpha.md", "Alpha.\n")
+            beta = self._write(tmp, "beta.md", "Beta.\n")
+            await backend.ingest([RAGSource(path=str(alpha)), RAGSource(path=str(beta))])
+            self.assertEqual(backend.find_removed([RAGSource(path=str(beta))]), [str(alpha.resolve())])
+            self.assertEqual(backend.find_removed([RAGSource(path=str(alpha)), RAGSource(path=str(beta))]), [])
+
+    async def test_remove_disk_deleted_file(self) -> None:
+        # A file deleted from disk (manifest key only) can still be forgotten.
+        with tempfile.TemporaryDirectory() as tmp:
+            embeddings, _ = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            await backend.build_or_load()
+            doomed = self._write(tmp, "doomed.md", "Doomed content. Unique token: token-doomed.\n")
+            record = RAGSource(path=str(doomed))
+            self.assertGreater(await backend.ingest([record]), 0)
+            doomed.unlink()
+            removed = await backend.remove([record])
+            self.assertGreater(removed, 0)
+            self.assertEqual(backend.list_sources(), [])
+            texts = _texts(await backend.query("doomed", top_k=1000))
+            self.assertNotIn("token-doomed", texts)
+
+
+class TestDocxIngest(unittest.IsolatedAsyncioTestCase, LifecycleCase):
+    @unittest.skipUnless(importlib.util.find_spec("docx") is not None, "python-docx not installed")
+    async def test_real_docx_file_indexes(self) -> None:
+        # Regression: .docx needs the docx2txt dependency via Docx2txtLoader.
+        with tempfile.TemporaryDirectory() as tmp:
+            from docx import Document
+
+            path = Path(tmp) / "proposal.docx"
+            document = Document()
+            document.add_paragraph("JATS XML proposal. Unique token: token-docx.")
+            document.save(str(path))
+            embeddings, _ = _counting_embeddings()
+            backend = _make_backend("in_memory", tmp, embeddings)
+            await backend.build_or_load()
+            count = await backend.ingest([RAGSource(path=str(path))])
+            self.assertGreater(count, 0)
+            texts = _texts(await backend.query("JATS", top_k=10))
+            self.assertIn("token-docx", texts)
 
 
 if __name__ == "__main__":
