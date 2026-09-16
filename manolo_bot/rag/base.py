@@ -8,9 +8,12 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.tools import BaseTool
+
+if TYPE_CHECKING:
+    from manolo_bot.rag.sources import RAGSource
 
 #: Canonical name of the retriever tool a RAG backend exposes to agents.
 #: Agents check for this name so an MCP-provided tool can shadow the backend one.
@@ -149,10 +152,11 @@ class BaseRAGBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def ingest(self, paths: list[str]) -> int:
+    async def ingest(self, paths: Sequence[RAGSource]) -> int:
         """Ingest documents from file paths or glob patterns.
 
-        :param paths: Files, directories or glob patterns to ingest.
+        :param paths: Files, directories or glob patterns to ingest, as
+            ``RAGSource`` records.
         :return: Number of chunks added to the store.
         """
         raise NotImplementedError
@@ -168,14 +172,19 @@ class BaseRAGBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def needs_reindex(self, paths: list[str]) -> list[str]:
-        """Return the subset of paths that are new or changed.
-
-        :param paths: Files, directories or glob patterns to check.
-        """
+    def needs_reindex(self, paths: Sequence[RAGSource]) -> list[RAGSource]:
+        """Return the subset of records with new or changed files."""
         raise NotImplementedError
 
     @abstractmethod
     def as_tool(self, name: str, description: str) -> BaseTool:
         """Expose this backend as a LangChain retriever tool."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def as_source_tools(self, entries: Sequence[RAGSource]) -> list[BaseTool]:
+        """Expose one retriever tool per structured source entry.
+
+        :param entries: Source entries as ``RAGSource`` records.
+        """
         raise NotImplementedError

@@ -18,6 +18,7 @@ from manolo_bot.rag.embeddings import (
 )
 from manolo_bot.rag.factory import build_rag_backend
 from manolo_bot.rag.prompting import build_rag_instructions, build_rag_tool_description
+from manolo_bot.rag.sources import RAGSource
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -176,13 +177,13 @@ class TestEmbeddingsFactory(unittest.TestCase):
 
 class TestRAGPrompting(unittest.TestCase):
     def test_tool_description_names_sources_and_routes(self) -> None:
-        description = build_rag_tool_description(["/docs/handbook.md", "/docs/policies/"])
+        description = build_rag_tool_description([RAGSource("/docs/handbook.md"), RAGSource("/docs/policies/")])
         self.assertIn("handbook.md", description)
         self.assertIn("policies", description)
         self.assertIn("ALWAYS", description)
 
     def test_instructions_mention_tool_and_sources(self) -> None:
-        instructions = build_rag_instructions(["/docs/handbook.md"])
+        instructions = build_rag_instructions([RAGSource("/docs/handbook.md")])
         self.assertIn("rag_search", instructions)
         self.assertIn("handbook.md", instructions)
 

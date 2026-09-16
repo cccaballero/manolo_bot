@@ -10,6 +10,7 @@ from langchain_core.embeddings.fake import FakeEmbeddings
 
 from manolo_bot.rag.factory import build_rag_backend
 from manolo_bot.rag.filesystem_backend import FilesystemRAGBackend, _embedding_id
+from manolo_bot.rag.sources import RAGSource
 
 
 class _AltFakeEmbeddings(FakeEmbeddings):
@@ -41,7 +42,7 @@ class TestFilesystemRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(str(Path(tmp) / "store"))
             self.assertFalse(await backend.build_or_load())
-            count = await backend.ingest([str(src)])
+            count = await backend.ingest([RAGSource(str(src))])
             self.assertGreater(count, 0)
             ns = _namespace(str(Path(tmp) / "store"))
             self.assertTrue((ns / "vectors.json").is_file())
@@ -65,7 +66,7 @@ class TestFilesystemRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store)
             await backend.build_or_load()
-            await backend.ingest([str(src)])
+            await backend.ingest([RAGSource(str(src))])
 
             other = _make_backend(store, embeddings=_AltFakeEmbeddings(size=32))
             self.assertFalse(await other.build_or_load())
@@ -75,7 +76,7 @@ class TestFilesystemRAGBackend(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((ns / "manifest.json").exists())
             self.assertEqual(await other.query("deployment", top_k=10), [])
             # Manifest cleared, so the source is stale again (re-ingest forced).
-            self.assertEqual(other.needs_reindex([str(src)]), [str(src)])
+            self.assertEqual(other.needs_reindex([RAGSource(str(src))]), [RAGSource(str(src))])
 
     async def test_incremental_update_replaces_stale_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,10 +86,10 @@ class TestFilesystemRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store)
             await backend.build_or_load()
-            await backend.ingest([str(src)])
+            await backend.ingest([RAGSource(str(src))])
 
             src.write_text("Beta notes, considerably longer than before. Unique token: token-beta.\n", encoding="utf-8")
-            count = await backend.ingest([str(src)])
+            count = await backend.ingest([RAGSource(str(src))])
             self.assertGreater(count, 0)
 
             results = await backend.query("token-beta", top_k=10)
@@ -105,7 +106,7 @@ class TestFilesystemRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store)
             await backend.build_or_load()
-            await backend.ingest([str(src)])
+            await backend.ingest([RAGSource(str(src))])
             ns = _namespace(store)
             self.assertTrue((ns / "vectors.json").is_file())
 

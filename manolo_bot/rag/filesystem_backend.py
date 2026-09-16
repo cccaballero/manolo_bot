@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import InMemoryVectorStore
 
 from manolo_bot.rag.base import load_manifest, save_manifest
-from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend, _expand_paths
+from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend, _entry_patterns, _expand_paths
+
+if TYPE_CHECKING:
+    from manolo_bot.rag.sources import RAGSource
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +113,13 @@ class FilesystemRAGBackend(InMemoryRAGBackend):
         self._manifest = load_manifest(self.store_path, self.bot_uuid)
         return True
 
-    async def ingest(self, paths: list[str]) -> int:
+    async def ingest(self, paths: Sequence[RAGSource]) -> int:
         """Re-index files, dropping their stale vectors first to avoid ghosts.
 
         Pruned manifest keys are persisted BEFORE ghost-deleting, so a failed
         re-embed leaves the file flagged stale for retry instead of silently lost.
         """
-        files = _expand_paths(paths)
+        files = _expand_paths(_entry_patterns(paths))
         if not files:
             return 0
         manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)

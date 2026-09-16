@@ -126,6 +126,11 @@ without RAG).
   may follow).
 
 `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index.
+Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool
+(e.g. `docs/handbook.md::DESC=Employee handbook`); descriptions must not contain commas.
+Tool slugs derive from the filename (stable); the description carries the routing meaning.
+Each per-source tool searches only its own files; with more than 8 sources only the global
+`rag_search` tool is exposed.
 
 `RAG_STORE_PATH`: Directory for RAG index state. Defaults to a system temporary directory
 (e.g. `/tmp/manolo_bot/rag`).
@@ -446,6 +451,7 @@ from manolo_bot.ai.llmbot import LLMBuilder
 from manolo_bot.rag.embeddings import build_embeddings
 from manolo_bot.rag.factory import build_rag_backend
 from manolo_bot.rag.prompting import build_rag_instructions
+from manolo_bot.rag.sources import RAGSource
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
 
@@ -463,16 +469,19 @@ async def main():
     storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
     await storage.refresh_messages()
 
-    # Build the RAG backend and index local documents.
+    # Build the RAG backend and index local documents, described with
+    # RAGSource records (no ::DESC= strings needed; descriptions may contain commas).
+    sources = [
+        RAGSource("docs/handbook.md", "Employee handbook, covering policies and benefits"),
+        RAGSource("docs/policies/", "Company policies"),
+    ]
     backend = build_rag_backend("in_memory", build_embeddings(llm_config), bot_uuid="my-bot")
     await backend.build_or_load()
-    await backend.ingest(["docs/handbook.md", "docs/policies/"])
+    await backend.ingest(sources)
 
     # Pass the backend explicitly; the agent appends the rag_search tool itself.
     # Append build_rag_instructions() to the system prompt so the agent knows when to use it.
-    system_instructions = "You are a helpful assistant." + build_rag_instructions(
-        ["docs/handbook.md", "docs/policies/"]
-    )
+    system_instructions = "You are a helpful assistant." + build_rag_instructions(sources)
     agent = LLMAgent(
         llm=llm,
         bot_config=bot_config,

@@ -10,6 +10,7 @@ from langchain_core.embeddings.fake import FakeEmbeddings
 
 from manolo_bot.rag.factory import build_rag_backend
 from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend
+from manolo_bot.rag.sources import RAGSource
 
 
 def _make_backend(store_dir: str, bot_uuid: str = "test-bot") -> InMemoryRAGBackend:
@@ -37,7 +38,7 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
             loaded = await backend.build_or_load()
             self.assertFalse(loaded)
 
-            count = await backend.ingest([str(md_file), str(txt_file)])
+            count = await backend.ingest([RAGSource(str(md_file)), RAGSource(str(txt_file))])
             self.assertGreater(count, 0)
 
             results = await backend.query("What is Manolo?")
@@ -54,13 +55,13 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store_dir=str(Path(tmp) / "store"))
             await backend.build_or_load()
-            await backend.ingest([str(data_file)])
+            await backend.ingest([RAGSource(str(data_file))])
 
-            self.assertEqual(backend.needs_reindex([str(data_file)]), [])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(data_file))]), [])
 
             data_file.write_text("original content about manolo bot plus much more text here\n", encoding="utf-8")
-            stale = backend.needs_reindex([str(data_file)])
-            self.assertEqual(stale, [str(data_file)])
+            stale = backend.needs_reindex([RAGSource(str(data_file))])
+            self.assertEqual(stale, [RAGSource(str(data_file))])
 
     async def test_build_or_load_false_when_only_manifest_persists(self) -> None:
         # Vectors are process-local: a fresh backend must report that ingest
@@ -72,7 +73,7 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store_dir=store)
             await backend.build_or_load()
-            await backend.ingest([str(data_file)])
+            await backend.ingest([RAGSource(str(data_file))])
 
             restarted = _make_backend(store_dir=store)
             self.assertFalse(await restarted.build_or_load())
@@ -82,7 +83,7 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
             backend = _make_backend(store_dir=str(Path(tmp) / "store"))
             await backend.build_or_load()
             with self.assertLogs("manolo_bot.rag.inmemory_backend", level="WARNING") as logs:
-                count = await backend.ingest([str(Path(tmp) / "missing.pdf")])
+                count = await backend.ingest([RAGSource(str(Path(tmp) / "missing.pdf"))])
             self.assertEqual(count, 0)
             self.assertTrue(any("matched no files" in line for line in logs.output))
 
@@ -99,13 +100,13 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store_dir=store)
             await backend.build_or_load()
-            await backend.ingest([str(data_file)])
+            await backend.ingest([RAGSource(str(data_file))])
             self.assertFalse(manifest_path(store, "test-bot").is_file())
-            self.assertEqual(backend.needs_reindex([str(data_file)]), [])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(data_file))]), [])
 
             restarted = _make_backend(store_dir=store)
             await restarted.build_or_load()
-            self.assertEqual(restarted.needs_reindex([str(data_file)]), [str(data_file)])
+            self.assertEqual(restarted.needs_reindex([RAGSource(str(data_file))]), [RAGSource(str(data_file))])
 
     async def test_clear_empties_store(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,7 +115,7 @@ class TestInMemoryRAGBackend(unittest.IsolatedAsyncioTestCase):
 
             backend = _make_backend(store_dir=str(Path(tmp) / "store"))
             await backend.build_or_load()
-            await backend.ingest([str(data_file)])
+            await backend.ingest([RAGSource(str(data_file))])
             before = await backend.query("Manolo")
             self.assertGreater(len(before), 0)
 

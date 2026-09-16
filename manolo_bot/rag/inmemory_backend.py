@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, TextLoader
@@ -22,6 +23,8 @@ from manolo_bot.rag.base import (
     manifest_path,
     save_manifest,
 )
+from manolo_bot.rag.prompting import build_rag_source_tool_description
+from manolo_bot.rag.sources import RAGSource, describe_rag_tools
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,20 @@ def _expand_paths(paths: list[str]) -> list[Path]:
             seen.add(key)
             unique.append(path)
     return unique
+
+
+def _entry_patterns(entries: Sequence[RAGSource]) -> list[str]:
+    """Return plain path patterns from records (blank patterns dropped)."""
+    return [source.path for source in entries if source.path.strip()]
+
+
+def _source_filter(allowed: frozenset[str]):
+    """Native pre-ranking predicate keeping only chunks from allowed sources."""
+
+    def _keep(doc: Document) -> bool:
+        return str((doc.metadata or {}).get("source", "")) in allowed
+
+    return _keep
 
 
 def _load_documents(files: list[Path]) -> list[Document]:
@@ -135,13 +152,13 @@ class InMemoryRAGBackend(BaseRAGBackend):
                 self._manifest = load_manifest(self.store_path, self.bot_uuid)
         return False
 
-    async def ingest(self, paths: list[str]) -> int:
+    async def ingest(self, paths: Sequence[RAGSource]) -> int:
         """Load, split and index files one by one; return total chunk count.
 
         Per-file isolation: one bad file can't kill the whole index. Files that
         fail are left unfingerprinted so they are retried on the next run.
         """
-        files = _expand_paths(paths)
+        files = _expand_paths(_entry_patterns(paths))
         total = 0
         succeeded: list[Path] = []
         for file in files:
@@ -205,16 +222,38 @@ class InMemoryRAGBackend(BaseRAGBackend):
         except OSError as e:
             logger.warning(f"Could not remove manifest {path}: {e}")
 
-    def needs_reindex(self, paths: list[str]) -> list[str]:
-        """Return expanded files that are new or changed vs. the manifest."""
-        files = _expand_paths(paths)
+    def needs_reindex(self, paths: Sequence[RAGSource]) -> list[RAGSource]:
+        """Return the subset of records with new or changed files."""
+        records = [record for record in paths if record.path.strip()]
+        expanded = [(record, _expand_paths([record.path])) for record in records]
         if self._persist_manifest:
             manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
         else:
             manifest = self._manifest
-        return find_stale_paths([str(f) for f in files], manifest)
+        stale = set(find_stale_paths([str(f) for _, files in expanded for f in files], manifest))
+        return [record for record, files in expanded if any(str(f) in stale for f in files)]
 
     def as_tool(self, name: str, description: str) -> BaseTool:
         """Expose the backend as a LangChain retriever tool."""
         retriever = self._store.as_retriever(search_kwargs={"k": self.top_k})
         return create_retriever_tool(retriever, name, description)
+
+    def as_source_tools(self, entries: Sequence[RAGSource]) -> list[BaseTool]:
+        """Expose one retriever tool per structured source entry.
+
+        Each tool searches only chunks whose stored source came from that entry,
+        via the store's native pre-ranking filter predicate. Entries matching no
+        files are skipped (the unmatched warning already fired on expand).
+        """
+        tools: list[BaseTool] = []
+        described = describe_rag_tools(entries)
+        # Same blank-filter as describe_rag_tools, so names stay aligned.
+        patterns = [source.path for source in entries if source.path.strip()]
+        for (name, label, description), pattern in zip(described, patterns):
+            # Identical expression to the stored chunk metadata in _load_documents.
+            allowed = frozenset(str(f) for f in _expand_paths([pattern]))
+            if not allowed:
+                continue
+            retriever = self._store.as_retriever(search_kwargs={"k": self.top_k, "filter": _source_filter(allowed)})
+            tools.append(create_retriever_tool(retriever, name, build_rag_source_tool_description(label, description)))
+        return tools

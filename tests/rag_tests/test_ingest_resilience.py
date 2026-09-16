@@ -12,6 +12,7 @@ from langchain_core.embeddings.fake import FakeEmbeddings
 
 from manolo_bot.rag.filesystem_backend import FilesystemRAGBackend
 from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend
+from manolo_bot.rag.sources import RAGSource
 
 
 class _FlakyEmbeddings(Embeddings):
@@ -52,14 +53,14 @@ class TestPerFileIsolation(unittest.IsolatedAsyncioTestCase):
             backend = _make_inmemory(str(Path(tmp) / "store"), embeddings=_FlakyEmbeddings())
             await backend.build_or_load()
             with self.assertLogs("manolo_bot.rag.inmemory_backend", level="WARNING"):
-                count = await backend.ingest([str(good), str(bad)])
+                count = await backend.ingest([RAGSource(str(good)), RAGSource(str(bad))])
             self.assertGreater(count, 0)
 
             results = await backend.query("token-good", top_k=10)
             self.assertIn("token-good", " ".join(r.text for r in results))
             # Good file done; bad file left unfingerprinted for retry.
-            self.assertEqual(backend.needs_reindex([str(good)]), [])
-            self.assertEqual(backend.needs_reindex([str(bad)]), [str(bad)])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(good))]), [])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(bad))]), [RAGSource(str(bad))])
 
     async def test_size_cap_skips_and_fingerprints_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -69,11 +70,11 @@ class TestPerFileIsolation(unittest.IsolatedAsyncioTestCase):
             backend = _make_inmemory(str(Path(tmp) / "store"), max_file_bytes=10)
             await backend.build_or_load()
             with self.assertLogs("manolo_bot.rag.inmemory_backend", level="WARNING") as logs:
-                count = await backend.ingest([str(big)])
+                count = await backend.ingest([RAGSource(str(big))])
             self.assertEqual(count, 0)
             self.assertTrue(any("RAG_MAX_FILE_BYTES" in message for message in logs.output))
             # Fingerprinted, so the warning fires once instead of every run.
-            self.assertEqual(backend.needs_reindex([str(big)]), [])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(big))]), [])
 
 
 class TestLocalFsFailedReingest(unittest.IsolatedAsyncioTestCase):
@@ -92,14 +93,14 @@ class TestLocalFsFailedReingest(unittest.IsolatedAsyncioTestCase):
                 top_k=10,
             )
             await backend.build_or_load()
-            await backend.ingest([str(src)])
+            await backend.ingest([RAGSource(str(src))])
 
             src.write_text("Version two content, considerably longer than version one was.\n", encoding="utf-8")
             with patch.object(backend._store, "aadd_documents", side_effect=RuntimeError("boom")):
-                count = await backend.ingest([str(src)])
+                count = await backend.ingest([RAGSource(str(src))])
             self.assertEqual(count, 0)
             # Pruned manifest persisted before ghost-delete: still flagged, not silently lost.
-            self.assertEqual(backend.needs_reindex([str(src)]), [str(src)])
+            self.assertEqual(backend.needs_reindex([RAGSource(str(src))]), [RAGSource(str(src))])
 
 
 if __name__ == "__main__":

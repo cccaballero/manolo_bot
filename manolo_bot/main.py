@@ -43,6 +43,7 @@ from manolo_bot.telegram.utils import (
 
 if TYPE_CHECKING:
     from manolo_bot.rag.base import BaseRAGBackend
+    from manolo_bot.rag.sources import RAGSource
 
 load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 
@@ -145,8 +146,9 @@ if config.bot_instructions_extra:
 
 if config.rag_enabled and config.rag_sources and config.effective_ai_mode in ("agent", "deep_agent"):
     from manolo_bot.rag.prompting import build_rag_instructions
+    from manolo_bot.rag.sources import parse_sources
 
-    instructions += f"{newline + build_rag_instructions(config.rag_sources)}"
+    instructions += f"{newline + build_rag_instructions(parse_sources(config.rag_sources))}"
 
 flush_context_success_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 flush_context_failure_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
@@ -229,17 +231,22 @@ _rag_backend_instance: "BaseRAGBackend | None" = None
 _rag_backend_lock = asyncio.Lock()
 
 
-async def _get_rag_backend() -> "BaseRAGBackend | None":
-    """Return the shared RAG backend, building it once per process.
+async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
+    """Return the shared RAG backend plus parsed source records.
 
-    Returns None when RAG is disabled or has no sources (no state change).
-    Build failures log a warning and return None without caching the failure.
-    Ingest failures log a warning and return None, keeping the cached backend
-    so the next message retries ingestion.
+    The ``::DESC=`` env strings are converted ONCE here, at the env boundary;
+    records flow everywhere downstream. Returns (None, []) when RAG is disabled
+    or has no sources (no state change). Build failures log a warning and return
+    (None, []) without caching the failure. Ingest failures log a warning and
+    return (None, records), keeping the cached backend so the next message
+    retries ingestion.
     """
     global _rag_backend_instance
     if not bot_config.rag_enabled or not bot_config.rag_sources:
-        return None
+        return None, []
+    from manolo_bot.rag.sources import parse_sources
+
+    records = parse_sources(bot_config.rag_sources)
     async with _rag_backend_lock:
         if _rag_backend_instance is None:
             try:
@@ -260,21 +267,20 @@ async def _get_rag_backend() -> "BaseRAGBackend | None":
                 vectors_loaded = await backend.build_or_load()
             except Exception as e:
                 logging.warning(f"RAG initialization failed, continuing without RAG: {e}", exc_info=True)
-                return None
+                return None, []
             _rag_backend_instance = backend
             if bot_config.rag_reindex == "never" and not vectors_loaded:
                 logging.warning("RAG_REINDEX=never with no persisted vectors: RAG will be empty")
         backend = _rag_backend_instance
-        sources = list(bot_config.rag_sources)
         try:
             if bot_config.rag_reindex == "always":
                 # Clear first: re-ingesting without clearing duplicates vectors.
                 await backend.clear()
-                to_ingest = sources
+                to_ingest = records
             elif bot_config.rag_reindex == "never":
                 to_ingest = []
             else:
-                to_ingest = backend.needs_reindex(sources)
+                to_ingest = backend.needs_reindex(records)
             if to_ingest:
                 count = await backend.ingest(to_ingest)
                 logging.info(f"RAG ingested {count} chunk(s) from {len(to_ingest)} source(s)")
@@ -282,8 +288,8 @@ async def _get_rag_backend() -> "BaseRAGBackend | None":
                     logging.warning(f"RAG indexed 0 chunks from sources: {to_ingest}")
         except Exception as e:
             logging.warning(f"RAG ingest failed, continuing without RAG: {e}", exc_info=True)
-            return None
-        return backend
+            return None, records
+        return backend, records
 
 
 async def instance_llm_bot(chat_id: int) -> LLMBot:
@@ -294,11 +300,12 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
     else:
         messages_storage = MemoryMessagesStorage(bot_uuid=config.bot_uuid, chat_id=chat_id)
     await messages_storage.refresh_messages()
-    # RAG wiring (agent/deep_agent only): shared backend passed as a
-    # first-class param; the LLMBot branch below stays untouched (no RAG).
+    # RAG wiring (agent/deep_agent only): shared backend + records passed as
+    # first-class params; the LLMBot branch below stays untouched (no RAG).
     rag_backend = None
+    rag_sources: list = []
     if config.effective_ai_mode in ("agent", "deep_agent"):
-        rag_backend = await _get_rag_backend()
+        rag_backend, rag_sources = await _get_rag_backend()
     if config.effective_ai_mode == "deep_agent":
         if config.deep_agent_backend == "in_memory":
             backend = MemoryDeepAgentBackend(config.bot_uuid, chat_id)
@@ -328,6 +335,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             memory_backend=memory_backend,
             memory_add_cache_control=config.deep_agent_memory_add_cache_control,
             rag_backend=rag_backend,
+            rag_sources=rag_sources,
         )
     elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
@@ -338,6 +346,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
             rag_backend=rag_backend,
+            rag_sources=rag_sources,
         )
     else:
         llm_bot = LLMBot(
