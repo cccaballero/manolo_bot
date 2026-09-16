@@ -104,15 +104,13 @@ def default_slug(path: str) -> str:
 
 
 def _display_name(source: RAGSource) -> str:
-    """Short human label: always the file stem (raw last part for dirs/globs).
+    """Short human label: always the file basename (last part for dirs/globs).
 
     The description is routing context for tool descriptions, never a label —
     it can be an arbitrarily long sentence and must not leak into names or
     system-prompt listings.
     """
-    if any(char in source.path for char in _GLOB_CHARS):
-        return Path(source.path).name
-    return Path(source.path).stem or Path(source.path).name
+    return Path(source.path).name or source.path
 
 
 def describe_rag_tools(sources: Sequence[RAGSource]) -> list[tuple[str, str, str]]:

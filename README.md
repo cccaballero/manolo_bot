@@ -151,6 +151,11 @@ embedding model.
 
 Ingest is per-file isolated: one bad file can't kill the index — failures are logged
 with a warning and retried on the next run, while good files are indexed normally.
+`ingest()` is idempotent: unchanged files are skipped without any embedding call,
+changed files are replaced (never duplicated), so re-ingesting is free of charge.
+`remove()` is the inverse — drop documents without touching the rest — and
+`list_sources()` reports what is currently indexed. Long-lived library agents bake
+their tools at init, so re-resolve or recreate the agent to pick up index changes.
 `RAG_MAX_FILE_BYTES`: per-file size cap in bytes (default `10485760`, i.e. 10MB;
 `0` = unlimited); oversized sources are skipped with a warning. Keep `RAG_CHUNK_SIZE` well below your
 provider's per-request token limit; the defaults are safe.

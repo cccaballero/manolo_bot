@@ -36,24 +36,32 @@ def build_rag_tool_description(sources: Sequence[RAGSource]) -> str:
 
 
 def build_rag_instructions(sources: Sequence[RAGSource]) -> str:
-    """Build a system-instruction snippet telling the agent when to use RAG."""
-    labels = source_labels(sources)
-    scope = f" (currently: {', '.join(labels)})" if labels else ""
-    names = [name for name, _, _ in describe_rag_tools(list(sources))]
-    if names:
-        tools = ", ".join(f"`{name}`" for name in names)
+    """Build a system-instruction snippet telling the agent when to use RAG.
+
+    Lists every available search tool with its file and description so the
+    agent can route questions to the matching scoped tool, falling back to
+    the global tool for cross-document questions.
+    """
+    described = describe_rag_tools(list(sources))
+    if not described:
+        labels = source_labels(sources)
+        scope = f" (currently: {', '.join(labels)})" if labels else ""
         return (
             "\n\n## RAG\n\n"
-            f"You have a local document knowledge base{scope} with scoped search tools:"
-            f" {tools}. When the user asks about topics covered in those documents, call"
-            " the matching tool first and base your answer on what it returns, citing sources."
+            "You have a `rag_search` tool connected to a local document knowledge base"
+            f"{scope}. When the user asks about topics covered in those documents, call"
+            " `rag_search` first and base your answer on what it returns, citing sources."
         )
-    return (
-        "\n\n## RAG\n\n"
-        "You have a `rag_search` tool connected to a local document knowledge base"
-        f"{scope}. When the user asks about topics covered in those documents, call"
-        " `rag_search` first and base your answer on what it returns, citing sources."
-    )
+    lines = [
+        "\n\n## RAG\n\nYou have a local document knowledge base with these search tools:",
+        "- `rag_search`: searches ALL indexed documents. Use it for cross-document"
+        " questions or when unsure which document covers the topic.",
+    ]
+    for name, label, description in described:
+        detail = description or label
+        lines.append(f"- `{name}` ({label}): {detail}. Prefer it for questions about this document.")
+    lines.append("\nCall the matching tool first and base your answer on what it returns.")
+    return "\n".join(lines)
 
 
 def build_rag_source_tool_description(label: str, description: str) -> str:

@@ -83,6 +83,30 @@ def _source_filter(allowed: frozenset[str]):
     return _keep
 
 
+def _normalize_source(source: str) -> str:
+    """Resolve a stored chunk source for comparison with manifest keys."""
+    try:
+        return str(Path(source).resolve())
+    except OSError:
+        return source
+
+
+async def _drop_source_vectors(store: InMemoryVectorStore, allowed_resolved: set[str]) -> int:
+    """Delete entries whose normalized stored source is in the set; return count."""
+    stale_ids = []
+    for doc_id, entry in store.store.items():
+        if isinstance(entry, dict):
+            metadata = entry.get("metadata", {})
+        else:
+            metadata = getattr(entry, "metadata", None) or {}
+        source = metadata.get("source", "") if isinstance(metadata, dict) else ""
+        if _normalize_source(str(source)) in allowed_resolved:
+            stale_ids.append(doc_id)
+    if stale_ids:
+        await store.adelete(stale_ids)
+    return len(stale_ids)
+
+
 def _load_documents(files: list[Path]) -> list[Document]:
     """Load documents, picking a loader per file suffix."""
     documents: list[Document] = []
@@ -153,15 +177,32 @@ class InMemoryRAGBackend(BaseRAGBackend):
         return False
 
     async def ingest(self, paths: Sequence[RAGSource]) -> int:
-        """Load, split and index files one by one; return total chunk count.
+        """Load, split and index only new or changed files; return new chunk count.
 
+        Idempotent: files whose fingerprint matches the manifest are skipped
+        without any embedding call; changed files have their old vectors dropped
+        first, so re-ingesting never duplicates and never pays twice.
         Per-file isolation: one bad file can't kill the whole index. Files that
         fail are left unfingerprinted so they are retried on the next run.
         """
         files = _expand_paths(_entry_patterns(paths))
+        if self._persist_manifest:
+            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
+        else:
+            manifest = self._manifest
+        stale = set(find_stale_paths([str(f) for f in files], manifest))
+        fresh = [f for f in files if str(f) not in stale]
+        if fresh:
+            logger.debug(f"Skipping {len(fresh)} fresh RAG file(s), no embedding calls needed")
+        previously_indexed = {str(f.resolve()) for f in files if str(f) in stale} & set(manifest.keys())
+        if previously_indexed:
+            dropped = await _drop_source_vectors(self._store, previously_indexed)
+            logger.debug(f"Dropped {dropped} stale vector(s) before re-ingest")
         total = 0
         succeeded: list[Path] = []
         for file in files:
+            if str(file) not in stale:
+                continue
             try:
                 if self._max_file_bytes and file.stat().st_size > self._max_file_bytes:
                     logger.warning(f"Skipping RAG file over RAG_MAX_FILE_BYTES ({self._max_file_bytes}): {file}")
@@ -221,6 +262,40 @@ class InMemoryRAGBackend(BaseRAGBackend):
                 path.unlink()
         except OSError as e:
             logger.warning(f"Could not remove manifest {path}: {e}")
+
+    async def remove(self, paths: Sequence[RAGSource]) -> int:
+        """Drop indexed documents without touching anything else.
+
+        Unknown or never-indexed entries warn and are skipped. Manifest
+        fingerprints are pruned (and persisted when applicable) so removed
+        files are treated as new if added back later.
+        """
+        files = _expand_paths(_entry_patterns(paths))
+        if self._persist_manifest:
+            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
+        else:
+            manifest = self._manifest
+        targets = {str(f.resolve()) for f in files} & set(manifest.keys())
+        if not targets:
+            logger.warning(f"RAG remove matched nothing indexed: {[r.path for r in paths]}")
+            return 0
+        dropped = await _drop_source_vectors(self._store, targets)
+        pruned = {key: value for key, value in manifest.items() if key not in targets}
+        self._manifest = pruned
+        if self._persist_manifest:
+            try:
+                save_manifest(self.store_path, self.bot_uuid, pruned)
+            except OSError as e:
+                logger.warning(f"Could not persist pruned RAG manifest: {e}")
+        return dropped
+
+    def list_sources(self) -> list[str]:
+        """Return sorted indexed file paths (manifest keys)."""
+        if self._persist_manifest:
+            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
+        else:
+            manifest = self._manifest
+        return sorted(manifest.keys())
 
     def needs_reindex(self, paths: Sequence[RAGSource]) -> list[RAGSource]:
         """Return the subset of records with new or changed files."""

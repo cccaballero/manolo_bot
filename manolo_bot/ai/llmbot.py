@@ -250,7 +250,13 @@ class LLMBot:
         tools = await get_all_tools(
             self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
-        self.llm = self.llm.bind_tools(tools)
+        if self.bind_tools_on_init:
+            # LLMBot drives the model directly, so it needs tools bound.
+            # Agents (create_agent/create_deep_agent) receive tools separately:
+            # binding here would wrap self.llm in a RunnableBinding that
+            # deepagents' resolve_model() rejects (it only passes through
+            # BaseChatModel instances, treating anything else as a model string).
+            self.llm = self.llm.bind_tools(tools)
         logging.debug(f"Reloaded {len(tools)} tools (including MCP)")
 
     async def close(self) -> None:

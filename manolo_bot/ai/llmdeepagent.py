@@ -9,6 +9,7 @@ from deepagents.middleware import FilesystemMiddleware, MemoryMiddleware, Skills
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableBinding
 from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
@@ -293,7 +294,7 @@ class LLMDeepAgent(LLMAgent):
             )
 
         create_kwargs: dict[str, Any] = {
-            "model": self.llm,
+            "model": self._unbound_model(),
             "tools": tools,
             "system_prompt": instructions_text,
             "middleware": middleware,
@@ -305,6 +306,19 @@ class LLMDeepAgent(LLMAgent):
             create_kwargs["store"] = self._memory_backend.store  # type: ignore[attr-defined]
         self.agent = create_deep_agent(**create_kwargs)
         logging.debug(f"Deep agent created with {len(tools)} tools")
+
+    def _unbound_model(self) -> BaseChatModel:
+        """Return the chat model without tool-binding wrappers.
+
+        ``create_deep_agent`` resolves non-``BaseChatModel`` input as a model
+        string, so a ``RunnableBinding`` (e.g. from ``bind_tools``) crashes it.
+        Bound tools are redundant here anyway — tools go to the harness
+        separately. ``isinstance`` (not duck-typing) keeps this mock-safe.
+        """
+        model = self.llm
+        while isinstance(model, RunnableBinding):
+            model = model.bound
+        return model
 
     def _base_messages(self) -> list[BaseMessage]:
         """Only keep the AIMessage priming, skipping the SystemMessage (already in system_prompt)."""

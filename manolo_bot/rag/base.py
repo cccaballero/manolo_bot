@@ -155,9 +155,15 @@ class BaseRAGBackend(ABC):
     async def ingest(self, paths: Sequence[RAGSource]) -> int:
         """Ingest documents from file paths or glob patterns.
 
+        Idempotent: files whose fingerprint matches the manifest are skipped
+        without any embedding call; new files are added, changed files are
+        replaced (old vectors dropped first), so re-ingesting never duplicates
+        and never pays for already-indexed content.
+
         :param paths: Files, directories or glob patterns to ingest, as
             ``RAGSource`` records.
-        :return: Number of chunks added to the store.
+        :return: Number of NEW chunks added to the store (0 when everything
+            was already fresh).
         """
         raise NotImplementedError
 
@@ -169,6 +175,25 @@ class BaseRAGBackend(ABC):
     @abstractmethod
     async def clear(self) -> None:
         """Remove all indexed data and persisted manifest state."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def remove(self, paths: Sequence[RAGSource]) -> int:
+        """Drop indexed documents without touching anything else.
+
+        Expands the given records, deletes vectors whose stored source matches,
+        and prunes their manifest fingerprints. Entries matching nothing indexed
+        warn and are skipped. The inverse of ``ingest`` — the only operation
+        besides ``clear`` that deletes.
+
+        :param paths: Source records identifying what to forget.
+        :return: Number of chunks removed from the store.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_sources(self) -> list[str]:
+        """Return sorted indexed file paths (manifest keys)."""
         raise NotImplementedError
 
     @abstractmethod

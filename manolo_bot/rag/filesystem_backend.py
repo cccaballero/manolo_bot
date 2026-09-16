@@ -6,13 +6,13 @@ import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import InMemoryVectorStore
 
-from manolo_bot.rag.base import load_manifest, save_manifest
-from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend, _entry_patterns, _expand_paths
+from manolo_bot.rag.base import load_manifest
+from manolo_bot.rag.inmemory_backend import InMemoryRAGBackend
 
 if TYPE_CHECKING:
     from manolo_bot.rag.sources import RAGSource
@@ -35,22 +35,6 @@ def vectors_path(store_path: str | Path, bot_uuid: str) -> Path:
 def meta_path(store_path: str | Path, bot_uuid: str) -> Path:
     """Return the snapshot metadata file for a bot namespace."""
     return Path(store_path) / bot_uuid / "meta.json"
-
-
-def _resolve_source(source: str) -> str:
-    """Normalize a stored chunk source for comparison with fingerprints."""
-    try:
-        return str(Path(source).resolve())
-    except OSError:
-        return source
-
-
-def _stored_source(entry: Any) -> str:
-    """Extract the source from a serialized (or live) stored entry."""
-    metadata = entry.get("metadata", {}) if isinstance(entry, dict) else getattr(entry, "metadata", {})
-    if not isinstance(metadata, dict):
-        return ""
-    return str(metadata.get("source", ""))
 
 
 class FilesystemRAGBackend(InMemoryRAGBackend):
@@ -114,40 +98,28 @@ class FilesystemRAGBackend(InMemoryRAGBackend):
         return True
 
     async def ingest(self, paths: Sequence[RAGSource]) -> int:
-        """Re-index files, dropping their stale vectors first to avoid ghosts.
+        """Shared idempotent core plus snapshot save.
 
-        Pruned manifest keys are persisted BEFORE ghost-deleting, so a failed
-        re-embed leaves the file flagged stale for retry instead of silently lost.
+        Partitioning, stale-vector replacement, per-file isolation and manifest
+        handling all live in ``super().ingest()``; only the vectors snapshot is
+        local_fs-specific.
         """
-        files = _expand_paths(_entry_patterns(paths))
-        if not files:
-            return 0
-        manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        targets = {str(f.resolve()) for f in files} & set(manifest.keys())
-        if targets:
-            for key in targets:
-                self._manifest.pop(key, None)
-            try:
-                pruned = load_manifest(self.store_path, self.bot_uuid)
-                for key in targets:
-                    pruned.pop(key, None)
-                save_manifest(self.store_path, self.bot_uuid, pruned)
-                self._manifest = pruned
-            except OSError as e:
-                logger.warning(f"Could not persist pruned RAG manifest: {e}")
-            stale_ids = [
-                doc_id
-                for doc_id, entry in self._store.store.items()
-                if _resolve_source(_stored_source(entry)) in targets
-            ]
-            if stale_ids:
-                await self._store.adelete(stale_ids)
         count = await super().ingest(paths)
         if count:
             try:
                 self._save_snapshot()
             except OSError as e:
                 logger.warning(f"Could not persist RAG vectors: {e}")
+        return count
+
+    async def remove(self, paths: Sequence[RAGSource]) -> int:
+        """Drop indexed documents and re-save the snapshot without them."""
+        count = await super().remove(paths)
+        if count:
+            try:
+                self._save_snapshot()
+            except OSError as e:
+                logger.warning(f"Could not persist RAG vectors after remove: {e}")
         return count
 
     async def clear(self) -> None:

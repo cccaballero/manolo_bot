@@ -42,7 +42,7 @@ class TestParseSources(unittest.TestCase):
         self.assertEqual(record.slug, "hb")
         self.assertEqual(
             describe_rag_tools([record]),
-            [("rag_search_hb", "handbook", "Handbook")],
+            [("rag_search_hb", "handbook.md", "Handbook")],
         )
 
     def test_records_pass_through_rejected(self) -> None:
@@ -79,15 +79,15 @@ class TestDescribeRagTools(unittest.TestCase):
             [
                 (
                     "rag_search_handbook",
-                    "handbook",
+                    "handbook.md",
                     "User Handbook for New Employees Everywhere",
                 )
             ],
         )
 
-    def test_stem_slug(self) -> None:
+    def test_basename_label(self) -> None:
         self.assertEqual(
-            describe_rag_tools([RAGSource("/docs/handbook.md")]), [("rag_search_handbook", "handbook", "")]
+            describe_rag_tools([RAGSource("/docs/handbook.md")]), [("rag_search_handbook", "handbook.md", "")]
         )
 
     def test_glob_and_dir_use_last_part(self) -> None:
@@ -170,6 +170,19 @@ class TestSourceInstructions(unittest.TestCase):
         )
         self.assertIn("rag_search_alpha", instructions)
         self.assertIn("rag_search_beta", instructions)
+
+    def test_instructions_list_tools_with_files_and_descriptions(self) -> None:
+        instructions = build_rag_instructions([RAGSource("/docs/handbook.md", "Employee handbook, covering benefits")])
+        self.assertIn("`rag_search`", instructions)
+        self.assertIn("cross-document", instructions)
+        self.assertIn("`rag_search_handbook`", instructions)
+        self.assertIn("handbook.md", instructions)
+        self.assertIn("Employee handbook, covering benefits", instructions)
+
+    def test_instructions_fallback_without_scoped_tools(self) -> None:
+        instructions = build_rag_instructions([])
+        self.assertIn("`rag_search`", instructions)
+        self.assertNotIn("rag_search_", instructions.replace("`rag_search`", ""))
 
 
 class TestRAGSourceRecords(unittest.IsolatedAsyncioTestCase):
