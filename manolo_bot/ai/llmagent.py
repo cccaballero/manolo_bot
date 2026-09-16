@@ -144,7 +144,7 @@ class LLMAgent(LLMBot):
             async with aiohttp.ClientSession() as session:
                 timeout = self._get_session_timeout()
 
-                async with session.get(image, timeout=timeout) as response:
+                async with session.get(image, timeout=timeout, headers=self._download_headers()) as response:
                     response.raise_for_status()
                     image_bytes = await response.read()
                     image_data = base64.b64encode(image_bytes).decode("utf-8")

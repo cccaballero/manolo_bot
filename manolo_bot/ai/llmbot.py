@@ -161,6 +161,17 @@ class LLMBot:
         """Get the timeout for aiohttp sessions."""
         return aiohttp.ClientTimeout(total=self.bot_config.web_content_request_timeout)
 
+    def _download_headers(self) -> dict:
+        """Headers sent when downloading attachments (images/audio/documents).
+
+        Returns a copy of the ``attachment_headers`` mapping (``{}`` when
+        nothing is configured).
+
+        Subclasses may override this hook for custom auth schemes.
+        """
+        raw_headers = getattr(self.bot_config, "attachment_headers", None)
+        return dict(raw_headers) if isinstance(raw_headers, dict) else {}
+
     async def _download_file(self, url: str, session: aiohttp.ClientSession, size_limit: int = 0) -> bytes:
         """
         Downloads a file from a URL with a size limit.
@@ -173,7 +184,7 @@ class LLMBot:
         :raises FileTooLargeError: If the file exceeds the maximum allowed size
         """
         timeout = self._get_session_timeout()
-        async with session.get(url, timeout=timeout) as response:
+        async with session.get(url, timeout=timeout, headers=self._download_headers()) as response:
             response.raise_for_status()
 
             # 1. Header Check (First layer of security)

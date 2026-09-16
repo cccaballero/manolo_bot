@@ -44,6 +44,10 @@ class BotConfig:
     max_document_size: int = 2 * 1024 * 1024
     max_voice_size: int = 2 * 1024 * 1024
 
+    # Header authentication for attachment downloads (image/audio/document
+    # file URLs). Some platforms require auth headers to fetch file URLs.
+    attachment_headers: dict = field(default_factory=dict)
+
     can_use_tavily_search: bool = False
 
     # Stable Diffusion configuration
