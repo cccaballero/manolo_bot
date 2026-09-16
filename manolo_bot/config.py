@@ -120,7 +120,7 @@ class Config(EnvModel):
 
     # RAG (Retrieval-Augmented Generation) — agent/deep_agent modes only
     rag_enabled = BooleanField("RAG_ENABLED", default=False)
-    rag_backend = StringField("RAG_BACKEND", default="in_memory", allowed_values=["in_memory", "local_fs"])
+    rag_backend = StringField("RAG_BACKEND", default="in_memory", allowed_values=["in_memory", "local_fs", "redis"])
     rag_sources = StringListField("RAG_SOURCES", default=[])
     rag_store_path = StringField("RAG_STORE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "rag"))
     rag_top_k = IntegerField("RAG_TOP_K", default=5)

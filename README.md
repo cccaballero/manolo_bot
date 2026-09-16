@@ -119,11 +119,13 @@ without RAG).
 
 `RAG_ENABLED`: Enable RAG indexing (True, False). Default is False.
 
-`RAG_BACKEND`: RAG backend type (`in_memory`, `local_fs`). Default is `in_memory` (opt-in persistence).
+`RAG_BACKEND`: RAG backend type (`in_memory`, `local_fs`, `redis`). Default is `in_memory` (opt-in persistence).
 - `in_memory`: ephemeral vectors, kept for debugging and tests; re-ingests on every restart.
 - `local_fs`: persists the index as JSON under `RAG_STORE_PATH` for simple single-node
-  deployments (not horizontally scalable; distributed backends such as `chroma`/`pgvector`
-  may follow).
+  deployments (not horizontally scalable).
+- `redis`: shared, persistent index in Redis for multi-instance deployments; needs `REDIS_URL`
+  (reused from storage settings, independent of `STORAGE_TYPE`). Vectors are served from
+  memory after load, so queries behave the same on every backend.
 
 `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index.
 Supported formats are `.txt`, `.md`, `.pdf` and `.docx` (anything else is attempted

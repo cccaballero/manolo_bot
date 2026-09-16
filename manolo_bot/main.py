@@ -254,6 +254,7 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
                 from manolo_bot.rag.factory import build_rag_backend
 
                 embeddings = build_embeddings(llm_config, model=bot_config.rag_embedding_model or None)
+                # RAG reuses REDIS_URL; RAG_BACKEND is independent of STORAGE_TYPE.
                 backend = build_rag_backend(
                     bot_config.rag_backend,
                     embeddings,
@@ -263,6 +264,7 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
                     chunk_overlap=bot_config.rag_chunk_overlap,
                     top_k=bot_config.rag_top_k,
                     max_file_bytes=bot_config.rag_max_file_bytes or None,
+                    redis_url=config.redis_url,
                 )
                 vectors_loaded = await backend.build_or_load()
             except Exception as e:

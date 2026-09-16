@@ -49,7 +49,7 @@ class FilesystemRAGBackend(InMemoryRAGBackend):
     # needs_reindex() for incremental updates alongside the vector snapshot.
     _persist_manifest = True
 
-    def _save_snapshot(self) -> None:
+    async def _save_snapshot(self) -> None:
         meta = {"embedding_model": _embedding_id(self._embeddings), "format": _META_FORMAT}
         self._store.dump(str(vectors_path(self.store_path, self.bot_uuid)))
         meta_p = meta_path(self.store_path, self.bot_uuid)
@@ -107,7 +107,7 @@ class FilesystemRAGBackend(InMemoryRAGBackend):
         count = await super().ingest(paths)
         if count:
             try:
-                self._save_snapshot()
+                await self._save_snapshot()
             except OSError as e:
                 logger.warning(f"Could not persist RAG vectors: {e}")
         return count
@@ -117,7 +117,7 @@ class FilesystemRAGBackend(InMemoryRAGBackend):
         count = await super().remove(paths)
         if count:
             try:
-                self._save_snapshot()
+                await self._save_snapshot()
             except OSError as e:
                 logger.warning(f"Could not persist RAG vectors after remove: {e}")
         return count

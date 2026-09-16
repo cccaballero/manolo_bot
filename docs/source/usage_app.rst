@@ -159,7 +159,8 @@ gracefully (the bot keeps running without RAG).
 * `RAG_ENABLED`: Set to `True` to index local documents (default: `False`).
 * `RAG_BACKEND`: Index backend (default: `in_memory`).
     * `in_memory`: Ephemeral vectors, kept for debugging and tests; re-ingests on every restart.
-    * `local_fs`: Persists the index as JSON under `RAG_STORE_PATH`. Simple single-node persistence, not horizontally scalable (distributed backends such as `chroma`/`pgvector` may follow).
+    * `local_fs`: Persists the index as JSON under `RAG_STORE_PATH`. Simple single-node persistence, not horizontally scalable.
+    * `redis`: Shared, persistent index in Redis for multi-instance deployments; needs `REDIS_URL` (reused from storage settings, independent of `STORAGE_TYPE`). Vectors are served from memory after load, so queries behave the same on every backend.
 * `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index (default: empty). Supported formats are ``.txt``, ``.md``, ``.pdf`` and ``.docx`` (anything else is attempted as plain text). Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool (e.g. ``docs/handbook.md::DESC=Employee handbook``). Descriptions must not contain commas. Each per-source tool searches only its own files; with more than 8 sources only the global `rag_search` tool is exposed.
 * `RAG_STORE_PATH`: Directory for RAG index state. Defaults to a system temporary directory (``/tmp/manolo_bot/rag`` on Linux).
 * `RAG_TOP_K`: Number of chunks retrieved per query (default: `5`).

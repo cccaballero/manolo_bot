@@ -176,6 +176,22 @@ class InMemoryRAGBackend(BaseRAGBackend):
         self._store = InMemoryVectorStore(embedding=embeddings)
         self._manifest: dict = {}
 
+    def _read_manifest(self) -> dict:
+        """In-memory manifest, else disk load when the flag persists it."""
+        if self._persist_manifest:
+            return self._manifest or load_manifest(self.store_path, self.bot_uuid)
+        return self._manifest
+
+    async def _write_manifest(self, manifest: dict) -> None:
+        """Set the in-memory manifest; save to disk when the flag persists it."""
+        self._manifest = manifest
+        if self._persist_manifest:
+            try:
+                save_manifest(self.store_path, self.bot_uuid, manifest)
+            except OSError as e:
+                # Vectors stay indexed; worst case is rework later.
+                logger.warning(f"Could not persist RAG manifest: {e}")
+
     async def build_or_load(self) -> bool:
         """Reset in-process state; load the on-disk manifest only if persisted.
 
@@ -202,10 +218,7 @@ class InMemoryRAGBackend(BaseRAGBackend):
         fail are left unfingerprinted so they are retried on the next run.
         """
         files = _expand_paths(_entry_patterns(paths))
-        if self._persist_manifest:
-            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        else:
-            manifest = self._manifest
+        manifest = self._read_manifest()
         stale = set(find_stale_paths([str(f) for f in files], manifest))
         fresh = [f for f in files if str(f) not in stale]
         if fresh:
@@ -241,18 +254,11 @@ class InMemoryRAGBackend(BaseRAGBackend):
             except Exception as e:
                 logger.warning(f"Skipping RAG file {file} after ingest error: {e}")
         if succeeded:
-            if self._persist_manifest:
-                try:
-                    # Refresh in-memory manifest from disk first to avoid clobbering,
-                    # then merge fingerprints for the files just ingested.
-                    on_disk = load_manifest(self.store_path, self.bot_uuid)
-                    on_disk.update(succeeded)
-                    save_manifest(self.store_path, self.bot_uuid, on_disk)
-                    self._manifest = on_disk
-                except OSError as e:
-                    # Vectors stay indexed; worst case is rework later.
-                    logger.warning(f"Could not persist RAG manifest: {e}")
-            self._manifest.update(succeeded)
+            # Refresh from the persisted view first to avoid clobbering,
+            # then merge fingerprints for the files just ingested.
+            merged = self._read_manifest()
+            merged.update(succeeded)
+            await self._write_manifest(merged)
         return total
 
     async def query(self, query: str, top_k: int | None = None) -> list[RAGChunk]:
@@ -292,10 +298,7 @@ class InMemoryRAGBackend(BaseRAGBackend):
         new if added back later.
         """
         files = _expand_paths(_entry_patterns(paths))
-        if self._persist_manifest:
-            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        else:
-            manifest = self._manifest
+        manifest = self._read_manifest()
         expanded = {str(f.resolve()) for f in files}
         direct = {_normalize_source(record.path) for record in paths if record.path.strip()}
         targets = (expanded | direct) & set(manifest.keys())
@@ -304,30 +307,18 @@ class InMemoryRAGBackend(BaseRAGBackend):
             return 0
         dropped = await _drop_source_vectors(self._store, targets)
         pruned = {key: value for key, value in manifest.items() if key not in targets}
-        self._manifest = pruned
-        if self._persist_manifest:
-            try:
-                save_manifest(self.store_path, self.bot_uuid, pruned)
-            except OSError as e:
-                logger.warning(f"Could not persist pruned RAG manifest: {e}")
+        await self._write_manifest(pruned)
         return dropped
 
     def list_sources(self) -> list[str]:
         """Return sorted indexed file paths (manifest keys)."""
-        if self._persist_manifest:
-            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        else:
-            manifest = self._manifest
-        return sorted(manifest.keys())
+        return sorted(self._read_manifest().keys())
 
     def needs_reindex(self, paths: Sequence[RAGSource]) -> list[RAGSource]:
         """Return the subset of records with new or changed files."""
         records = [record for record in paths if record.path.strip()]
         expanded = [(record, _expand_paths([record.path])) for record in records]
-        if self._persist_manifest:
-            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        else:
-            manifest = self._manifest
+        manifest = self._read_manifest()
         stale = set(find_stale_paths([str(f) for _, files in expanded for f in files], manifest))
         return [record for record, files in expanded if any(str(f) in stale for f in files)]
 
@@ -338,10 +329,7 @@ class InMemoryRAGBackend(BaseRAGBackend):
             if not record.path.strip():
                 continue
             configured.update(str(f.resolve()) for f in _expand_paths([record.path]))
-        if self._persist_manifest:
-            manifest = self._manifest or load_manifest(self.store_path, self.bot_uuid)
-        else:
-            manifest = self._manifest
+        manifest = self._read_manifest()
         return sorted(set(manifest.keys()) - configured)
 
     def as_tool(self, name: str, description: str) -> BaseTool:

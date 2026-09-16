@@ -54,6 +54,11 @@ RAG Components
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: manolo_bot.rag.redis_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.rag.factory
    :members:
    :undoc-members:
