@@ -441,6 +441,31 @@ To process an image, use the ``answer_image_message`` method. It requires a publ
        image="https://example.com/image.jpg"
    )
 
+Attachment download headers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some platforms require HTTP header authentication to fetch attachment file URLs. Set ``attachment_headers`` on ``BotConfig`` — the headers are sent on every attachment download (``LLMBot._download_file`` and ``LLMAgent.answer_image_message``'s inline download; ``LLMDeepAgent`` inherits the behavior). The default ``{}`` preserves the current behavior and Telegram file URLs are unaffected.
+
+.. code-block:: python
+
+   from manolo_bot.ai.config import BotConfig
+
+   bot_config = BotConfig(
+       ...,
+       attachment_headers={"Authorization": "Bearer <token>"},
+   )
+
+For custom schemes, override the ``LLMBot._download_headers()`` hook, which returns a copy of that mapping:
+
+.. code-block:: python
+
+   from manolo_bot.ai.llmbot import LLMBot
+
+
+   class CustomAuthBot(LLMBot):
+       def _download_headers(self) -> dict:
+           return {"Authorization": "Custom scheme"}
+
 Voice
 ~~~~~
 

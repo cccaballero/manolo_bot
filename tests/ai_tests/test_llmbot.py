@@ -606,6 +606,93 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(summary), 51)
         self.assertEqual(summary, "X" * 51)
 
+    def _make_auth_bot(self, **bot_config_overrides):
+        """Build an LLMBot with a real BotConfig for header-auth tests."""
+        storage = MemoryMessagesStorage(bot_uuid="test-bot", chat_id=424242)
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.get_num_tokens = MagicMock(return_value=10)
+        mock_llm.get_num_tokens_from_messages = MagicMock(return_value=10)
+        bot_config = BotConfig(
+            bot_uuid="test-bot",
+            bot_name="TestBot",
+            bot_username="test_bot",
+            bot_token="123456:ABC",
+            user_id=0,
+            **bot_config_overrides,
+        )
+        return LLMBot(
+            mock_llm,
+            bot_config,
+            [SystemMessage(content="You are a helpful assistant")],
+            storage,
+        )
+
+    def _make_fake_session(self, payload: bytes = b"data"):
+        """Mocked aiohttp session whose get() returns an async-CM response."""
+
+        class _FakeContent:
+            async def iter_chunked(self, _size):
+                yield payload
+
+        class _FakeResponse:
+            headers = {}
+            content = _FakeContent()
+
+            def raise_for_status(self):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeResponse())
+        return mock_session
+
+    def test_download_headers__defaults_to_empty(self):
+        bot = self._make_auth_bot()
+        self.assertEqual(bot._download_headers(), {})
+
+    def test_download_headers__explicit_headers(self):
+        bot = self._make_auth_bot(attachment_headers={"Authorization": "Bearer secret-token"})
+        self.assertEqual(bot._download_headers(), {"Authorization": "Bearer secret-token"})
+
+    async def test_download_file__sends_headers_when_set(self):
+        bot = self._make_auth_bot(
+            attachment_headers={"Authorization": "Bearer secret-token"},
+        )
+        mock_session = self._make_fake_session()
+        result = await bot._download_file("http://example.com/file.pdf", mock_session)
+        self.assertEqual(result, b"data")
+        _, kwargs = mock_session.get.call_args
+        self.assertEqual(
+            kwargs.get("headers"),
+            {"Authorization": "Bearer secret-token"},
+        )
+
+    async def test_download_file__sends_empty_headers_by_default(self):
+        bot = self._make_auth_bot()
+        mock_session = self._make_fake_session()
+        await bot._download_file("http://example.com/file.pdf", mock_session)
+        _, kwargs = mock_session.get.call_args
+        self.assertEqual(kwargs.get("headers"), {})
+
+    async def test_download_file__subclass_override_of_download_headers(self):
+        class CustomBot(LLMBot):
+            def _download_headers(self):
+                return {"X-Custom-Scheme": "abc123"}
+
+        bot = self._make_auth_bot()
+        custom_bot = CustomBot(bot.llm, bot.bot_config, bot._system_instructions, bot.messages_storage)
+        mock_session = self._make_fake_session()
+        await custom_bot._download_file("http://example.com/file.pdf", mock_session)
+        _, kwargs = mock_session.get.call_args
+        self.assertEqual(kwargs.get("headers"), {"X-Custom-Scheme": "abc123"})
+
 
 if __name__ == "__main__":
     unittest.main()

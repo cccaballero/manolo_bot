@@ -654,6 +654,42 @@ bot = LLMBot(
 response = await bot.answer_message(chat_id=123, message="Hello!")
 ```
 
+### Attachment downloads with header authentication
+
+Some platforms require HTTP header authentication to fetch attachment file URLs
+(images, audio, documents). `BotConfig` exposes an optional field for this:
+
+- `attachment_headers: dict` — headers sent on every attachment download.
+
+It defaults to empty, preserving the previous behavior (no auth headers sent).
+
+```python
+from manolo_bot.ai.config import BotConfig
+
+bot_config = BotConfig(
+    bot_uuid="my-bot",
+    bot_name="Assistant",
+    bot_username="assistant_bot",
+    bot_token="123456:ABC",
+    user_id=0,
+    attachment_headers={"Authorization": "Bearer <token>"},
+)
+```
+
+`LLMBot._download_headers()` returns a copy of this mapping and is used by
+`LLMBot._download_file` (and by `LLMAgent.answer_image_message`'s inline
+download); `LLMDeepAgent` inherits the behavior. Subclasses can override the
+hook for custom schemes:
+
+```python
+from manolo_bot.ai.llmbot import LLMBot
+
+
+class CustomAuthBot(LLMBot):
+    def _download_headers(self) -> dict:
+        return {"Authorization": "Custom scheme"}
+```
+
 For more advanced usage and full API details, please refer to
 the [Full Documentation](https://manolo-bot.readthedocs.io/).
 
