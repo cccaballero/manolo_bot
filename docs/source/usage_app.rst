@@ -147,6 +147,30 @@ Agent and Tools
 * `DEEP_AGENT_MEMORY_PATH`: Root directory for per-chat long-term memory in the `deep_agent` mode. Each chat gets its own independent, seeded `AGENTS.md` file at `DEEP_AGENT_MEMORY_PATH/bot_uuid/chat_id/AGENTS.md` — no information leaks between chats. Memory files are **fully loaded into the agent's system prompt on every turn**, so keep them concise — unlike skills (progressive disclosure), every token in a memory file costs tokens on every message. Defaults to a system temporary directory (e.g. `/tmp/manolo_bot/memory`). The bot constructs a per-chat `MemoryFilesystemDeepAgentBackend` (alongside the main backend) whose default process-local `InMemoryStore` is forwarded to `create_deep_agent(store=...)`. `/flushcontext` wipes the chat's memory along with its workspace.
 * `DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL`: Set to `True` to add an Anthropic prompt-cache breakpoint on the memory block (default `False`). No-op on non-Anthropic models. Fed to `LLMDeepAgent(memory_add_cache_control=...)` at agent construction.
 
+RAG (Retrieval-Augmented Generation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Give the bot a local document knowledge base. RAG is wired into the ``agent`` and
+``deep_agent`` modes only — the ``llm`` mode ignores these settings. When enabled with
+a non-empty ``RAG_SOURCES``, documents are chunked, embedded and indexed at startup,
+and a ``rag_search`` retriever tool is appended to the agent's tools. Failures degrade
+gracefully (the bot keeps running without RAG).
+
+* `RAG_ENABLED`: Set to `True` to index local documents (default: `False`).
+* `RAG_BACKEND`: Index backend (default: `in_memory`).
+    * `in_memory`: Ephemeral vectors, kept for debugging and tests; re-ingests on every restart.
+    * `local_fs`: Persists the index as JSON under `RAG_STORE_PATH`. Simple single-node persistence, not horizontally scalable.
+    * `redis`: Shared, persistent index in Redis for multi-instance deployments; needs `REDIS_URL` (reused from storage settings, independent of `STORAGE_TYPE`). Vectors are served from memory after load, so queries behave the same on every backend.
+* `RAG_SOURCES`: Comma-separated list of file paths, directories or glob patterns to index (default: empty). Supported formats are ``.txt``, ``.md``, ``.pdf`` and ``.docx`` (anything else is attempted as plain text). Append `::DESC=<description>` to an entry to describe its per-source `rag_search_<slug>` tool (e.g. ``docs/handbook.md::DESC=Employee handbook``). Descriptions must not contain commas. Each per-source tool searches only its own files; with more than 8 sources only the global `rag_search` tool is exposed.
+* `RAG_STORE_PATH`: Directory for RAG index state. Defaults to a system temporary directory (``/tmp/manolo_bot/rag`` on Linux).
+* `RAG_TOP_K`: Number of chunks retrieved per query (default: `5`).
+* `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: Chunking settings (defaults: `1000` / `200`).
+* `RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`; default: `auto`). Only new or changed files are ingested; files removed from the configuration are pruned from the index automatically; the ephemeral `in_memory` backend still re-ingests everything on each restart since vectors are not persisted.
+* `RAG_EMBEDDING_MODEL`: Optional embedding model override for the configured provider (defaults: `models/gemini-embedding-001` for Google, `text-embedding-ada-002` for OpenAI, `nomic-embed-text` for Ollama). Set this when your endpoint does not host the default — e.g. an OpenAI-compatible server (LM Studio, vLLM) with its own embedding model.
+* `RAG_MAX_FILE_BYTES`: Per-file size cap in bytes (default: `10485760`, i.e. 10MB; `0` = unlimited). Oversized sources are skipped with a warning.
+
+Ingest is per-file isolated: one bad file can't kill the index — failures are logged with a warning and retried on the next run. ``ingest()`` is idempotent (unchanged files are skipped without any embedding call; changed files are replaced, never duplicated). ``remove()`` drops documents without touching the rest, and ``list_sources()`` reports what is currently indexed.
+
 Search Configuration
 ~~~~~~~~~~~~~~~~~~~~
 

@@ -1,5 +1,7 @@
 import base64
 import logging
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import aiohttp
 from langchain.agents import create_agent
@@ -12,6 +14,10 @@ from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
 from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.storage.documents.base import BaseDocumentStorage
 from manolo_bot.storage.messages.base import BaseMessagesStorage
+
+if TYPE_CHECKING:
+    from manolo_bot.rag.base import BaseRAGBackend
+    from manolo_bot.rag.sources import RAGSource
 
 
 class LLMAgent(LLMBot):
@@ -36,6 +42,8 @@ class LLMAgent(LLMBot):
         tools: list[BaseTool] | None = None,
         documents_storage: BaseDocumentStorage | None = None,
         system_instructions_mapping=None,
+        rag_backend: "BaseRAGBackend | None" = None,
+        rag_sources: "Sequence[RAGSource] | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -48,6 +56,33 @@ class LLMAgent(LLMBot):
         )
         # Don't create agent yet - wait for async initialization
         self.agent = None
+        # First-class RAG backend (appended as a retriever tool at init time,
+        # separate from the `tools=` custom-tools channel).
+        self._rag_backend = rag_backend
+        # Structured sources for tool naming/scoping; the library channel owns
+        # records explicitly (env strings never reach the agents).
+        self._rag_sources = rag_sources
+
+    def _resolve_rag_tools(self, tools: list[BaseTool]) -> list[BaseTool]:
+        """Append global + per-source RAG retriever tools (each skips on MCP clash)."""
+        if self._rag_backend is None:
+            return tools
+        from manolo_bot.rag.base import RAG_TOOL_NAME
+        from manolo_bot.rag.prompting import build_rag_tool_description
+
+        sources = list(self._rag_sources or [])
+        resolved = tools
+        if any(getattr(t, "name", None) == RAG_TOOL_NAME for t in resolved):
+            logging.info("RAG tool %r already provided (e.g. by MCP); skipping backend tool", RAG_TOOL_NAME)
+        else:
+            description = build_rag_tool_description(sources)
+            resolved = resolved + [self._rag_backend.as_tool(RAG_TOOL_NAME, description)]
+        for tool in self._rag_backend.as_source_tools(sources):
+            if any(getattr(t, "name", None) == tool.name for t in resolved):
+                logging.info("RAG tool %r already provided (e.g. by MCP); skipping backend tool", tool.name)
+                continue
+            resolved = resolved + [tool]
+        return resolved
 
     async def initialize_async_resources(self) -> None:
         """Initialize async resources and create agent with all tools."""
@@ -60,6 +95,7 @@ class LLMAgent(LLMBot):
         tools = await get_all_tools(
             self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
+        tools = self._resolve_rag_tools(tools)
 
         self.agent = create_agent(
             model=self.llm,

@@ -10,9 +10,11 @@ from deepagents.middleware import FilesystemMiddleware
 from deepagents.middleware.memory import MemoryMiddleware
 from deepagents.middleware.skills import SkillsMiddleware
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableBinding, RunnableLambda
 from langgraph.store.memory import InMemoryStore
 
 from manolo_bot.ai.config import BotConfig
+from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent, _resolve_skills_sources
 from manolo_bot.storage.deep_agent_backends.base import BaseDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.memory_filesystem_backend import (
@@ -877,6 +879,35 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(update)
             self.assertIn(wrapper.source, update["memory_contents"])
             self.assertIn("Learnings from this conversation", update["memory_contents"][wrapper.source])
+
+
+class TestDeepAgentModelBinding(unittest.IsolatedAsyncioTestCase):
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    async def test_agents_skip_tool_rebinding(self, mock_get_all_tools):
+        """Agents must not wrap self.llm in a RunnableBinding.
+
+        Regression: with MCP+use_tools on, _reload_tools_with_mcp rebound the
+        model, and deepagents' resolve_model() rejects bound runnables
+        ('ChatGoogleGenerativeAI' object has no attribute 'count').
+        """
+        mock_get_all_tools.return_value = []
+        mock_llm = MagicMock()
+        agent = LLMAgent(mock_llm, _make_config(use_tools=True), [SystemMessage(content="hi")], MagicMock())
+        await agent._reload_tools_with_mcp()
+        mock_llm.bind_tools.assert_not_called()
+        self.assertIs(agent.llm, mock_llm)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_unwraps_bound_model(self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools):
+        """A pre-bound model still reaches create_deep_agent unwrapped."""
+        mock_get_all_tools.return_value = []
+        inner = RunnableLambda(lambda x: x)
+        bound = RunnableBinding(bound=inner)
+        agent = LLMDeepAgent(bound, _make_config(), [SystemMessage(content="hi")], MagicMock())
+        await agent.initialize_async_resources()
+        self.assertIs(mock_create_deep_agent.call_args.kwargs["model"], inner)
 
 
 if __name__ == "__main__":

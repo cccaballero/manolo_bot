@@ -327,6 +327,27 @@ class TestGetAllTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(all_tools), len(custom_tools))
         self.assertEqual([t.name for t in all_tools], [t.name for t in custom_tools])
 
+    async def test_get_all_tools_custom_tools_replace_defaults(self):
+        """Passing custom_tools REPLACES the default set (documented semantics)."""
+        from langchain_core.tools import tool as tool_decorator
+
+        from manolo_bot.ai.tools import get_all_tools, get_tools
+
+        @tool_decorator
+        def my_custom_tool(query: str) -> str:
+            """Custom tool."""
+            return "custom"
+
+        # Act
+        all_tools = await get_all_tools(None, custom_tools=[my_custom_tool])
+
+        # Assert: only the custom tool is present, defaults are gone.
+        self.assertEqual(len(all_tools), 1)
+        self.assertIs(all_tools[0], my_custom_tool)
+        default_names = {t.name for t in get_tools()}
+        self.assertNotIn("my_custom_tool", default_names)
+        self.assertGreater(len(default_names), 1)
+
 
 class TestReadDocumentTool(unittest.IsolatedAsyncioTestCase):
     async def test_read_document_tool_initialization(self):

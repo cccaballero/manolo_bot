@@ -1,3 +1,5 @@
+import os
+import tempfile
 from dataclasses import dataclass, field
 
 
@@ -48,6 +50,18 @@ class BotConfig:
     sdapi_url: str = ""
     sdapi_params: dict = field(default_factory=dict)
     sdapi_negative_prompt: str = ""
+
+    # RAG configuration (agent/deep_agent modes only; LLMBot ignores these)
+    rag_enabled: bool = False
+    rag_backend: str = "in_memory"
+    rag_sources: list = field(default_factory=list)
+    rag_store_path: str = os.path.join(tempfile.gettempdir(), "manolo_bot", "rag")
+    rag_top_k: int = 5
+    rag_chunk_size: int = 1000
+    rag_chunk_overlap: int = 200
+    rag_reindex: str = "auto"
+    rag_embedding_model: str = ""
+    rag_max_file_bytes: int = 10 * 1024 * 1024  # 10MB; 0 = unlimited
 
 
 @dataclass
