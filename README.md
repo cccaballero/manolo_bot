@@ -410,11 +410,24 @@ from manolo_bot.ai.tools import get_tools
 
 async def main():
     # 1. Configure LLM (Google, OpenAI, or Ollama)
-    llm_config = LLMConfig(google_api_key="your_api_key")
+    llm_config = LLMConfig(
+        google_api_key="your_api_key",
+        google_api_model="",
+        openai_api_key="",
+        openai_api_model="",
+        openai_api_base_url="",
+        ollama_model="",
+    )
     llm = LLMBuilder(llm_config).get_llm()
 
     # 2. Define Bot identity
-    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
+    bot_config = BotConfig(
+        bot_uuid="my-bot",
+        bot_name="Assistant",
+        bot_username="assistant_bot",
+        bot_token="123456:ABC",
+        user_id=0,
+    )
 
     # 3. Setup Storage for a specific conversation
     storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
@@ -470,7 +483,13 @@ async def main():
         ollama_model="",
     )
     llm = LLMBuilder(llm_config).get_llm()
-    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
+    bot_config = BotConfig(
+        bot_uuid="my-bot",
+        bot_name="Assistant",
+        bot_username="assistant_bot",
+        bot_token="123456:ABC",
+        user_id=0,
+    )
     storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
     await storage.refresh_messages()
 
@@ -519,11 +538,24 @@ from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgen
 
 async def main():
     # 1. Configure LLM (Google, OpenAI, or Ollama)
-    llm_config = LLMConfig(google_api_key="your_api_key")
+    llm_config = LLMConfig(
+        google_api_key="your_api_key",
+        google_api_model="",
+        openai_api_key="",
+        openai_api_model="",
+        openai_api_base_url="",
+        ollama_model="",
+    )
     llm = LLMBuilder(llm_config).get_llm()
 
     # 2. Define Bot identity
-    bot_config = BotConfig(bot_uuid="my-bot", bot_name="Assistant")
+    bot_config = BotConfig(
+        bot_uuid="my-bot",
+        bot_name="Assistant",
+        bot_username="assistant_bot",
+        bot_token="123456:ABC",
+        user_id=0,
+    )
 
     # 3. Setup Storage for a specific conversation
     storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)

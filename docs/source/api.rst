@@ -31,6 +31,44 @@ AI Components
    :undoc-members:
    :show-inheritance:
 
+RAG Components
+--------------
+
+.. automodule:: manolo_bot.rag.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.sources
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.inmemory_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.filesystem_backend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.factory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.embeddings
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.rag.prompting
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Storage Components
 ------------------
 

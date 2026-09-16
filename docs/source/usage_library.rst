@@ -24,7 +24,14 @@ The `LLMConfig` class holds all settings for the AI provider (OpenAI, Google, or
    from manolo_bot.ai.llmbot import LLMBuilder
 
    # Example: Google Gemini
-   llm_config = LLMConfig(google_api_key="your_api_key")
+   llm_config = LLMConfig(
+       google_api_key="your_api_key",
+       google_api_model="",
+       openai_api_key="",
+       openai_api_model="",
+       openai_api_base_url="",
+       ollama_model="",
+   )
    llm = LLMBuilder(llm_config).get_llm()
 
 Bot Configuration
@@ -38,7 +45,10 @@ The `BotConfig` class defines settings like the bot's name, UUID (for unique ide
 
    bot_config = BotConfig(
        bot_uuid="my-unique-bot-id",
-       bot_name="MyAssistant"
+       bot_name="MyAssistant",
+       bot_username="myassistant_bot",
+       bot_token="123456:ABC",
+       user_id=0,
    )
 
 Storage
@@ -51,7 +61,7 @@ The `storage` component is responsible for persisting conversation history. `man
 
 .. code-block:: python
 
-   from manolo_bot.storage.messages.memory import MemoryMessagesStorage
+   from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
    # chat_id is a unique identifier for the current conversation (e.g., a user ID)
    storage = MemoryMessagesStorage(bot_uuid="my-unique-bot-id", chat_id=12345)
@@ -80,16 +90,29 @@ Implementation Example
    from manolo_bot.ai.llmagent import LLMAgent
    from manolo_bot.ai.llmbot import LLMBuilder
    from manolo_bot.ai.config import LLMConfig, BotConfig
-   from manolo_bot.storage.messages.memory import MemoryMessagesStorage
+   from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
    from manolo_bot.ai.tools import get_tools
 
    async def main():
        # 1. Setup LLM (Must support Tool Calling)
-       llm_config = LLMConfig(google_api_key="your_key")
+       llm_config = LLMConfig(
+           google_api_key="your_key",
+           google_api_model="",
+           openai_api_key="",
+           openai_api_model="",
+           openai_api_base_url="",
+           ollama_model="",
+       )
        llm = LLMBuilder(llm_config).get_llm()
 
        # 2. Setup Bot Identity
-       bot_config = BotConfig(bot_uuid="bot-1", bot_name="Assistant")
+       bot_config = BotConfig(
+           bot_uuid="bot-1",
+           bot_name="Assistant",
+           bot_username="assistant_bot",
+           bot_token="123456:ABC",
+           user_id=0,
+       )
 
        # 3. Setup Storage
        chat_id = 1001
@@ -98,13 +121,13 @@ Implementation Example
 
        # 4. Initialize the Agent with Tools
        tools = get_tools()
-       agent = LLMAgent(
-           llm=llm,
-           config=bot_config,
-           system_instructions="You are a helpful assistant.",
-           storage=storage,
-           tools=tools
-       )
+        agent = LLMAgent(
+            llm=llm,
+            bot_config=bot_config,
+            system_instructions="You are a helpful assistant.",
+            messages_storage=storage,
+            tools=tools
+        )
 
        # 5. Use the agent as an async context manager (required for MCP)
        async with agent:
@@ -224,11 +247,24 @@ Custom backends (Redis, S3, DB-backed, virtual filesystems) implement ``routes(s
 
    async def main():
        # 1. Setup LLM (Must support Tool Calling)
-       llm_config = LLMConfig(google_api_key="your_key")
+       llm_config = LLMConfig(
+           google_api_key="your_key",
+           google_api_model="",
+           openai_api_key="",
+           openai_api_model="",
+           openai_api_base_url="",
+           ollama_model="",
+       )
        llm = LLMBuilder(llm_config).get_llm()
 
        # 2. Setup Bot Identity
-       bot_config = BotConfig(bot_uuid="bot-1", bot_name="Assistant")
+       bot_config = BotConfig(
+           bot_uuid="bot-1",
+           bot_name="Assistant",
+           bot_username="assistant_bot",
+           bot_token="123456:ABC",
+           user_id=0,
+       )
 
        # 3. Setup Storage
        chat_id = 1001
@@ -499,6 +535,82 @@ To add custom tools, use the ``@tool`` decorator from ``langchain_core.tools`` a
       
       all_tools = get_tools(bot_config) + [get_stock_price]
       agent = LLMAgent(..., tools=all_tools)
+
+Retrieval-Augmented Generation (RAG)
+------------------------------------
+
+A local document knowledge base can be attached to ``LLMAgent`` (or ``LLMDeepAgent``).
+Build a backend via the factory, index ``RAGSource`` records — descriptions may contain
+commas, since records never go through the comma-separated env parsing — and pass the
+backend explicitly; the agent appends the ``rag_search`` tool itself, plus one
+``rag_search_<slug>`` tool per source. Append ``build_rag_instructions()`` to the system
+prompt so the agent knows when to use them.
+
+.. code-block:: python
+
+   import asyncio
+   from manolo_bot.ai.config import BotConfig, LLMConfig
+   from manolo_bot.ai.llmagent import LLMAgent
+   from manolo_bot.ai.llmbot import LLMBuilder
+   from manolo_bot.rag.embeddings import build_embeddings
+   from manolo_bot.rag.factory import build_rag_backend
+   from manolo_bot.rag.prompting import build_rag_instructions
+   from manolo_bot.rag.sources import RAGSource
+   from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
+
+
+   async def main():
+       llm_config = LLMConfig(
+           google_api_key="your_api_key",
+           google_api_model="",
+           openai_api_key="",
+           openai_api_model="",
+           openai_api_base_url="",
+           ollama_model="",
+       )
+       llm = LLMBuilder(llm_config).get_llm()
+       bot_config = BotConfig(
+           bot_uuid="my-bot",
+           bot_name="Assistant",
+           bot_username="assistant_bot",
+           bot_token="123456:ABC",
+           user_id=0,
+       )
+       storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id=123)
+       await storage.refresh_messages()
+
+       sources = [
+           RAGSource("docs/handbook.md", "Employee handbook, covering policies and benefits"),
+           RAGSource("docs/policies/", "Company policies"),
+       ]
+       backend = build_rag_backend("in_memory", build_embeddings(llm_config), bot_uuid="my-bot")
+       await backend.build_or_load()
+       await backend.ingest(sources)
+
+       system_instructions = "You are a helpful assistant." + build_rag_instructions(sources)
+       agent = LLMAgent(
+           llm=llm,
+           bot_config=bot_config,
+           system_instructions=system_instructions,
+           messages_storage=storage,
+           rag_backend=backend,
+       )
+       response = await agent.answer_message(chat_id=123, message="What does the handbook say?")
+       print(f"Agent: {response.content}")
+
+
+   if __name__ == "__main__":
+       asyncio.run(main())
+
+The backend doubles as a small document API: ``query()`` retrieves passages without an
+agent, ``remove()`` drops documents, and ``list_sources()`` reports what is indexed.
+Ingest is idempotent — re-ingesting unchanged files costs no embedding calls — and
+per-file isolated, so one bad file can't fail the whole index.
+
+For a custom index (e.g. Chroma, pgvector), subclass ``BaseRAGBackend`` from
+``manolo_bot.rag.base`` and implement ``build_or_load()``, ``ingest()``, ``query()``,
+``clear()``, ``remove()``, ``list_sources()``, ``needs_reindex()``, ``as_tool()`` and
+``as_source_tools()``; wire it up through ``build_rag_backend()``.
 
 Dynamic System Instructions
 ---------------------------
