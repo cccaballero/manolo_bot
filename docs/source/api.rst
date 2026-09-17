@@ -21,6 +21,11 @@ AI Components
    :undoc-members:
    :show-inheritance:
 
+.. automodule:: manolo_bot.ai.history_policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: manolo_bot.ai.mcp_manager
    :members:
    :undoc-members:

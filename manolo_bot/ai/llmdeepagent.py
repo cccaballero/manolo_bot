@@ -26,6 +26,7 @@ from manolo_bot.storage.messages.base import BaseMessagesStorage
 if TYPE_CHECKING:
     from deepagents.backends.protocol import BackendProtocol
 
+    from manolo_bot.ai.history_policy import BaseHistoryPolicy
     from manolo_bot.rag.base import BaseRAGBackend
     from manolo_bot.rag.sources import RAGSource
 
@@ -152,6 +153,7 @@ class LLMDeepAgent(LLMAgent):
         memory_add_cache_control: bool = False,
         rag_backend: "BaseRAGBackend | None" = None,
         rag_sources: "Sequence[RAGSource] | None" = None,
+        history_policy: "BaseHistoryPolicy | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -163,6 +165,7 @@ class LLMDeepAgent(LLMAgent):
             system_instructions_mapping=system_instructions_mapping,
             rag_backend=rag_backend,
             rag_sources=rag_sources,
+            history_policy=history_policy,
         )
         self._backend_wrapper = backend
         self._backend: BackendProtocol = backend.backend if backend else StateBackend()
