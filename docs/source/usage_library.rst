@@ -66,6 +66,30 @@ The `storage` component is responsible for persisting conversation history. `man
    # chat_id is a unique identifier for the current conversation (e.g., a user ID)
    storage = MemoryMessagesStorage(bot_uuid="my-unique-bot-id", chat_id=12345)
 
+History policy (what gets remembered)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Storage decides *where* history lives; the history policy decides *what* from each
+agent turn gets stored. By default only the final answer is persisted (``FinalOnlyPolicy``).
+Pass ``history_policy=FullTracePolicy()`` to also keep intermediate tool calls and results —
+useful for debugging or multi-step continuity, at the cost of higher token usage. Truncation
+always drops ``AI → Tool`` blocks atomically, so replayed history stays valid for the next turn.
+
+.. code-block:: python
+
+   from manolo_bot.ai.history_policy import FullTracePolicy
+   from manolo_bot.ai.llmagent import LLMAgent
+
+   agent = LLMAgent(
+       ...,
+       history_policy=FullTracePolicy(),
+   )
+
+To define your own strategy, subclass ``BaseHistoryPolicy`` and implement ``select(tail)``,
+which receives only the new messages produced by the turn and returns the subset to persist.
+``LLMDeepAgent`` accepts the same parameter. No bot configuration is needed — the policy is
+a plain object injected by the caller.
+
 Main Component: LLMAgent (Recommended)
 --------------------------------------
 

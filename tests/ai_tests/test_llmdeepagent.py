@@ -9,7 +9,7 @@ from deepagents.backends.filesystem import FilesystemBackend
 from deepagents.middleware import FilesystemMiddleware
 from deepagents.middleware.memory import MemoryMiddleware
 from deepagents.middleware.skills import SkillsMiddleware
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableBinding, RunnableLambda
 from langgraph.store.memory import InMemoryStore
 
@@ -104,9 +104,8 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_deep_agent_inherits_answer_message_from_llm_agent(self, mock_create_agent):
         """LLMDeepAgent should reuse LLMAgent's answer_message via self.agent.ainvoke."""
-        mock_ai_message = MagicMock()
         mock_agent = MagicMock()
-        mock_agent.ainvoke = AsyncMock(return_value={"messages": [mock_ai_message]})
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [AIMessage(content="Hello there")]})
 
         bot_config = _make_config(use_tools=True)
 
@@ -123,7 +122,9 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
         response = await agent.answer_message(1, "Hello")
 
-        self.assertEqual(response, mock_ai_message)
+        # FinalOnlyPolicy (default) wraps the final message as text-only AIMessage.
+        self.assertIsInstance(response, AIMessage)
+        self.assertEqual(response.content, "Hello there")
         mock_agent.ainvoke.assert_awaited_once()
 
     @patch("manolo_bot.ai.llmagent.create_agent")

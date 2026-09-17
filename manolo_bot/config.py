@@ -40,6 +40,11 @@ class Config(EnvModel):
     agent_mode = BooleanField("AGENT_MODE", default=False)
     ai_mode = StringField("AI_MODE", default="", allowed_values=["", "llm", "agent", "deep_agent"])
     agent_instructions = StringField("AGENT_INSTRUCTIONS")
+    # Agent history persistence policy, parsed at the env boundary (Telegram
+    # adapter only; library callers pass policy instances directly).
+    agent_history_policy = StringField(
+        "AGENT_HISTORY_POLICY", default="final-only", allowed_values=["final-only", "full-trace"]
+    )
     allow_private_chats = BooleanField("ALLOW_PRIVATE_CHATS", default=True)
 
     @property

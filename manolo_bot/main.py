@@ -13,6 +13,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
 from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.history_policy import BaseHistoryPolicy, FinalOnlyPolicy, FullTracePolicy
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent
@@ -213,7 +214,18 @@ bot_config = BotConfig(
     rag_reindex=config.rag_reindex,
     rag_embedding_model=config.rag_embedding_model,
     rag_max_file_bytes=config.rag_max_file_bytes,
+    history_policy=config.agent_history_policy,
 )
+
+
+def _resolve_history_policy() -> BaseHistoryPolicy:
+    """Map the ``BotConfig.history_policy`` string to a policy instance.
+
+    Unknown values fall back to ``FinalOnlyPolicy`` (historical behavior).
+    """
+    if bot_config.history_policy == "full-trace":
+        return FullTracePolicy()
+    return FinalOnlyPolicy()
 
 
 def get_datetime(bot) -> str:
@@ -339,6 +351,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             messages_storage,
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
+            history_policy=_resolve_history_policy(),
             backend=backend,
             skills_paths=config.deep_agent_skills_paths,
             skills_backend=skills_backend,
@@ -357,6 +370,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             system_instructions_mapping=instructions_mapping,
             rag_backend=rag_backend,
             rag_sources=rag_sources,
+            history_policy=_resolve_history_policy(),
         )
     else:
         llm_bot = LLMBot(

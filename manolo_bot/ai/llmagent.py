@@ -16,6 +16,7 @@ from manolo_bot.storage.documents.base import BaseDocumentStorage
 from manolo_bot.storage.messages.base import BaseMessagesStorage
 
 if TYPE_CHECKING:
+    from manolo_bot.ai.history_policy import BaseHistoryPolicy
     from manolo_bot.rag.base import BaseRAGBackend
     from manolo_bot.rag.sources import RAGSource
 
@@ -44,6 +45,7 @@ class LLMAgent(LLMBot):
         system_instructions_mapping=None,
         rag_backend: "BaseRAGBackend | None" = None,
         rag_sources: "Sequence[RAGSource] | None" = None,
+        history_policy: "BaseHistoryPolicy | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -62,6 +64,31 @@ class LLMAgent(LLMBot):
         # Structured sources for tool naming/scoping; the library channel owns
         # records explicitly (env strings never reach the agents).
         self._rag_sources = rag_sources
+        # History policy for agent loop traces (lazy import to avoid cycles;
+        # None keeps backward compat by defaulting to FinalOnlyPolicy).
+        if history_policy is None:
+            from manolo_bot.ai.history_policy import FinalOnlyPolicy
+
+            history_policy = FinalOnlyPolicy()
+        self.history_policy = history_policy
+
+    def _stage_agent_trace(self, full: list[BaseMessage], sent_len: int) -> BaseMessage:
+        """Apply history policy to the agent tail and stage it for persistence.
+
+        ``full`` is ``result["messages"]`` and ``tail = full[sent_len:]`` is
+        the new loop trace. Persists all selected messages EXCEPT the last
+        one and returns the last: the final message is left for
+        ``LLMBot.postprocess_response`` to persist (it owns the text-only
+        ``AIMessage`` write in main.py flow), avoiding a double-persist.
+        Falls back to ``full[-1]`` when the policy selects nothing.
+        """
+        tail = full[sent_len:]
+        selected = self.history_policy.select(tail)
+        if not selected:
+            return full[-1]
+        for m in selected[:-1]:
+            self.messages_storage.add_message(m)
+        return selected[-1]
 
     def _resolve_rag_tools(self, tools: list[BaseTool]) -> list[BaseTool]:
         """Append global + per-source RAG retriever tools (each skips on MCP clash)."""
@@ -124,11 +151,14 @@ class LLMAgent(LLMBot):
         await self.truncate_chat_context()
 
         config = self._get_langchain_config(chat_id)
-        ai_msg = await self.agent.ainvoke(
-            {"messages": self._base_messages() + self.messages_storage.messages},
+        sent = self._base_messages() + self.messages_storage.messages
+        sent_len = len(sent)
+        result = await self.agent.ainvoke(
+            {"messages": sent},
             config=config,
         )
-        return ai_msg["messages"][-1]
+        full = result["messages"]
+        return self._stage_agent_trace(full, sent_len)
 
     async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
         """
@@ -164,9 +194,12 @@ class LLMAgent(LLMBot):
                 self.messages_storage.add_message(llm_message)
                 await self.truncate_chat_context()
                 config = self._get_langchain_config(chat_id)
-                response = (await self.agent.ainvoke({"messages": self.messages_storage.messages}, config=config))[
-                    "messages"
-                ][-1]
+                # Preserve existing behavior: image path omits _base_messages().
+                sent_messages = self.messages_storage.messages
+                sent_len = len(sent_messages)
+                result = await self.agent.ainvoke({"messages": sent_messages}, config=config)
+                full = result["messages"]
+                response = self._stage_agent_trace(full, sent_len)
         except (aiohttp.ClientError, Exception) as e:
             if isinstance(e, aiohttp.ClientError):
                 logging.error(f"Failed to get image: {image}")
@@ -207,11 +240,11 @@ class LLMAgent(LLMBot):
                 self.messages_storage.add_message(llm_message)
                 await self.truncate_chat_context()
                 config = self._get_langchain_config(chat_id)
-                response = (
-                    await self.agent.ainvoke(
-                        {"messages": self._base_messages() + self.messages_storage.messages}, config=config
-                    )
-                )["messages"][-1]
+                sent = self._base_messages() + self.messages_storage.messages
+                sent_len = len(sent)
+                result = await self.agent.ainvoke({"messages": sent}, config=config)
+                full = result["messages"]
+                response = self._stage_agent_trace(full, sent_len)
         except FileTooLargeError:
             error_prompt = (
                 f"Generate a brief, friendly response in {self.bot_config.preferred_language} "
@@ -257,11 +290,11 @@ class LLMAgent(LLMBot):
             self.messages_storage.add_message(HumanMessage(content=text))
 
             config = self._get_langchain_config(chat_id)
-            response = (
-                await self.agent.ainvoke(
-                    {"messages": self._base_messages() + self.messages_storage.messages}, config=config
-                )
-            )["messages"][-1]
+            sent = self._base_messages() + self.messages_storage.messages
+            sent_len = len(sent)
+            result = await self.agent.ainvoke({"messages": sent}, config=config)
+            full = result["messages"]
+            response = self._stage_agent_trace(full, sent_len)
         except UnsupportedFileError:
             extension = filename.split(".")[-1].lower()
             supported = ", ".join([ext.upper() for ext in DocumentLoader.SUPPORTED_EXTENSIONS])

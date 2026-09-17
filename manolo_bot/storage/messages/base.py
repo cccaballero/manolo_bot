@@ -3,7 +3,14 @@ import json
 from abc import abstractmethod
 from dataclasses import dataclass
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    FunctionMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 
 #: Marker prefix that distinguishes the auto-generated conversation summary
 #: (stored as a leading SystemMessage) from any other system message.
@@ -29,8 +36,90 @@ def convert_json_to_message(json_message: str) -> BaseMessage:
         return HumanMessage(**message)
     elif message_type == "ai":
         return AIMessage(**message)
+    elif message_type == "tool":
+        return ToolMessage(**message)
+    elif message_type == "function":
+        return FunctionMessage(**message)
     else:
         return BaseMessage(**message)
+
+
+def _is_ai_tool_call(message: BaseMessage) -> bool:
+    """True if the message is an AI message carrying tool calls."""
+    return isinstance(message, AIMessage) and bool(getattr(message, "tool_calls", None))
+
+
+def _is_tool_result(message: BaseMessage) -> bool:
+    """True if the message is a tool/function result that pairs with a prior AI message."""
+    return isinstance(message, ToolMessage | FunctionMessage)
+
+
+def expand_tool_block(messages: list[BaseMessage], idx: int) -> tuple[int, int]:
+    """
+    Return the ``(start, end)`` inclusive span of the atomic AI->Tool* block
+    containing ``messages[idx]``.
+
+    A block is an ``AIMessage`` with ``tool_calls`` followed by one or more
+    consecutive tool/function result messages. A lone AI message with tool
+    calls and no results, or an orphan run of tool results with no leading AI
+    message, forms a degenerate block. Any other message maps to ``(idx, idx)``.
+
+    Out-of-range ``idx`` (or an empty list) is passed through as ``(idx, idx)``.
+
+    Truncation/deletion callers must drop (or keep) the whole span atomically:
+    deleting a single message inside a block orphans its pair and causes
+    provider 400 errors on the next turn.
+    """
+    if not messages or idx < 0 or idx >= len(messages):
+        return (idx, idx)
+    message = messages[idx]
+    if _is_ai_tool_call(message):
+        start = idx
+    elif _is_tool_result(message):
+        start = idx
+        while start - 1 >= 0 and _is_tool_result(messages[start - 1]):
+            start -= 1
+        if start - 1 >= 0 and _is_ai_tool_call(messages[start - 1]):
+            start -= 1
+        else:
+            # Orphan tool-result run with no leading AI tool-call message:
+            # the atomic unit is the consecutive run itself.
+            end = idx
+            while end + 1 < len(messages) and _is_tool_result(messages[end + 1]):
+                end += 1
+            return (start, end)
+    else:
+        return (idx, idx)
+    end = start + 1
+    while end < len(messages) and _is_tool_result(messages[end]):
+        end += 1
+    return (start, end - 1)
+
+
+def find_safe_drop_index(messages: list[BaseMessage], candidate: int) -> int:
+    """
+    Map a candidate drop index to a pair-safe drop index.
+
+    If ``candidate`` falls inside an atomic AI->Tool* block (see
+    :func:`expand_tool_block`), the start of that block is returned so the
+    caller can expand to the whole span and drop it atomically instead of
+    splitting the pair. Otherwise ``candidate`` is returned unchanged.
+
+    Intended AI-lane pattern for drop-oldest truncation::
+
+        msgs = storage.messages
+        safe = find_safe_drop_index(msgs, candidate)
+        start, end = expand_tool_block(msgs, safe)
+        for i in range(end, start - 1, -1):
+            storage.delete_message(i)
+
+    (Deleting highest-index-first keeps the lower non-deleted indices valid.)
+    Out-of-range ``candidate`` (or an empty list) is returned unchanged.
+    """
+    if not messages or candidate < 0 or candidate >= len(messages):
+        return candidate
+    start, _ = expand_tool_block(messages, candidate)
+    return start
 
 
 @dataclass

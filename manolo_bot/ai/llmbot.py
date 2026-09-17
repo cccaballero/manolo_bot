@@ -27,7 +27,7 @@ from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError, clean_text
 from manolo_bot.ai.tools import get_tool, get_tools
 from manolo_bot.storage.documents.utils import generate_document_key
-from manolo_bot.storage.messages.base import BaseMessagesStorage
+from manolo_bot.storage.messages.base import BaseMessagesStorage, expand_tool_block, find_safe_drop_index
 
 if TYPE_CHECKING:
     from manolo_bot.ai.mcp_manager import MCPManager
@@ -352,6 +352,22 @@ class LLMBot:
             # The summary (if any) lives at the front; never fold it into itself.
             fold_start = 1 if summary else 0
             fold_end = len(messages) - keep_n
+            # Widen the fold window to atomic AI->Tool* block edges so the
+            # fold boundary never orphans a tool call from its results. This
+            # only adjusts which messages the single summarization call below
+            # covers (no extra LLM calls).
+            if fold_end > fold_start:
+                block_start, _ = expand_tool_block(messages, fold_start)
+                # Never pull the persisted summary (index 0) into the fold.
+                fold_start = max(block_start, 1 if summary else 0)
+                if fold_end < len(messages):
+                    # fold_end is exclusive: when the last folded message's
+                    # block extends into the kept tail, fold the whole block
+                    # so neither side keeps a half-pair. A block starting
+                    # exactly at fold_end is already clean on both sides.
+                    _, block_end = expand_tool_block(messages, fold_end - 1)
+                    if block_end >= fold_end:
+                        fold_end = min(block_end + 1, len(messages))
             if fold_end > fold_start:
                 fold_messages = messages[fold_start:fold_end]
                 prompt = self._build_summary_prompt(fold_messages, summary)
@@ -393,15 +409,29 @@ class LLMBot:
         """
         Drop the oldest messages until the context fits within the token limit.
 
-        The persisted conversation summary (if any) is preserved.
+        The persisted conversation summary (if any) is preserved. Drops are
+        atomic at AI->Tool* block edges: a candidate drop index inside a tool
+        block is widened to the whole span (deleted highest-index-first) so a
+        tool call is never orphaned from its results (provider 400s).
         """
         while self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
             messages = self.messages_storage.messages
-            drop_index = 1 if self.messages_storage.get_summary() is not None else 0
-            if drop_index >= len(messages):
+            candidate = 1 if self.messages_storage.get_summary() is not None else 0
+            if candidate >= len(messages):
                 # Only the summary remains and it still exceeds the limit; stop.
                 break
-            self.messages_storage.delete_message(drop_index)
+            safe = find_safe_drop_index(messages, candidate)
+            # Defensive: never drop the persisted summary at index 0 (a block
+            # containing the candidate cannot include the SystemMessage summary,
+            # but the guard keeps the summary-at-0/1 invariant explicit).
+            if safe < candidate:
+                safe = candidate
+            start, end = expand_tool_block(messages, safe)
+            if start < candidate:
+                start = candidate
+            end = min(end, len(messages) - 1)
+            for i in range(end, start - 1, -1):
+                self.messages_storage.delete_message(i)
             logging.debug(f"Chat context truncated for chat {self.messages_storage.chat_id}")
 
     def _build_summary_prompt(self, messages: list[BaseMessage], summary: str | None) -> str:

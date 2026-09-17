@@ -252,6 +252,13 @@ summarization fails), the bot falls back to dropping the oldest messages.
 `SUMMARY_KEEP_MESSAGES`: How many of the most recent messages to keep intact when summarizing
 (minimum `2`, default: `6`).
 
+#### Agent history policy
+
+`AGENT_HISTORY_POLICY`: Which messages from the agent's tool loop are persisted to chat history
+(`final-only`, `full-trace`). Default is `final-only`, which stores only the final answer.
+`full-trace` also stores intermediate tool calls and results, at the cost of higher token usage.
+Applies to `agent` and `deep_agent` modes.
+
 #### Web Content Retrieval Configuration
 
 `WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout in seconds for HTTP requests when retrieving web content. Default is 10
