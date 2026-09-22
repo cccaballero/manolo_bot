@@ -1665,7 +1665,7 @@ wheels = [
 
 [[package]]
 name = "manolo-bot"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiogram" },
@@ -1743,7 +1743,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=6.12.2" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "redis", specifier = ">=8.1.0" },
+    { name = "redis", specifier = ">=5.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.1.0" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.10.3" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.1.0" },
