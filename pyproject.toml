@@ -33,7 +33,7 @@ dependencies = [
     "python-docx>=1.2.0",
     "langchain-text-splitters>=1.1.0",
     "docx2txt>=0.9",
-    "redis>=8.1.0",
+    "redis>=5.0",
 ]
 
 [project.scripts]
