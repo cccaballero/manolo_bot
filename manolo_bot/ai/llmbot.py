@@ -13,7 +13,7 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.messages.utils import get_buffer_string
+from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
@@ -38,6 +38,62 @@ class FileTooLargeError(ValueError):
     """Exception raised when a file exceeds the allowed size."""
 
     pass
+
+
+# Content-block types that carry binary payloads inline. ``count_tokens_approximately``
+# flat-rates ``image``/``image_url`` blocks (base64 never measured), but every other
+# dict block is measured with ``len(repr(block))`` — a 2MB base64 audio ``data``
+# payload would otherwise count as ~700k phantom tokens.
+_IMAGE_BLOCK_TYPES = frozenset({"image", "image_url"})
+_MEDIA_BLOCK_TYPES = frozenset({"media", "video", "audio", "file_data", "inline_data", "input_audio", "file"})
+_LARGE_PAYLOAD_KEYS = ("data", "file_data", "inline_data", "input_audio")
+_LARGE_PAYLOAD_THRESHOLD = 1000
+_AUDIO_COUNTING_PLACEHOLDER = "[audio content]"
+_MEDIA_COUNTING_PLACEHOLDER = "[media content]"
+
+
+def _sanitize_content_block_for_counting(block: object) -> object:
+    """Return a counting-safe copy of a single message content block.
+
+    Image blocks are returned as-is (the approximate counter flat-rates them).
+    Any other dict block carrying a large binary payload — a ``data`` key (also
+    checked one level deep for ``video``/``file``-style nesting) whose string
+    value exceeds ``_LARGE_PAYLOAD_THRESHOLD`` chars, or a media-shaped block
+    whose ``repr`` is oversized — is replaced with a short text placeholder so
+    ``len(repr(block))`` never sees base64. Small blocks pass through untouched.
+    """
+    if not isinstance(block, dict):
+        return block
+    block_type = block.get("type", "")
+    if block_type in _IMAGE_BLOCK_TYPES:
+        return block
+
+    def _is_large(value: object) -> bool:
+        try:
+            return len(str(value)) > _LARGE_PAYLOAD_THRESHOLD
+        except Exception:
+            return True
+
+    for key in _LARGE_PAYLOAD_KEYS:
+        if key in block and block[key] is not None and _is_large(block[key]):
+            text = _AUDIO_COUNTING_PLACEHOLDER if block_type in {"media", "audio"} else _MEDIA_COUNTING_PLACEHOLDER
+            return {"type": "text", "text": text}
+    # Defensive: binary payload nested one level deep (e.g. {"type": "video",
+    # "source": {"data": ...}}) or media-shaped blocks without a top-level key.
+    for value in block.values():
+        if isinstance(value, dict):
+            for key in _LARGE_PAYLOAD_KEYS:
+                if key in value and value[key] is not None and _is_large(value[key]):
+                    return {"type": "text", "text": _MEDIA_COUNTING_PLACEHOLDER}
+    if block_type in _MEDIA_BLOCK_TYPES:
+        try:
+            oversized = len(repr(block)) > _LARGE_PAYLOAD_THRESHOLD
+        except Exception:
+            oversized = True
+        if oversized:
+            text = _AUDIO_COUNTING_PLACEHOLDER if block_type in {"media", "audio"} else _MEDIA_COUNTING_PLACEHOLDER
+            return {"type": "text", "text": text}
+    return block
 
 
 class LLMBuilder:
@@ -132,6 +188,15 @@ class LLMBot:
 
         if self.bind_tools_on_init and self.bot_config.use_tools:
             self._load_tools()
+
+    @property
+    def _effective_token_limit(self) -> int:
+        """Truncation budget: 85% of the configured max.
+
+        Token counting is approximate, so truncation gates on a headroom-discounted
+        budget. ``context_max_tokens`` stays the user-facing config; no new knobs.
+        """
+        return int(self.bot_config.context_max_tokens * 0.85)
 
     @property
     def system_instructions(self) -> list[BaseMessage]:
@@ -329,7 +394,7 @@ class LLMBot:
         the context under budget. Drop-oldest is only used as a last resort:
         when summarization is disabled, fails, or is exhausted.
         """
-        if self.count_tokens(self.messages_storage.messages) <= self.bot_config.context_max_tokens:
+        if self.count_tokens(self.messages_storage.messages) <= self._effective_token_limit:
             return
 
         if not self.bot_config.context_summarization:
@@ -346,7 +411,7 @@ class LLMBot:
             while (
                 keep_n > 2
                 and self.count_tokens(messages[-keep_n:]) + self.bot_config.summary_max_tokens
-                > self.bot_config.context_max_tokens
+                > self._effective_token_limit
             ):
                 keep_n -= 1
             # The summary (if any) lives at the front; never fold it into itself.
@@ -397,7 +462,7 @@ class LLMBot:
         # summarization is disabled, failed, or was not enough (only the
         # summary and the kept recent messages are left and they still exceed
         # the limit). Never makes LLM calls.
-        if self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
+        if self.count_tokens(self.messages_storage.messages) > self._effective_token_limit:
             logging.warning(
                 f"Context still over the token limit for chat "
                 f"{self.messages_storage.chat_id} after summarization; "
@@ -414,7 +479,7 @@ class LLMBot:
         block is widened to the whole span (deleted highest-index-first) so a
         tool call is never orphaned from its results (provider 400s).
         """
-        while self.count_tokens(self.messages_storage.messages) > self.bot_config.context_max_tokens:
+        while self.count_tokens(self.messages_storage.messages) > self._effective_token_limit:
             messages = self.messages_storage.messages
             candidate = 1 if self.messages_storage.get_summary() is not None else 0
             if candidate >= len(messages):
@@ -876,14 +941,73 @@ class LLMBot:
             return response["images"][0]
         return None
 
+    def _sanitized_messages_for_counting(self, messages: list[BaseMessage]) -> list[BaseMessage]:
+        """Build counting-safe copies of ``messages`` without mutating the originals.
+
+        List-content messages get sanitized block copies; string-content messages
+        are passed through untouched.
+        """
+        sanitized: list[BaseMessage] = []
+        for message in messages:
+            try:
+                content = message.content
+            except Exception:
+                sanitized.append(message)
+                continue
+            if not isinstance(content, list):
+                sanitized.append(message)
+                continue
+            new_content = [_sanitize_content_block_for_counting(block) for block in content]
+            if all(new is old for new, old in zip(new_content, content)):
+                sanitized.append(message)
+                continue
+            try:
+                sanitized.append(message.model_copy(update={"content": new_content}))
+            except Exception:
+                try:
+                    dup = copy.deepcopy(message)
+                    dup.content = new_content
+                    sanitized.append(dup)
+                except Exception:
+                    sanitized.append(message)
+        return sanitized
+
     def count_tokens(self, messages: list[BaseMessage]) -> int:
         """
-        Count the number of tokens in the messages using the LLM provider's native method.
+        Approximate the number of tokens in the messages with a pure-local estimator.
+
+        Uses ``count_tokens_approximately`` on sanitized copies (large media/base64
+        payloads replaced by placeholders), so counting never performs network I/O
+        and never inspects provider state. Bound tools are folded into the estimate
+        only when already available in memory (``self.tools``); otherwise ``None``
+        is passed — counting must never initialize providers or MCP. On unexpected
+        (non-programming) counting failures, falls back to a naive chars/4
+        estimate instead of raising, so truncation can always make progress.
 
         :param messages: List of messages
-        :return: Number of tokens
+        :return: Approximate number of tokens
         """
-        return self.llm.get_num_tokens_from_messages(messages)
+        sanitized = self._sanitized_messages_for_counting(messages)
+        # Only in-memory tools are cheap/safe; never build or fetch tools here.
+        tools = self.tools if self.tools is not None else None
+        try:
+            return count_tokens_approximately(
+                sanitized,
+                chars_per_token=4.0,
+                extra_tokens_per_message=3.0,
+                tokens_per_image=258,
+                tools=tools,
+                use_usage_metadata_scaling=False,
+            )
+        except Exception:
+            logging.warning("Local token counting failed; falling back to naive estimate", exc_info=True)
+            total = 0
+            for message in sanitized:
+                try:
+                    total += len(str(message.content)) // 4 + 3
+                except Exception:
+                    continue
+            return total
 
     async def generate_feedback_message(self, prompt: str, max_length: int = 200, chat_id: int | None = None) -> str:
         """
