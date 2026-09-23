@@ -230,49 +230,51 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("", result)
 
     def test_count_tokens__with_string_content(self):
-        # Arrange
+        # Arrange: pure-local counting (~chars/4 + per-message overhead).
         llm_bot = self.get_basic_llm_bot()
         messages = [HumanMessage(content="Hello"), HumanMessage(content="World")]
-        llm_bot.llm = unittest.mock.MagicMock()
-        llm_bot.llm.get_num_tokens_from_messages = unittest.mock.MagicMock()
-        llm_bot.llm.get_num_tokens_from_messages.return_value = 2
 
         # Act
         result = llm_bot.count_tokens(messages)
 
-        # Assert
-        self.assertEqual(result, 2)
-        llm_bot.llm.get_num_tokens_from_messages.assert_called_once_with(messages)
+        # Assert: local estimate, provider hook never consulted.
+        # ("Hello"/"World" = 5 chars + "human" role = 10 chars -> ceil(10/4)=3 +3 = 6 each.)
+        self.assertEqual(result, 12)
+        llm_bot.llm.get_num_tokens_from_messages.assert_not_called()
 
     def test_count_tokens__with_list_content(self):
-        # Arrange
+        # Arrange: image_url blocks are flat-rated, base64 length must not matter.
         llm_bot = self.get_basic_llm_bot()
-        messages = [
-            HumanMessage(content="Hello"),
-            AIMessage(
-                content=[
-                    {"type": "text", "text": "Test"},
-                    {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}},
-                ]
-            ),
-        ]
-        mock_llm = unittest.mock.MagicMock()
-        llm_bot.llm = mock_llm
-        mock_llm.get_num_tokens_from_messages.return_value = 3
+        small_payload = "a" * 100
+        large_payload = "a" * 100000
+        small_msg = HumanMessage(
+            content=[
+                {"type": "text", "text": "Test"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{small_payload}"}},
+            ]
+        )
+        large_msg = HumanMessage(
+            content=[
+                {"type": "text", "text": "Test"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{large_payload}"}},
+            ]
+        )
 
         # Act
-        result = llm_bot.count_tokens(messages)
+        small_count = llm_bot.count_tokens([small_msg])
+        large_count = llm_bot.count_tokens([large_msg])
 
-        # Assert
-        self.assertEqual(result, 3)
-        mock_llm.get_num_tokens_from_messages.assert_called_once_with(messages)
+        # Assert: identical counts regardless of base64 size; provider never called.
+        self.assertEqual(small_count, large_count)
+        llm_bot.llm.get_num_tokens_from_messages.assert_not_called()
+        # Image block left as-is (no sanitization mutation).
+        self.assertIn(large_payload, large_msg.content[1]["image_url"]["url"])
 
     def test_count_tokens__with_audio_media(self):
-        # Arrange
+        # Arrange: 16000 bytes of audio -> ~21KB base64. The approximate counter
+        # measures unknown blocks with len(repr(block)), which would explode;
+        # sanitization must replace the payload with a placeholder first.
         llm_bot = self.get_basic_llm_bot()
-        # 16000 bytes of audio data.
-        # At 16kbps (2000 bytes/s), this is 8 seconds.
-        # 8 seconds * 32 tokens/s = 256 tokens.
         audio_data = b"a" * 16000
         encoded_audio = base64.b64encode(audio_data).decode("utf-8")
 
@@ -284,16 +286,44 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
                 ]
             )
         ]
-        mock_llm = unittest.mock.MagicMock()
-        llm_bot.llm = mock_llm
-        mock_llm.get_num_tokens_from_messages.return_value = 1
 
         # Act
         result = llm_bot.count_tokens(messages)
 
-        # Assert
-        self.assertEqual(result, 1)
-        mock_llm.get_num_tokens_from_messages.assert_called_once_with(messages)
+        # Assert: no phantom-token explosion, provider never called, original kept.
+        self.assertLess(result, 1000)
+        llm_bot.llm.get_num_tokens_from_messages.assert_not_called()
+        self.assertEqual(messages[0].content[1]["data"], encoded_audio)
+
+    def test_count_tokens__sanitizes_large_data_blocks_without_mutating(self):
+        # Arrange: generalized data/video/file_data/inline_data shapes.
+        llm_bot = self.get_basic_llm_bot()
+        big = "x" * 5000
+        messages = [
+            HumanMessage(content=[{"type": "video", "data": big}]),
+            HumanMessage(content=[{"type": "file", "file_data": big}]),
+            HumanMessage(content=[{"type": "custom", "inline_data": big}]),
+            HumanMessage(content=[{"type": "video", "source": {"data": big}}]),
+        ]
+
+        # Act
+        result = llm_bot.count_tokens(messages)
+
+        # Assert: all placeholders, tiny total; stored messages untouched.
+        self.assertLess(result, 1000)
+        llm_bot.llm.get_num_tokens_from_messages.assert_not_called()
+        self.assertEqual(messages[0].content[0]["data"], big)
+        self.assertEqual(messages[1].content[0]["file_data"], big)
+        self.assertEqual(messages[2].content[0]["inline_data"], big)
+        self.assertEqual(messages[3].content[0]["source"]["data"], big)
+
+    def test_effective_token_limit__is_85_percent_of_configured_max(self):
+        # Arrange
+        bot, _ = self._make_summarization_bot([HumanMessage(content="hi")], context_max_tokens=800)
+
+        # Act / Assert: user-facing config unchanged, truncation gates at 85%.
+        self.assertEqual(bot.bot_config.context_max_tokens, 800)
+        self.assertEqual(bot._effective_token_limit, 680)
 
     async def test_generate_feedback_message__success_message(self):
         # Arrange
@@ -446,8 +476,12 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(bot.system_instructions[0], bot._system_instructions[0])
 
     def _make_summarization_bot(self, messages, *, context_max_tokens=800, summarization=True, summary_max_tokens=512):
-        """Build an LLMBot with a real MemoryMessagesStorage and a token-counting
-        mock that forces truncation (100 tokens per message)."""
+        """Build an LLMBot with a real MemoryMessagesStorage and a local
+        token-count mock that forces truncation (100 tokens per message).
+
+        ``LLMBot.count_tokens`` is now pure-local, so truncation tests mock it
+        directly on the instance instead of the (dead) provider
+        ``llm.get_num_tokens_from_messages`` hook."""
         storage = MemoryMessagesStorage(bot_uuid="test-bot", chat_id=424242)
         for msg in messages:
             storage.add_message(msg)
@@ -455,8 +489,6 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_llm = MagicMock()
         mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="SUMMARIZED CONTENT"))
         mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.get_num_tokens = MagicMock(return_value=10)
-        mock_llm.get_num_tokens_from_messages = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
 
         bot_config = BotConfig(
             bot_uuid="test-bot",
@@ -470,6 +502,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
             summary_keep_messages=6,
         )
         bot = LLMBot(mock_llm, bot_config, [SystemMessage(content="You are a helpful assistant")], storage)
+        bot.count_tokens = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
         return bot, storage
 
     async def test_truncate_chat_context_summarizes_oldest_messages(self):
@@ -548,8 +581,9 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Act: must not raise.
         await bot.truncate_chat_context()
 
-        # Assert: dropped oldest until under budget (1000 -> 800 = 8 messages).
-        self.assertEqual(len(storage.messages), 8)
+        # Assert: dropped oldest until under the effective budget
+        # (int(800 * 0.85) = 680, 1000 -> 680 = 6 messages).
+        self.assertEqual(len(storage.messages), 6)
         self.assertIsNone(storage.get_summary())
 
     async def test_truncate_chat_context_disabled_drops_oldest(self):
@@ -560,8 +594,8 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         # Act
         await bot.truncate_chat_context()
 
-        # Assert: dropped oldest until under budget.
-        self.assertEqual(len(storage.messages), 8)
+        # Assert: dropped oldest until under the effective budget (6 messages).
+        self.assertEqual(len(storage.messages), 6)
         bot.llm.ainvoke.assert_not_awaited()
 
     async def test_truncate_chat_context_incremental_summary(self):
@@ -593,7 +627,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
                 return 10000  # summary far over the 512 budget
             return 100 * len(msgs)
 
-        bot.llm.get_num_tokens_from_messages = MagicMock(side_effect=token_count)
+        bot.count_tokens = MagicMock(side_effect=token_count)
         bot.llm.ainvoke = AsyncMock(return_value=AIMessage(content="X" * 1000))
 
         # Act

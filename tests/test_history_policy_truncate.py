@@ -62,7 +62,6 @@ def _make_bot(messages, *, context_max_tokens, summarization, llm=None):
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="SUMMARIZED CONTENT"))
         llm.bind_tools.return_value = llm
     llm.get_num_tokens = MagicMock(return_value=10)
-    llm.get_num_tokens_from_messages = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
     bot_config = BotConfig(
         bot_uuid="test-bot",
         bot_name="TestBot",
@@ -75,6 +74,9 @@ def _make_bot(messages, *, context_max_tokens, summarization, llm=None):
         summary_keep_messages=6,
     )
     bot = LLMBot(llm, bot_config, [SystemMessage(content="You are a helpful assistant")], storage)
+    # LLMBot.count_tokens is pure-local now; the provider hook above is dead.
+    # Mock the local counter directly (100 tokens per message) to force overflow.
+    bot.count_tokens = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
     return bot, storage
 
 
@@ -115,7 +117,6 @@ class TestDropOldestAtomic(unittest.TestCase):
             storage.add_message(msg)
         llm = MagicMock()
         llm.get_num_tokens = MagicMock(return_value=10)
-        llm.get_num_tokens_from_messages = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
         bot_config = BotConfig(
             bot_uuid="test-bot",
             bot_name="TestBot",
@@ -126,6 +127,7 @@ class TestDropOldestAtomic(unittest.TestCase):
             context_summarization=False,
         )
         bot = LLMBot(llm, bot_config, [SystemMessage(content="sys")], storage)
+        bot.count_tokens = MagicMock(side_effect=lambda msgs: 100 * len(msgs))
 
         _run(bot.truncate_chat_context())
 
@@ -136,9 +138,10 @@ class TestDropOldestAtomic(unittest.TestCase):
 
 class TestFoldPathAtomic(unittest.TestCase):
     def test_fold_expands_to_block_edges_single_call(self):
-        # 12 messages; limit 850 forces keep_n=3 (300+512<=850<400+512), so the
-        # naive fold_end=9 would split the AI(8)->Tool(9) block. The fix folds
-        # the whole block: exactly one summarization call, no orphans.
+        # 12 messages; the effective budget (int(850 * 0.85) = 722) forces
+        # keep_n down to the floor of 2 (200+512<=722), so the naive fold_end=10
+        # already covers the AI(8)->Tool(9) block. Exactly one summarization
+        # call, no orphans.
         messages = [HumanMessage(content=f"message-{i}") for i in range(8)]
         messages += [_ai_tool_call("call_9"), _tool_result("call_9", content="r9")]
         messages += [HumanMessage(content="message-10"), HumanMessage(content="message-11")]
