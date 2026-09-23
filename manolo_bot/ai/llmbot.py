@@ -40,62 +40,6 @@ class FileTooLargeError(ValueError):
     pass
 
 
-# Content-block types that carry binary payloads inline. ``count_tokens_approximately``
-# flat-rates ``image``/``image_url`` blocks (base64 never measured), but every other
-# dict block is measured with ``len(repr(block))`` — a 2MB base64 audio ``data``
-# payload would otherwise count as ~700k phantom tokens.
-_IMAGE_BLOCK_TYPES = frozenset({"image", "image_url"})
-_MEDIA_BLOCK_TYPES = frozenset({"media", "video", "audio", "file_data", "inline_data", "input_audio", "file"})
-_LARGE_PAYLOAD_KEYS = ("data", "file_data", "inline_data", "input_audio")
-_LARGE_PAYLOAD_THRESHOLD = 1000
-_AUDIO_COUNTING_PLACEHOLDER = "[audio content]"
-_MEDIA_COUNTING_PLACEHOLDER = "[media content]"
-
-
-def _sanitize_content_block_for_counting(block: object) -> object:
-    """Return a counting-safe copy of a single message content block.
-
-    Image blocks are returned as-is (the approximate counter flat-rates them).
-    Any other dict block carrying a large binary payload — a ``data`` key (also
-    checked one level deep for ``video``/``file``-style nesting) whose string
-    value exceeds ``_LARGE_PAYLOAD_THRESHOLD`` chars, or a media-shaped block
-    whose ``repr`` is oversized — is replaced with a short text placeholder so
-    ``len(repr(block))`` never sees base64. Small blocks pass through untouched.
-    """
-    if not isinstance(block, dict):
-        return block
-    block_type = block.get("type", "")
-    if block_type in _IMAGE_BLOCK_TYPES:
-        return block
-
-    def _is_large(value: object) -> bool:
-        try:
-            return len(str(value)) > _LARGE_PAYLOAD_THRESHOLD
-        except Exception:
-            return True
-
-    for key in _LARGE_PAYLOAD_KEYS:
-        if key in block and block[key] is not None and _is_large(block[key]):
-            text = _AUDIO_COUNTING_PLACEHOLDER if block_type in {"media", "audio"} else _MEDIA_COUNTING_PLACEHOLDER
-            return {"type": "text", "text": text}
-    # Defensive: binary payload nested one level deep (e.g. {"type": "video",
-    # "source": {"data": ...}}) or media-shaped blocks without a top-level key.
-    for value in block.values():
-        if isinstance(value, dict):
-            for key in _LARGE_PAYLOAD_KEYS:
-                if key in value and value[key] is not None and _is_large(value[key]):
-                    return {"type": "text", "text": _MEDIA_COUNTING_PLACEHOLDER}
-    if block_type in _MEDIA_BLOCK_TYPES:
-        try:
-            oversized = len(repr(block)) > _LARGE_PAYLOAD_THRESHOLD
-        except Exception:
-            oversized = True
-        if oversized:
-            text = _AUDIO_COUNTING_PLACEHOLDER if block_type in {"media", "audio"} else _MEDIA_COUNTING_PLACEHOLDER
-            return {"type": "text", "text": text}
-    return block
-
-
 class LLMBuilder:
     """Factory class for creating LangChain Chat Model instances."""
 
@@ -163,6 +107,69 @@ class LLMBot:
     """
 
     bind_tools_on_init = True
+
+    # Content-block types that carry binary payloads inline. ``count_tokens_approximately``
+    # flat-rates ``image``/``image_url`` blocks (base64 never measured), but every other
+    # dict block is measured with ``len(repr(block))`` — a 2MB base64 audio ``data``
+    # payload would otherwise count as ~700k phantom tokens.
+    _IMAGE_BLOCK_TYPES = frozenset({"image", "image_url"})
+    _MEDIA_BLOCK_TYPES = frozenset({"media", "video", "audio", "file_data", "inline_data", "input_audio", "file"})
+    _LARGE_PAYLOAD_KEYS = ("data", "file_data", "inline_data", "input_audio")
+    _LARGE_PAYLOAD_THRESHOLD = 1000
+    _AUDIO_COUNTING_PLACEHOLDER = "[audio content]"
+    _MEDIA_COUNTING_PLACEHOLDER = "[media content]"
+
+    @staticmethod
+    def _sanitize_content_block_for_counting(block: object) -> object:
+        """Return a counting-safe copy of a single message content block.
+
+        Image blocks are returned as-is (the approximate counter flat-rates them).
+        Any other dict block carrying a large binary payload — a ``data`` key (also
+        checked one level deep for ``video``/``file``-style nesting) whose string
+        value exceeds ``_LARGE_PAYLOAD_THRESHOLD`` chars, or a media-shaped block
+        whose ``repr`` is oversized — is replaced with a short text placeholder so
+        ``len(repr(block))`` never sees base64. Small blocks pass through untouched.
+        """
+        if not isinstance(block, dict):
+            return block
+        block_type = block.get("type", "")
+        if block_type in LLMBot._IMAGE_BLOCK_TYPES:
+            return block
+
+        def _is_large(value: object) -> bool:
+            try:
+                return len(str(value)) > LLMBot._LARGE_PAYLOAD_THRESHOLD
+            except Exception:
+                return True
+
+        for key in LLMBot._LARGE_PAYLOAD_KEYS:
+            if key in block and block[key] is not None and _is_large(block[key]):
+                text = (
+                    LLMBot._AUDIO_COUNTING_PLACEHOLDER
+                    if block_type in {"media", "audio"}
+                    else LLMBot._MEDIA_COUNTING_PLACEHOLDER
+                )
+                return {"type": "text", "text": text}
+        # Defensive: binary payload nested one level deep (e.g. {"type": "video",
+        # "source": {"data": ...}}) or media-shaped blocks without a top-level key.
+        for value in block.values():
+            if isinstance(value, dict):
+                for key in LLMBot._LARGE_PAYLOAD_KEYS:
+                    if key in value and value[key] is not None and _is_large(value[key]):
+                        return {"type": "text", "text": LLMBot._MEDIA_COUNTING_PLACEHOLDER}
+        if block_type in LLMBot._MEDIA_BLOCK_TYPES:
+            try:
+                oversized = len(repr(block)) > LLMBot._LARGE_PAYLOAD_THRESHOLD
+            except Exception:
+                oversized = True
+            if oversized:
+                text = (
+                    LLMBot._AUDIO_COUNTING_PLACEHOLDER
+                    if block_type in {"media", "audio"}
+                    else LLMBot._MEDIA_COUNTING_PLACEHOLDER
+                )
+                return {"type": "text", "text": text}
+        return block
 
     def __init__(
         self,
@@ -957,7 +964,7 @@ class LLMBot:
             if not isinstance(content, list):
                 sanitized.append(message)
                 continue
-            new_content = [_sanitize_content_block_for_counting(block) for block in content]
+            new_content = [self._sanitize_content_block_for_counting(block) for block in content]
             if all(new is old for new, old in zip(new_content, content)):
                 sanitized.append(message)
                 continue
