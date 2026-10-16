@@ -154,6 +154,21 @@ OpenAI, `nomic-embed-text` for Ollama). Set this when your endpoint does not hos
 the default — e.g. an OpenAI-compatible server (LM Studio, vLLM) with its own
 embedding model.
 
+`RAG_EMBEDDING_PROVIDER`: Optional embeddings provider, decoupled from the chat
+provider (`google`, `openai`, `ollama`). When unset (default: auto), embeddings
+reuse the LLM provider and credentials — fully backwards compatible. When set,
+the matching `RAG_*` settings are used instead:
+
+- `RAG_GOOGLE_API_KEY` / `RAG_OPENAI_API_KEY`: API keys for Google/OpenAI
+  embeddings (defaults: the corresponding LLM key when the provider is auto).
+- `RAG_OPENAI_API_BASE_URL`: Base URL for an OpenAI-compatible embeddings
+  endpoint (LM Studio, vLLM, Ollama's OpenAI-compatible API).
+- `RAG_OLLAMA_MODEL`: Ollama embedding model (default: `nomic-embed-text`).
+
+For example, chat on Gemini while embedding with a local OpenAI-compatible server:
+`RAG_EMBEDDING_PROVIDER=openai`, `RAG_OPENAI_API_BASE_URL=http://localhost:1234/v1`,
+`RAG_EMBEDDING_MODEL=text-embedding-3-small`.
+
 Ingest is per-file isolated: one bad file can't kill the index — failures are logged
 with a warning and retried on the next run, while good files are indexed normally.
 Files yielding no content warn loudly and are retried (never silently kept).

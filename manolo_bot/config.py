@@ -132,6 +132,13 @@ class Config(EnvModel):
     rag_chunk_size = IntegerField("RAG_CHUNK_SIZE", default=1000)
     rag_chunk_overlap = IntegerField("RAG_CHUNK_OVERLAP", default=200)
     rag_reindex = StringField("RAG_REINDEX", default="auto", allowed_values=["auto", "always", "never"])
+    rag_embedding_provider = StringField(
+        "RAG_EMBEDDING_PROVIDER", default="", allowed_values=["", "google", "openai", "ollama"]
+    )
+    rag_google_api_key = StringField("RAG_GOOGLE_API_KEY", default="")
+    rag_openai_api_key = StringField("RAG_OPENAI_API_KEY", default="")
+    rag_openai_api_base_url = StringField("RAG_OPENAI_API_BASE_URL", default="")
+    rag_ollama_model = StringField("RAG_OLLAMA_MODEL", default="")
     rag_embedding_model = StringField("RAG_EMBEDDING_MODEL", default="")
     rag_max_file_bytes = IntegerField("RAG_MAX_FILE_BYTES", default=10 * 1024 * 1024)  # 10MB
 

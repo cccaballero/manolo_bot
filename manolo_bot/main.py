@@ -12,7 +12,7 @@ from aiogram.types import Message
 from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
-from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
 from manolo_bot.ai.history_policy import BaseHistoryPolicy, FinalOnlyPolicy, FullTracePolicy
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
@@ -218,6 +218,76 @@ bot_config = BotConfig(
 )
 
 
+def _resolve_embeddings_config() -> EmbeddingsConfig:
+    """Build EmbeddingsConfig from env, falling back to LLM provider.
+
+    RAG-specific ``RAG_*`` embedding settings take precedence; when none are
+    set, the LLM provider credentials are mirrored (backward compatibility:
+    RAG used to piggyback on the chat LLM provider).
+    """
+    # If any new RAG_* embedding provider fields are set, use them.
+    # Explicit provider takes precedence.
+    provider = (config.rag_embedding_provider or "").strip().lower()
+    has_rag_specific = bool(
+        provider
+        or config.rag_google_api_key
+        or config.rag_openai_api_key
+        or config.rag_openai_api_base_url
+        or config.rag_ollama_model
+    )
+    if has_rag_specific:
+        if provider:
+            # Explicit provider: allow reuse of LLM credentials for that
+            # provider when a RAG-specific key is not set (e.g.
+            # LLM on Google, RAG_EMBEDDING_PROVIDER=google without duplicating
+            # GOOGLE_API_KEY; or provider=openai with key-less local server).
+            if provider == "google":
+                google_api_key = config.rag_google_api_key or llm_config.google_api_key
+                openai_api_key = config.rag_openai_api_key or ""
+                openai_api_base_url = config.rag_openai_api_base_url or ""
+                ollama_model = config.rag_ollama_model or ""
+            elif provider == "openai":
+                google_api_key = config.rag_google_api_key or ""
+                openai_api_key = config.rag_openai_api_key or llm_config.openai_api_key
+                openai_api_base_url = config.rag_openai_api_base_url or llm_config.openai_api_base_url
+                ollama_model = config.rag_ollama_model or ""
+            elif provider == "ollama":
+                google_api_key = config.rag_google_api_key or ""
+                openai_api_key = config.rag_openai_api_key or ""
+                openai_api_base_url = config.rag_openai_api_base_url or ""
+                ollama_model = config.rag_ollama_model or llm_config.ollama_model
+            else:
+                # Unknown provider — let build_embeddings raise.
+                google_api_key = config.rag_google_api_key or ""
+                openai_api_key = config.rag_openai_api_key or ""
+                openai_api_base_url = config.rag_openai_api_base_url or ""
+                ollama_model = config.rag_ollama_model or ""
+        else:
+            # Auto with RAG keys: use ONLY RAG credentials so a RAG
+            # OpenAI/Ollama setting is not shadowed by an LLM Google key.
+            google_api_key = config.rag_google_api_key or ""
+            openai_api_key = config.rag_openai_api_key or ""
+            openai_api_base_url = config.rag_openai_api_base_url or ""
+            ollama_model = config.rag_ollama_model or ""
+        return EmbeddingsConfig(
+            provider=provider,
+            google_api_key=google_api_key,
+            openai_api_key=openai_api_key,
+            openai_api_base_url=openai_api_base_url,
+            ollama_model=ollama_model,
+            model=config.rag_embedding_model or "",
+        )
+    # Fallback: mirror LLM provider into EmbeddingsConfig (BC).
+    return EmbeddingsConfig(
+        provider="",
+        google_api_key=llm_config.google_api_key,
+        openai_api_key=llm_config.openai_api_key,
+        openai_api_base_url=llm_config.openai_api_base_url,
+        ollama_model=llm_config.ollama_model,
+        model=config.rag_embedding_model or "",
+    )
+
+
 def _resolve_history_policy() -> BaseHistoryPolicy:
     """Map the ``BotConfig.history_policy`` string to a policy instance.
 
@@ -265,7 +335,9 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
                 from manolo_bot.rag.embeddings import build_embeddings
                 from manolo_bot.rag.factory import build_rag_backend
 
-                embeddings = build_embeddings(llm_config, model=bot_config.rag_embedding_model or None)
+                # RAG embeddings are decoupled from the chat LLM: RAG_* settings win,
+                # falling back to the LLM provider for backwards compatibility.
+                embeddings = build_embeddings(embeddings_config=_resolve_embeddings_config())
                 # RAG reuses REDIS_URL; RAG_BACKEND is independent of STORAGE_TYPE.
                 backend = build_rag_backend(
                     bot_config.rag_backend,

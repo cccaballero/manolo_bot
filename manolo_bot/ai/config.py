@@ -87,3 +87,20 @@ class LLMConfig:
     rate_limiter_requests_per_second: float = 0.25
     rate_limiter_check_every_n_seconds: float = 0.1
     rate_limiter_max_bucket_size: int = 10
+
+
+@dataclass
+class EmbeddingsConfig:
+    """Embeddings provider configuration.
+
+    ``provider`` selects the embeddings backend: an empty string means auto
+    (fall back to the LLM provider), otherwise one of ``"google"``,
+    ``"openai"`` or ``"ollama"``.
+    """
+
+    provider: str = ""
+    google_api_key: str = ""
+    openai_api_key: str = ""
+    openai_api_base_url: str = ""
+    ollama_model: str = ""
+    model: str = ""

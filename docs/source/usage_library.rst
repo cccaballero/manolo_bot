@@ -598,7 +598,7 @@ prompt so the agent knows when to use them.
 .. code-block:: python
 
    import asyncio
-   from manolo_bot.ai.config import BotConfig, LLMConfig
+   from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
    from manolo_bot.ai.llmagent import LLMAgent
    from manolo_bot.ai.llmbot import LLMBuilder
    from manolo_bot.rag.embeddings import build_embeddings
@@ -632,7 +632,10 @@ prompt so the agent knows when to use them.
            RAGSource("docs/handbook.md", "Employee handbook, covering policies and benefits"),
            RAGSource("docs/policies/", "Company policies"),
        ]
-       backend = build_rag_backend("in_memory", build_embeddings(llm_config), bot_uuid="my-bot")
+       # Embeddings are configured independently of the chat provider:
+       # provider="google"/"openai"/"ollama", or "" to auto-probe credentials.
+       emb_config = EmbeddingsConfig(provider="google", google_api_key="your_api_key")
+       backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
        await backend.build_or_load()
        await backend.ingest(sources)
 
@@ -650,6 +653,27 @@ prompt so the agent knows when to use them.
 
    if __name__ == "__main__":
        asyncio.run(main())
+
+``build_embeddings(llm_config)`` is deprecated but still supported for backwards
+compatibility: it derives the embeddings provider from the ``LLMConfig`` exactly as
+before, so existing code keeps working unchanged. To decouple embeddings from the
+chat provider, build an explicit ``EmbeddingsConfig`` — for example, chat on Gemini
+while embedding with a local Ollama or a local OpenAI-compatible endpoint:
+
+.. code-block:: python
+
+   from manolo_bot.ai.config import EmbeddingsConfig
+   # Independent embeddings: chat on Gemini, embeddings on local Ollama
+   emb_config = EmbeddingsConfig(provider="ollama", ollama_model="nomic-embed-text", model="nomic-embed-text")
+   backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
+   # Or via OpenAI-compatible endpoint:
+   emb_config = EmbeddingsConfig(provider="openai", openai_api_base_url="http://localhost:1234/v1", model="text-embedding-3-small")
+   backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
+
+An empty ``provider`` means auto: the credentials inside the ``EmbeddingsConfig``
+are probed in order google -> openai -> ollama, and a missing OpenAI key falls back
+to the ``OPENAI_API_KEY`` environment variable or the ``"not-needed"`` placeholder,
+so key-less local servers (LM Studio, vLLM, Ollama) work out of the box.
 
 The backend doubles as a small document API: ``query()`` retrieves passages without an
 agent, ``remove()`` drops documents, and ``list_sources()`` reports what is indexed.
