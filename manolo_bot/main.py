@@ -12,7 +12,7 @@ from aiogram.types import Message
 from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
-from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
 from manolo_bot.ai.history_policy import BaseHistoryPolicy, FinalOnlyPolicy, FullTracePolicy
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
@@ -204,18 +204,38 @@ bot_config = BotConfig(
     sdapi_negative_prompt=config.sdapi_negative_prompt,
     max_document_size=config.max_document_size,
     max_voice_size=config.max_voice_size,
-    rag_enabled=config.rag_enabled,
-    rag_backend=config.rag_backend,
-    rag_sources=config.rag_sources,
-    rag_store_path=config.rag_store_path,
-    rag_top_k=config.rag_top_k,
-    rag_chunk_size=config.rag_chunk_size,
-    rag_chunk_overlap=config.rag_chunk_overlap,
-    rag_reindex=config.rag_reindex,
-    rag_embedding_model=config.rag_embedding_model,
-    rag_max_file_bytes=config.rag_max_file_bytes,
     history_policy=config.agent_history_policy,
 )
+
+
+def _resolve_embeddings_config() -> EmbeddingsConfig | None:
+    """Resolve embeddings settings from the RAG_* env group.
+
+    Mirrors the LLM provider pattern: there is no provider variable — the
+    provider is inferred from which settings are present (google -> openai ->
+    ollama). Returns ``None`` when no RAG_* embedding setting is configured;
+    the caller then falls back to the LLM provider (backwards compatibility).
+
+    When a provider group is selected, missing credentials fall back to the
+    LLM credentials of the same provider (e.g. RAG_GOOGLE_EMBEDDING_MODEL
+    alone with GOOGLE_API_KEY set).
+    """
+    if config.rag_google_api_key or config.rag_google_embedding_model:
+        return EmbeddingsConfig(
+            google_api_key=config.rag_google_api_key or llm_config.google_api_key,
+            google_embedding_model=config.rag_google_embedding_model,
+        )
+    if config.rag_openai_api_key or config.rag_openai_api_base_url or config.rag_openai_embedding_model:
+        return EmbeddingsConfig(
+            openai_api_key=config.rag_openai_api_key or llm_config.openai_api_key,
+            openai_api_base_url=config.rag_openai_api_base_url or llm_config.openai_api_base_url,
+            openai_embedding_model=config.rag_openai_embedding_model,
+        )
+    if config.rag_ollama_model:
+        # NOTE: no fallback to the chat OLLAMA_MODEL — it is a chat model,
+        # not an embedding model.
+        return EmbeddingsConfig(ollama_model=config.rag_ollama_model)
+    return None
 
 
 def _resolve_history_policy() -> BaseHistoryPolicy:
@@ -254,28 +274,36 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
     retries ingestion.
     """
     global _rag_backend_instance
-    if not bot_config.rag_enabled or not bot_config.rag_sources:
+    if not config.rag_enabled or not config.rag_sources:
         return None, []
     from manolo_bot.rag.sources import parse_sources
 
-    records = parse_sources(bot_config.rag_sources)
+    records = parse_sources(config.rag_sources)
     async with _rag_backend_lock:
         if _rag_backend_instance is None:
             try:
                 from manolo_bot.rag.embeddings import build_embeddings
                 from manolo_bot.rag.factory import build_rag_backend
 
-                embeddings = build_embeddings(llm_config, model=bot_config.rag_embedding_model or None)
+                # RAG embeddings are decoupled from the chat LLM: RAG_* settings win,
+                # falling back to the LLM provider for backwards compatibility.
+                rag_embeddings_config = _resolve_embeddings_config()
+                if rag_embeddings_config is not None:
+                    # Provider inferred from the RAG_* group.
+                    embeddings = build_embeddings(embeddings_config=rag_embeddings_config)
+                else:
+                    # No RAG_* embedding settings: reuse the LLM provider (BC).
+                    embeddings = build_embeddings(llm_config)
                 # RAG reuses REDIS_URL; RAG_BACKEND is independent of STORAGE_TYPE.
                 backend = build_rag_backend(
-                    bot_config.rag_backend,
+                    config.rag_backend,
                     embeddings,
-                    bot_uuid=bot_config.bot_uuid,
-                    store_path=bot_config.rag_store_path,
-                    chunk_size=bot_config.rag_chunk_size,
-                    chunk_overlap=bot_config.rag_chunk_overlap,
-                    top_k=bot_config.rag_top_k,
-                    max_file_bytes=bot_config.rag_max_file_bytes or None,
+                    bot_uuid=config.bot_uuid,
+                    store_path=config.rag_store_path,
+                    chunk_size=config.rag_chunk_size,
+                    chunk_overlap=config.rag_chunk_overlap,
+                    top_k=config.rag_top_k,
+                    max_file_bytes=config.rag_max_file_bytes or None,
                     redis_url=config.redis_url,
                 )
                 vectors_loaded = await backend.build_or_load()
@@ -283,15 +311,15 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
                 logging.warning(f"RAG initialization failed, continuing without RAG: {e}", exc_info=True)
                 return None, []
             _rag_backend_instance = backend
-            if bot_config.rag_reindex == "never" and not vectors_loaded:
+            if config.rag_reindex == "never" and not vectors_loaded:
                 logging.warning("RAG_REINDEX=never with no persisted vectors: RAG will be empty")
         backend = _rag_backend_instance
         try:
-            if bot_config.rag_reindex == "always":
+            if config.rag_reindex == "always":
                 # Clear first: re-ingesting without clearing duplicates vectors.
                 await backend.clear()
                 to_ingest = records
-            elif bot_config.rag_reindex == "never":
+            elif config.rag_reindex == "never":
                 to_ingest = []
             else:
                 # auto: mirror the configured sources — drop whatever is indexed

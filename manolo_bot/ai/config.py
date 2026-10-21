@@ -1,5 +1,3 @@
-import os
-import tempfile
 from dataclasses import dataclass, field
 
 
@@ -62,18 +60,6 @@ class BotConfig:
     sdapi_params: dict = field(default_factory=dict)
     sdapi_negative_prompt: str = ""
 
-    # RAG configuration (agent/deep_agent modes only; LLMBot ignores these)
-    rag_enabled: bool = False
-    rag_backend: str = "in_memory"
-    rag_sources: list = field(default_factory=list)
-    rag_store_path: str = os.path.join(tempfile.gettempdir(), "manolo_bot", "rag")
-    rag_top_k: int = 5
-    rag_chunk_size: int = 1000
-    rag_chunk_overlap: int = 200
-    rag_reindex: str = "auto"
-    rag_embedding_model: str = ""
-    rag_max_file_bytes: int = 10 * 1024 * 1024  # 10MB; 0 = unlimited
-
 
 @dataclass
 class LLMConfig:
@@ -87,3 +73,21 @@ class LLMConfig:
     rate_limiter_requests_per_second: float = 0.25
     rate_limiter_check_every_n_seconds: float = 0.1
     rate_limiter_max_bucket_size: int = 10
+
+
+@dataclass
+class EmbeddingsConfig:
+    """Embeddings provider configuration.
+
+    Mirrors :class:`LLMConfig` for the RAG knowledge base: there is no
+    provider field — the provider is inferred from which settings are present
+    (google -> openai -> ollama). Per-provider model fields follow the
+    ``*_API_MODEL`` / ``OLLAMA_MODEL`` pattern of the chat config.
+    """
+
+    google_api_key: str = ""
+    google_embedding_model: str = ""
+    openai_api_key: str = ""
+    openai_api_base_url: str = ""
+    openai_embedding_model: str = ""
+    ollama_model: str = ""
