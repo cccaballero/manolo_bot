@@ -166,15 +166,20 @@ gracefully (the bot keeps running without RAG).
 * `RAG_TOP_K`: Number of chunks retrieved per query (default: `5`).
 * `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: Chunking settings (defaults: `1000` / `200`).
 * `RAG_REINDEX`: When to ingest sources (`auto`, `always`, `never`; default: `auto`). Only new or changed files are ingested; files removed from the configuration are pruned from the index automatically; the ephemeral `in_memory` backend still re-ingests everything on each restart since vectors are not persisted.
-* `RAG_EMBEDDING_MODEL`: Optional embedding model override for the configured provider (defaults: `models/gemini-embedding-001` for Google, `text-embedding-ada-002` for OpenAI, `nomic-embed-text` for Ollama). Set this when your endpoint does not host the default — e.g. an OpenAI-compatible server (LM Studio, vLLM) with its own embedding model.
-* `RAG_EMBEDDING_PROVIDER`: Optional embeddings provider, decoupled from the chat provider (`google`, `openai`, `ollama`). When unset (default: auto), embeddings reuse the configured LLM provider and credentials — fully backwards compatible. When set, the provider-specific settings below are used instead.
-* `RAG_GOOGLE_API_KEY`: Google API key for embeddings (defaults to `GOOGLE_API_KEY` when the embeddings provider is auto).
-* `RAG_OPENAI_API_KEY`: OpenAI API key for embeddings (defaults to `OPENAI_API_KEY` when the embeddings provider is auto). Optional for key-less OpenAI-compatible servers.
-* `RAG_OPENAI_API_BASE_URL`: Base URL of an OpenAI-compatible embeddings endpoint (e.g. LM Studio, vLLM, or Ollama's OpenAI-compatible API).
-* `RAG_OLLAMA_MODEL`: Ollama embedding model (default: `nomic-embed-text`).
+
+Embeddings can use a different provider than the chat model. The `RAG_*` settings mirror the chat provider settings — set the ones for the provider you want to use. If no embedding setting is configured, embeddings use the chat model's provider and credentials.
+
+* `RAG_GOOGLE_API_KEY`: Google API key for embeddings (counterpart of `GOOGLE_API_KEY`; falls back to it when unset).
+* `RAG_GOOGLE_EMBEDDING_MODEL`: Google embedding model, counterpart of `GOOGLE_API_MODEL` (default: `models/gemini-embedding-2`).
+* `RAG_OPENAI_API_KEY`: OpenAI API key for embeddings, counterpart of `OPENAI_API_KEY` (falls back to it when unset; optional for key-less OpenAI-compatible servers).
+* `RAG_OPENAI_API_BASE_URL`: Base URL of an OpenAI-compatible embeddings endpoint, counterpart of `OPENAI_API_BASE_URL` (e.g. LM Studio, vLLM, or Ollama's OpenAI-compatible API).
+* `RAG_OPENAI_EMBEDDING_MODEL`: OpenAI embedding model, counterpart of `OPENAI_API_MODEL` (default: `text-embedding-3-small`).
+* `RAG_OLLAMA_MODEL`: Ollama embedding model, counterpart of `OLLAMA_MODEL` (default: `embeddinggemma`).
 * `RAG_MAX_FILE_BYTES`: Per-file size cap in bytes (default: `10485760`, i.e. 10MB; `0` = unlimited). Oversized sources are skipped with a warning.
 
-For example, to chat on Gemini while embedding with a local OpenAI-compatible server, set `RAG_EMBEDDING_PROVIDER=openai`, `RAG_OPENAI_API_BASE_URL=http://localhost:1234/v1` and `RAG_EMBEDDING_MODEL=text-embedding-3-small`.
+If a RAG-specific API key is not set, the chat model's key for that provider is used. The OpenAI key is optional, so key-less local OpenAI-compatible servers work. Default embedding models: Google `models/gemini-embedding-2`, OpenAI `text-embedding-3-small`, Ollama `embeddinggemma`.
+
+For example, to chat on Gemini while embedding with a local OpenAI-compatible server, set `RAG_OPENAI_API_BASE_URL=http://localhost:1234/v1` and `RAG_OPENAI_EMBEDDING_MODEL=text-embedding-3-small`.
 
 Ingest is per-file isolated: one bad file can't kill the index — failures are logged with a warning and retried on the next run. ``ingest()`` is idempotent (unchanged files are skipped without any embedding call; changed files are replaced, never duplicated). ``remove()`` drops documents without touching the rest, and ``list_sources()`` reports what is currently indexed.
 

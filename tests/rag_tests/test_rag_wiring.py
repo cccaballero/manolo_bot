@@ -8,8 +8,9 @@ import unittest
 from pathlib import Path
 
 from langchain_core.embeddings.fake import FakeEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from manolo_bot.ai.config import BotConfig, LLMConfig
+from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
 from manolo_bot.config import Config
 from manolo_bot.rag.embeddings import (
     GOOGLE_DEFAULT_EMBEDDING_MODEL,
@@ -31,7 +32,12 @@ RAG_ENV_VARS = [
     "RAG_CHUNK_SIZE",
     "RAG_CHUNK_OVERLAP",
     "RAG_REINDEX",
-    "RAG_EMBEDDING_MODEL",
+    "RAG_GOOGLE_API_KEY",
+    "RAG_GOOGLE_EMBEDDING_MODEL",
+    "RAG_OPENAI_API_KEY",
+    "RAG_OPENAI_API_BASE_URL",
+    "RAG_OPENAI_EMBEDDING_MODEL",
+    "RAG_OLLAMA_MODEL",
     "RAG_MAX_FILE_BYTES",
 ]
 
@@ -63,7 +69,12 @@ class TestRAGConfig(unittest.TestCase):
         self.assertEqual(config.rag_chunk_size, 1000)
         self.assertEqual(config.rag_chunk_overlap, 200)
         self.assertEqual(config.rag_reindex, "auto")
-        self.assertEqual(config.rag_embedding_model, "")
+        self.assertEqual(config.rag_google_api_key, "")
+        self.assertEqual(config.rag_google_embedding_model, "")
+        self.assertEqual(config.rag_openai_api_key, "")
+        self.assertEqual(config.rag_openai_api_base_url, "")
+        self.assertEqual(config.rag_openai_embedding_model, "")
+        self.assertEqual(config.rag_ollama_model, "")
         self.assertEqual(config.rag_max_file_bytes, 10 * 1024 * 1024)
 
     def test_rag_env_parsing(self) -> None:
@@ -75,7 +86,12 @@ class TestRAGConfig(unittest.TestCase):
         os.environ["RAG_CHUNK_SIZE"] = "500"
         os.environ["RAG_CHUNK_OVERLAP"] = "50"
         os.environ["RAG_REINDEX"] = "always"
-        os.environ["RAG_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        os.environ["RAG_GOOGLE_API_KEY"] = "google-rag-key"
+        os.environ["RAG_GOOGLE_EMBEDDING_MODEL"] = "models/gemini-embedding-2"
+        os.environ["RAG_OPENAI_API_KEY"] = "openai-rag-key"
+        os.environ["RAG_OPENAI_API_BASE_URL"] = "http://localhost:1234/v1"
+        os.environ["RAG_OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        os.environ["RAG_OLLAMA_MODEL"] = "embeddinggemma"
         os.environ["RAG_MAX_FILE_BYTES"] = "1024"
         config = Config(lazy=True)
         self.assertTrue(config.rag_enabled)
@@ -86,10 +102,15 @@ class TestRAGConfig(unittest.TestCase):
         self.assertEqual(config.rag_chunk_size, 500)
         self.assertEqual(config.rag_chunk_overlap, 50)
         self.assertEqual(config.rag_reindex, "always")
-        self.assertEqual(config.rag_embedding_model, "text-embedding-3-small")
+        self.assertEqual(config.rag_google_api_key, "google-rag-key")
+        self.assertEqual(config.rag_google_embedding_model, "models/gemini-embedding-2")
+        self.assertEqual(config.rag_openai_api_key, "openai-rag-key")
+        self.assertEqual(config.rag_openai_api_base_url, "http://localhost:1234/v1")
+        self.assertEqual(config.rag_openai_embedding_model, "text-embedding-3-small")
+        self.assertEqual(config.rag_ollama_model, "embeddinggemma")
         self.assertEqual(config.rag_max_file_bytes, 1024)
 
-    def test_bot_config_rag_defaults(self) -> None:
+    def test_bot_config_has_no_rag_fields(self) -> None:
         bot_config = BotConfig(
             bot_uuid="test-bot",
             bot_name="TestBot",
@@ -97,16 +118,20 @@ class TestRAGConfig(unittest.TestCase):
             bot_token="123456:ABC",
             user_id=0,
         )
-        self.assertFalse(bot_config.rag_enabled)
-        self.assertEqual(bot_config.rag_backend, "in_memory")
-        self.assertEqual(bot_config.rag_sources, [])
-        self.assertEqual(bot_config.rag_store_path, os.path.join(tempfile.gettempdir(), "manolo_bot", "rag"))
-        self.assertEqual(bot_config.rag_top_k, 5)
-        self.assertEqual(bot_config.rag_chunk_size, 1000)
-        self.assertEqual(bot_config.rag_chunk_overlap, 200)
-        self.assertEqual(bot_config.rag_reindex, "auto")
-        self.assertEqual(bot_config.rag_embedding_model, "")
-        self.assertEqual(bot_config.rag_max_file_bytes, 10 * 1024 * 1024)
+        # RAG is env-level (Config) + explicit rag_backend injection; BotConfig no longer carries rag_*.
+        for attr in [
+            "rag_enabled",
+            "rag_backend",
+            "rag_sources",
+            "rag_store_path",
+            "rag_top_k",
+            "rag_chunk_size",
+            "rag_chunk_overlap",
+            "rag_reindex",
+            "rag_max_file_bytes",
+            "rag_embedding_model",
+        ]:
+            self.assertFalse(hasattr(bot_config, attr), f"BotConfig should not have {attr}")
 
 
 class TestRAGWiring(unittest.TestCase):
@@ -153,9 +178,10 @@ def _llm_config(**overrides) -> LLMConfig:
 class TestEmbeddingsFactory(unittest.TestCase):
     def test_google_default_model_is_supported(self) -> None:
         # Regression: models/text-embedding-004 was retired by Google (Jan 2026).
-        self.assertEqual(GOOGLE_DEFAULT_EMBEDDING_MODEL, "models/gemini-embedding-001")
+        # Default moved to gemini-embedding-2 (GA Apr 2026, 001 sunset May 2028).
+        self.assertEqual(GOOGLE_DEFAULT_EMBEDDING_MODEL, "models/gemini-embedding-2")
         embeddings = build_embeddings(_llm_config(google_api_key="key"))
-        self.assertEqual(embeddings.model, "models/gemini-embedding-001")
+        self.assertEqual(embeddings.model, "models/gemini-embedding-2")
 
     def test_google_model_override(self) -> None:
         embeddings = build_embeddings(_llm_config(google_api_key="key"), model="custom-model")
@@ -175,6 +201,41 @@ class TestEmbeddingsFactory(unittest.TestCase):
         embeddings = build_embeddings(cfg, model="text-embedding-3-small")
         self.assertEqual(embeddings.model, "text-embedding-3-small")
         self.assertEqual(str(embeddings.openai_api_base).rstrip("/"), "http://localhost:1234/v1")
+
+
+class TestEmbeddingsConfig(unittest.TestCase):
+    """Provider is inferred from which settings are present — no provider field."""
+
+    def test_google_from_api_key(self) -> None:
+        cfg = EmbeddingsConfig(google_api_key="key")
+        embeddings = build_embeddings(embeddings_config=cfg)
+        self.assertEqual(embeddings.model, GOOGLE_DEFAULT_EMBEDDING_MODEL)
+
+    def test_google_embedding_model_field(self) -> None:
+        cfg = EmbeddingsConfig(google_api_key="key", google_embedding_model="custom-google-embed")
+        self.assertEqual(build_embeddings(embeddings_config=cfg).model, "custom-google-embed")
+
+    def test_openai_keyless_compatible_endpoint(self) -> None:
+        cfg = EmbeddingsConfig(
+            openai_api_base_url="http://localhost:1234/v1",
+            openai_embedding_model="text-embedding-3-small",
+        )
+        embeddings = build_embeddings(embeddings_config=cfg)
+        self.assertEqual(embeddings.model, "text-embedding-3-small")
+        self.assertEqual(str(embeddings.openai_api_base).rstrip("/"), "http://localhost:1234/v1")
+
+    def test_ollama_from_model_field(self) -> None:
+        cfg = EmbeddingsConfig(ollama_model="qwen3-embedding:0.6b")
+        self.assertEqual(build_embeddings(embeddings_config=cfg).model, "qwen3-embedding:0.6b")
+
+    def test_google_wins_over_openai(self) -> None:
+        # Mirror of the legacy embeddings precedence: google -> openai -> ollama.
+        cfg = EmbeddingsConfig(google_api_key="gkey", openai_api_base_url="http://localhost:1234/v1")
+        self.assertIsInstance(build_embeddings(embeddings_config=cfg), GoogleGenerativeAIEmbeddings)
+
+    def test_empty_config_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            build_embeddings(embeddings_config=EmbeddingsConfig())
 
 
 class TestRAGPrompting(unittest.TestCase):

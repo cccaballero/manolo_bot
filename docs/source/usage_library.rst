@@ -632,9 +632,8 @@ prompt so the agent knows when to use them.
            RAGSource("docs/handbook.md", "Employee handbook, covering policies and benefits"),
            RAGSource("docs/policies/", "Company policies"),
        ]
-       # Embeddings are configured independently of the chat provider:
-       # provider="google"/"openai"/"ollama", or "" to auto-probe credentials.
-       emb_config = EmbeddingsConfig(provider="google", google_api_key="your_api_key")
+       # Embeddings can use a different provider than the chat model.
+       emb_config = EmbeddingsConfig(google_api_key="your_api_key", google_embedding_model="models/gemini-embedding-2")
        backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
        await backend.build_or_load()
        await backend.ingest(sources)
@@ -663,17 +662,21 @@ while embedding with a local Ollama or a local OpenAI-compatible endpoint:
 .. code-block:: python
 
    from manolo_bot.ai.config import EmbeddingsConfig
-   # Independent embeddings: chat on Gemini, embeddings on local Ollama
-   emb_config = EmbeddingsConfig(provider="ollama", ollama_model="nomic-embed-text", model="nomic-embed-text")
+   # Chat on Gemini, embeddings on a local Ollama server:
+   emb_config = EmbeddingsConfig(ollama_model="embeddinggemma")
    backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
-   # Or via OpenAI-compatible endpoint:
-   emb_config = EmbeddingsConfig(provider="openai", openai_api_base_url="http://localhost:1234/v1", model="text-embedding-3-small")
+   # Or on a local OpenAI-compatible endpoint:
+   emb_config = EmbeddingsConfig(openai_api_base_url="http://localhost:1234/v1", openai_embedding_model="text-embedding-3-small")
    backend = build_rag_backend("in_memory", build_embeddings(embeddings_config=emb_config), bot_uuid="my-bot")
 
-An empty ``provider`` means auto: the credentials inside the ``EmbeddingsConfig``
-are probed in order google -> openai -> ollama, and a missing OpenAI key falls back
-to the ``OPENAI_API_KEY`` environment variable or the ``"not-needed"`` placeholder,
-so key-less local servers (LM Studio, vLLM, Ollama) work out of the box.
+``EmbeddingsConfig`` mirrors ``LLMConfig``: pass the settings for the provider you
+want to use. If settings for more than one provider are present, Google is used
+first, then OpenAI, then Ollama. If a RAG-specific API key is not set, the chat
+model's key for that provider is used; a missing OpenAI key falls back to the
+``OPENAI_API_KEY`` environment variable or the ``"not-needed"`` placeholder, so
+key-less local servers (LM Studio, vLLM, Ollama) work out of the box. Default models:
+Google ``models/gemini-embedding-2``, OpenAI ``text-embedding-3-small``, Ollama
+``embeddinggemma``.
 
 The backend doubles as a small document API: ``query()`` retrieves passages without an
 agent, ``remove()`` drops documents, and ``list_sources()`` reports what is indexed.
