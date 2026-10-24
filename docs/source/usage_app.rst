@@ -290,7 +290,7 @@ Advanced Settings
 
 Fine-tune the bot's performance and logging.
 
-* `LOGGING_LEVEL`: Set the verbosity of logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+* `LOGGING_LEVEL`: Set the application log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). Noisy third-party loggers remain at `WARNING` even when this is set to `DEBUG`.
 * `CONTEXT_MAX_TOKENS`: Maximum number of tokens to keep in conversation memory (default: `4096`).
 * `ENABLE_CONTEXT_SUMMARIZATION`: When the context limit is reached, summarize the oldest messages instead of dropping them (default: `True`).
 * `SUMMARY_MAX_TOKENS`: Maximum number of tokens allowed for the generated summary (default: `512`).

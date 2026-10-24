@@ -77,6 +77,16 @@ class TestMCPManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(manager.is_connected)
 
+    async def test_disconnect_without_client_close_method_is_silent(self):
+        manager = MCPManager(self.config)
+        manager._client = object()
+        manager._connected = True
+
+        with self.assertNoLogs("manolo_bot.ai.mcp_manager", level="WARNING"):
+            await manager.disconnect()
+
+        self.assertFalse(manager.is_connected)
+
     async def test_mcp_manager_invalid_transport(self):
         """Test MCP manager with invalid transport type."""
         server_config = {"test_server": {"command": "python", "transport": "invalid_transport"}}
