@@ -434,7 +434,7 @@ names to their configurations.
 
 #### Logging Level
 
-`LOGGING_LEVEL`: Sets the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL), defaulting to INFO.
+`LOGGING_LEVEL`: Sets the application logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL), defaulting to INFO. Noisy third-party loggers remain at WARNING even when this is set to DEBUG.
 
 ### Available Commands
 

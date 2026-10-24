@@ -54,8 +54,10 @@ class MCPManager:
         """Close all MCP server connections."""
         if self._client:
             try:
-                await self._client.close()
-                logger.info("MCP connections closed")
+                close = getattr(self._client, "close", None)
+                if close is not None:
+                    await close()
+                    logger.info("MCP connections closed")
             except Exception as e:
                 logger.warning(f"Error closing MCP connections: {e}")
 

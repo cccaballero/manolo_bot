@@ -65,9 +65,7 @@ class Config(EnvModel):
     # Web content retrieval configuration
     web_content_request_timeout = IntegerField("WEB_CONTENT_REQUEST_TIMEOUT_SECONDS", default=10)
 
-    sdapi_url = StringField(
-        "WEBUI_SD_API_URL", warning="WEBUI_SD_API_URL environment variable not set. Image generation disabled."
-    )
+    sdapi_url = StringField("WEBUI_SD_API_URL")
     default_sdapi_params = {
         "steps": 1,
         "cfg_scale": 1,
@@ -78,7 +76,6 @@ class Config(EnvModel):
     sdapi_params = JsonField(
         "WEBUI_SD_API_PARAMS",
         default=default_sdapi_params,
-        warning="Could not load WEBUI_SD_API_PARAMS. Defaults for SDXL Turbo model will be used.",
     )
     sdapi_negative_prompt = StringField("WEBUI_SD_API_NEGATIVE_PROMPT")
     allowed_chat_ids = StringListField("TELEGRAM_ALLOWED_CHATS")

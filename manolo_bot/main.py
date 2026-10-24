@@ -16,6 +16,7 @@ from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent
 from manolo_bot.config import Config
+from manolo_bot.logging_config import configure_logging
 from manolo_bot.storage.deep_agent_backends.filesystem_backend import FilesystemDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.memory_backend import MemoryDeepAgentBackend
 from manolo_bot.storage.deep_agent_backends.memory_filesystem_backend import MemoryFilesystemDeepAgentBackend
@@ -55,7 +56,7 @@ if config.storage_type == "redis":
 
 document_storage = FileDocumentsStorage(bot_uuid=config.bot_uuid, base_path=config.document_storage_path)
 
-logging.basicConfig(format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=config.logging_level, force=True)
+configure_logging(config.logging_level)
 
 if (
     not config.google_api_key
