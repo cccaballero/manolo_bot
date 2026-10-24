@@ -17,6 +17,12 @@ class TestStripThinking(unittest.TestCase):
     def test_removes_think_blocks(self):
         self.assertEqual(strip_thinking("<thinking>secret</thinking>hello"), "hello")
 
+    def test_removes_an_unterminated_reasoning_block(self):
+        self.assertEqual(strip_thinking("<thinking>still reasoning"), "")
+
+    def test_keeps_text_before_a_reasoning_block(self):
+        self.assertEqual(strip_thinking("answer<thinking>secret</thinking>"), "answer")
+
     def test_keeps_plain_text(self):
         self.assertEqual(strip_thinking("hello"), "hello")
 

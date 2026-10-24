@@ -137,8 +137,11 @@ def convert_markdown_to_telegram_format(markdown_text: str) -> str:
 
 
 def strip_thinking(text: str) -> str:
-    """Remove `` thinking...`` blocks emitted by reasoning models."""
-    return re.sub(r"<think(?:ing)?>(.*?)</think(?:ing)?>", "", text, flags=re.DOTALL)
+    """Remove reasoning blocks, including one truncated by the token limit."""
+    cleaned = re.sub(r"<(think|thinking)>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # A response cut off mid-reasoning has no closing tag; drop the tail too
+    # rather than leaking the model's internal trace into the chat.
+    return re.sub(r"<(think|thinking)>.*\Z", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
 
 
 def _chunk_text(text: str, size: int = 3000) -> list[str]:

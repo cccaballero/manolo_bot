@@ -15,6 +15,7 @@ from manolo_bot.scheduler.base import (
     SCHEDULED_TRIGGER_PREFIX,
     STATUS_ACTIVE,
     ScheduledAction,
+    is_open,
 )
 
 #: Keep the per-chat snapshot compact: at most this many rows and this many
@@ -34,7 +35,10 @@ def build_active_schedules_block(actions: Sequence[ScheduledAction]) -> str:
     if not actions:
         return ""
     lines = ["\n\n## Active scheduled actions in this chat"]
-    for action in actions[:ACTIVE_SCHEDULES_LIMIT]:
+    # Failed actions keep their past run_at; sort open actions first so they
+    # cannot crowd upcoming schedules out of the compact row budget.
+    ordered = sorted(actions, key=lambda action: (not is_open(action), action.run_at))
+    for action in ordered[:ACTIVE_SCHEDULES_LIMIT]:
         schedule = f"cron={action.cron!r}" if action.cron else "one-shot"
         prompt = action.prompt
         if len(prompt) > ACTIVE_PROMPT_PREVIEW_CHARS:

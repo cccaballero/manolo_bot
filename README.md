@@ -209,7 +209,8 @@ without listing first. `/flushschedules` removes all schedules for the chat.
 `SCHEDULER_STORE`: Persistence backend (`in_memory`, `local_fs`). Default is `in_memory`.
 - `in_memory`: ephemeral; lost on restart, intended for tests and single-process demos.
 - `local_fs`: a per-bot JSON snapshot under `SCHEDULER_STORE_PATH`, protected by a file lock
-  and atomic replace. Single-node only (not horizontally scalable).
+  and atomic replace. Single-node only and intended for development/single-node deployments;
+  a Redis-backed store is the planned production path.
 
 `SCHEDULER_ENGINE`: Trigger backend (`asyncio`, `manual`). Default is `asyncio`.
 - `asyncio`: an in-process poll loop that sweeps due actions every `SCHEDULER_POLL_INTERVAL_SECONDS`.

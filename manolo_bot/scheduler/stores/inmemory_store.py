@@ -154,12 +154,7 @@ class InMemorySchedulerStore(BaseSchedulerStore):
                 )
                 return
             updated = apply_failure(action, error, self.max_consecutive_failures)
-            if updated is None:
-                del chat_actions[action.id]
-                if not chat_actions:
-                    del self._actions[action.chat_id]
-            else:
-                chat_actions[action.id] = updated
+            chat_actions[action.id] = updated
 
     async def clear(self, chat_id: int) -> None:
         """Remove every scheduled action belonging to one chat."""

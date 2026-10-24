@@ -75,6 +75,15 @@ class TestAsyncioSchedulerEngine(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.dispatch.calls, 1)
 
+    async def test_start_with_a_new_dispatch_replaces_it(self) -> None:
+        await self.engine.start(self.dispatch)
+        await asyncio.wait_for(self.probe.entered.wait(), timeout=1.0)
+        replacement = FakeDispatch()
+
+        await self.engine.start(replacement)
+
+        self.assertIs(self.engine._dispatch, replacement)
+
     async def test_stop_cancels_the_loop_and_is_idempotent(self) -> None:
         await self.engine.start(self.dispatch)
         await asyncio.wait_for(self.probe.entered.wait(), timeout=1.0)

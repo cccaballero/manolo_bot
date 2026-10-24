@@ -61,16 +61,18 @@ class FakeScheduler:
         return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
-def _make_agent(scheduler=None) -> LLMAgent:
+def _make_agent(scheduler=None, system_instructions=None) -> LLMAgent:
     """Build an LLMAgent with mocks (no network, no real config)."""
     mock_llm = MagicMock()
     mock_config = MagicMock(spec=Config)
     mock_config.enable_mcp = False
     mock_config.use_tools = False
+    if system_instructions is None:
+        system_instructions = [SystemMessage(content="You are a helpful assistant")]
     return LLMAgent(
         mock_llm,
         mock_config,
-        [SystemMessage(content="You are a helpful assistant")],
+        system_instructions,
         MagicMock(),
         scheduler=scheduler,
     )
@@ -205,6 +207,18 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(scheduler.active_instructions_calls, 1)
         self.assertEqual(scheduler.active_chat_id, agent.messages_storage.chat_id)
 
+    async def test_composition_preserves_system_message_metadata(self) -> None:
+        system = SystemMessage(
+            content="base",
+            additional_kwargs={"cache_control": {"type": "ephemeral"}},
+        )
+        agent = _make_agent(scheduler=FakeScheduler([]), system_instructions=[system])
+
+        composed = await agent._compose_system_instructions()
+
+        self.assertEqual(composed[0].additional_kwargs, system.additional_kwargs)
+        self.assertIn("fake scheduler instructions", composed[0].content)
+
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_initialize_async_resources_without_scheduler_keeps_tools(
@@ -299,6 +313,14 @@ class TestActiveSchedulesBlock(unittest.TestCase):
     def test_marks_failed_actions(self):
         block = build_active_schedules_block([self._action(1, status=STATUS_FAILED)])
         self.assertIn("status=failed", block)
+
+    def test_open_actions_win_the_row_budget_over_failed_ones(self):
+        failed = [self._action(index, status=STATUS_FAILED) for index in range(10)]
+        upcoming = self._action(99, status="active")
+
+        block = build_active_schedules_block([*failed, upcoming])
+
+        self.assertIn("id=action-99", block)
 
 
 if __name__ == "__main__":

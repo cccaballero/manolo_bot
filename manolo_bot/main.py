@@ -604,8 +604,9 @@ async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
     """
     chat_id = action.chat_id
     if config.allowed_chat_ids and str(chat_id) not in config.allowed_chat_ids:
-        logging.warning(f"Dropping scheduled action {action.id}: chat {chat_id} is not allowed")
-        return
+        # The action is already claimed; returning would record a successful
+        # delivery. Raise so the service records a failure instead.
+        raise RuntimeError(f"Scheduled action {action.id} targets disallowed chat {chat_id}")
 
     async with _chat_lock(chat_id):
         llm_bot = await instance_llm_bot(chat_id)

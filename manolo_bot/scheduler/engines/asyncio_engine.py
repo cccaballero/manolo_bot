@@ -50,10 +50,10 @@ class AsyncioSchedulerEngine(BaseSchedulerEngine):
         return self._task is not None and not self._task.done()
 
     async def start(self, dispatch: SchedulerDispatch) -> None:
-        """Start the sweep loop. Idempotent while the task is alive."""
+        """Start the sweep loop. Idempotent; a new dispatch replaces the old one."""
+        self._dispatch = dispatch
         if self.is_running:
             return
-        self._dispatch = dispatch
         self._task = asyncio.create_task(self._run(), name="scheduler-engine")
 
     async def stop(self) -> None:
@@ -85,11 +85,11 @@ class AsyncioSchedulerEngine(BaseSchedulerEngine):
 
     async def _run(self) -> None:
         """Sweep forever, surviving handler/store errors until cancelled."""
-        dispatch = self._dispatch
-        if dispatch is None:  # pragma: no cover - guarded by start()
-            return
         deadline = self._monotonic()
         while True:
+            dispatch = self._dispatch
+            if dispatch is None:  # pragma: no cover - guarded by start()/stop()
+                return
             try:
                 await dispatch.sweep()
             except asyncio.CancelledError:

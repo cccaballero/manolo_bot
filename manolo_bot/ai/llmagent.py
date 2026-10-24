@@ -159,7 +159,7 @@ class LLMAgent(LLMBot):
                 content += await self._scheduler.active_instructions(self.messages_storage.chat_id)
             except Exception:
                 logging.exception("Failed to load active schedules for chat %s", self.messages_storage.chat_id)
-        return [SystemMessage(content=content), *base[1:]]
+        return [first.model_copy(update={"content": content}), *base[1:]]
 
     async def initialize_async_resources(self) -> None:
         """Initialize async resources and create agent with all tools."""

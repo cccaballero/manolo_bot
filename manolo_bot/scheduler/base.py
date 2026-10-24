@@ -217,7 +217,7 @@ def apply_failure(
     action: ScheduledAction,
     error: str,
     max_consecutive_failures: int,
-) -> ScheduledAction | None:
+) -> ScheduledAction:
     """Return the record after a failed delivery.
 
     One-shot actions fail permanently. Recurring actions stay active until
