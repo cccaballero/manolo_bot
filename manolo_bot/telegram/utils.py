@@ -2,6 +2,7 @@ import asyncio
 import base64
 import datetime
 import logging
+import re
 
 import telegramify_markdown
 from aiogram import Bot
@@ -135,62 +136,132 @@ def convert_markdown_to_telegram_format(markdown_text: str) -> str:
     return telegramify_markdown.markdownify(markdown_text)
 
 
-async def reply_to_telegram_message(bot: Bot, message: Message, response_content: str) -> None:
-    """
-    Reply to a message.
-    :param bot: Telegram bot instance
-    :param message: Telegram message to reply to
-    :param response_content: Response content
-    :return: None
-    """
-    chat_id = message.chat.id
-    use_fallback = False
+def strip_thinking(text: str) -> str:
+    """Remove reasoning blocks, including one truncated by the token limit."""
+    cleaned = re.sub(r"<(think|thinking)>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # A response cut off mid-reasoning has no closing tag; drop the tail too
+    # rather than leaking the model's internal trace into the chat.
+    return re.sub(r"<(think|thinking)>.*\Z", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
 
+
+def _chunk_text(text: str, size: int = 3000) -> list[str]:
+    """Split text into Telegram-safe plain-text chunks."""
+    chunks = [text[i : i + size] for i in range(0, len(text), size)]
+    return chunks or [""]
+
+
+async def _send_plain_text(bot: Bot, chat_id: int, text: str, reply_to: Message | None = None) -> None:
+    """Send plain text in chunks, replying to ``reply_to`` when provided."""
+    previous_message = None
+    for chunk in _chunk_text(text):
+        if previous_message is not None:
+            previous_message = await previous_message.reply(chunk)
+        elif reply_to is not None:
+            previous_message = await reply_to.reply(chunk)
+        else:
+            await bot.send_message(chat_id=chat_id, text=chunk)
+
+
+async def send_text_to_chat(bot: Bot, chat_id: int, text: str, reply_to: Message | None = None) -> bool:
+    """Send a text response using MarkdownV2 with a plain-text fallback.
+
+    Works for both a Telegram reply (``reply_to`` set) and an unsolicited
+    message to a chat (scheduler deliveries), which has no source message.
+
+    :return: True when the text was sent (or there was nothing to send);
+        False when both the Markdown and plain-text attempts failed.
+    """
+    response_content = strip_thinking(text)
+    if not response_content.strip():
+        logging.debug(f"Nothing to send for chat {chat_id}")
+        return True
     if len(response_content) > 4096:
         logging.warning(f"Response for chat {chat_id} is too long. Attempting fallback to plain text.")
-        use_fallback = True
     else:
         try:
             markdown_text = convert_markdown_to_telegram_format(response_content)
-            await message.reply(markdown_text, parse_mode="MarkdownV2")
+            if reply_to is not None:
+                await reply_to.reply(markdown_text, parse_mode="MarkdownV2")
+            else:
+                await bot.send_message(chat_id=chat_id, text=markdown_text, parse_mode="MarkdownV2")
             logging.debug(f"Sent response for chat {chat_id}")
+            return True
         except TelegramAPIError as e:
             logging.exception(e)
             logging.warning(
                 f"Failed to send response for chat {chat_id} using Markdown. Attempting fallback to plain text."
             )
-            use_fallback = True
         except Exception as e:
             logging.exception(e)
-            use_fallback = True
 
-    if use_fallback and not await fallback_telegram_call(bot, message, response_content):
+    try:
+        await _send_plain_text(bot, chat_id, response_content, reply_to=reply_to)
+    except Exception as e:
+        logging.exception(e)
         logging.error(f"Failed to send response for chat {chat_id}")
+        return False
+    return True
 
 
-async def reply_photo_to_telegram_message(bot: Bot, message: Message, base64_image: str) -> None:
+async def send_photo_to_chat(bot: Bot, chat_id: int, base64_image: str, reply_to: Message | None = None) -> bool:
+    """Send a base64 image to a chat, optionally as a reply.
+
+    :return: True when the photo reached Telegram, False otherwise.
     """
-    Reply to a message with a photo.
-    :param bot: Telegram bot instance
-    :param message: Telegram message to reply to
-    :param base64_image: Base64 encoded image data
-    :return: None
-    """
-    chat_id = message.chat.id
     try:
         logging.debug(f"Sending image for chat {chat_id}")
         photo_bytes = base64.b64decode(base64_image)
         photo = BufferedInputFile(photo_bytes, filename="image.png")
-        await bot.send_photo(
-            chat_id=chat_id,
-            photo=photo,
-            reply_to_message_id=message.message_id,
-        )
+        kwargs = {"chat_id": chat_id, "photo": photo}
+        if reply_to is not None:
+            kwargs["reply_to_message_id"] = reply_to.message_id
+        await bot.send_photo(**kwargs)
         logging.debug(f"Sent image response for chat {chat_id}")
+        return True
     except Exception as e:
         logging.exception(e)
         logging.error(f"Failed to send image response for chat {chat_id}")
-        await message.reply("⚠️ Error sending image.")
+        try:
+            if reply_to is not None:
+                await reply_to.reply("⚠️ Error sending image.")
+            else:
+                await send_text_to_chat(bot, chat_id, "⚠️ Error sending image.")
+        except Exception:
+            logging.exception("Failed to report the image delivery error for chat %s", chat_id)
+        return False
+
+
+async def send_final_response(
+    bot: Bot, chat_id: int, final_response: dict | None, reply_to: Message | None = None
+) -> bool:
+    """Render a ``postprocess_response`` result to a chat.
+
+    :return: True when the response was handled (including a no-op or an empty
+        text); False when a text/photo delivery was attempted and failed.
+    """
+    if not final_response:
+        return True
+    response_type = final_response.get("type")
+    if response_type == "image":
+        image_data = final_response.get("data")
+        if isinstance(image_data, str):
+            return await send_photo_to_chat(bot, chat_id, image_data, reply_to=reply_to)
+        logging.error("Image data is not a string")
+        return False
+    if response_type == "text":
+        text = final_response.get("data") or final_response.get("text") or ""
+        return await send_text_to_chat(bot, chat_id, text, reply_to=reply_to)
+    return True
+
+
+async def reply_to_telegram_message(bot: Bot, message: Message, response_content: str) -> None:
+    """Reply to a message (backward-compatible wrapper)."""
+    await send_text_to_chat(bot, message.chat.id, response_content, reply_to=message)
+
+
+async def reply_photo_to_telegram_message(bot: Bot, message: Message, base64_image: str) -> None:
+    """Reply to a message with a photo (backward-compatible wrapper)."""
+    await send_photo_to_chat(bot, message.chat.id, base64_image, reply_to=message)
 
 
 def clean_standard_message(bot_username: str, message_text: str) -> str:

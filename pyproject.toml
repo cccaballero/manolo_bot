@@ -34,6 +34,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.0",
     "docx2txt>=0.9",
     "redis>=5.0",
+    "croniter>=6.2.4",
 ]
 
 [project.scripts]
@@ -62,6 +63,7 @@ dev = [
     "sphinx-rtd-theme>=3.1.0",
     "myst-parser>=5.1.0",
     "sphinx-autodoc-typehints>=3.10.3",
+    "fakeredis>=2.40.0",
 ]
 
 [tool.ruff]

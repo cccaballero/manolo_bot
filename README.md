@@ -185,6 +185,57 @@ their tools at init, so re-resolve or recreate the agent to pick up index change
 `0` = unlimited); oversized sources are skipped with a warning. Keep `RAG_CHUNK_SIZE` well below your
 provider's per-request token limit; the defaults are safe.
 
+#### Scheduler (agent and deep_agent modes)
+
+Lets the agent schedule future actions in a chat. It exposes `schedule_action` (a one-shot
+ISO-8601 `run_at`, or a recurring 5-field `cron` expression), `list_scheduled_actions` and
+`delete_scheduled_action`. Every action is scoped to the chat that created it; when it fires
+the bot runs the prompt through that chat's agent and posts the reply. The `llm` mode ignores
+these settings, and initialization failures degrade gracefully (the bot keeps running without
+scheduling).
+
+An action prompt can ask the agent to stay silent when a condition is not met by replying
+`NO_ANSWER`; the agent turn still runs, but nothing is posted to the chat. This is useful for
+recurring checks such as “every day, check whether there is a match tomorrow; only send a preview
+if there is one.”
+
+Active schedules for the chat are embedded in the agent's system prompt, so it still knows about
+them after `/flushcontext` (which clears conversation state, not schedules). When an action
+fires, its id is included in the trigger marker, so the agent can cancel that exact action
+without listing first. `/flushschedules` removes all schedules for the chat.
+
+`SCHEDULER_ENABLED`: Enable scheduling (True, False). Default is False.
+
+`SCHEDULER_STORE`: Persistence backend (`in_memory`, `local_fs`, `redis`). Default is `in_memory`.
+- `in_memory`: ephemeral; lost on restart, intended for tests and single-process demos.
+- `local_fs`: a per-bot JSON snapshot under `SCHEDULER_STORE_PATH`, protected by a file lock
+  and atomic replace. Single-node only and intended for development/single-node deployments.
+- `redis`: a shared durable snapshot with cross-process locking, reusing `REDIS_URL`. Claims are
+  atomic across processes; multi-instance delivery still needs a distributed per-chat lock and
+  a shared message store.
+
+`SCHEDULER_ENGINE`: Trigger backend (`asyncio`, `manual`). Default is `asyncio`.
+- `asyncio`: an in-process poll loop that sweeps due actions every `SCHEDULER_POLL_INTERVAL_SECONDS`.
+- `manual`: no automatic trigger; useful for tests, serverless setups, or when an external
+  worker/system cron calls `SchedulerService.sweep()`.
+
+`SCHEDULER_STORE_PATH`: Directory for `local_fs` state. Defaults to a system temporary
+directory (e.g. `/tmp/manolo_bot/scheduler`).
+
+`SCHEDULER_TIMEZONE`: IANA timezone used to evaluate cron expressions and naive one-shot
+values (default: `UTC`).
+
+`SCHEDULER_POLL_INTERVAL_SECONDS`: Sweep interval for the asyncio engine (default: `5`).
+
+`SCHEDULER_MAX_ACTIONS_PER_CHAT`: Maximum open actions per chat (default: `20`).
+
+`SCHEDULER_MAX_CONSECUTIVE_FAILURES`: Consecutive failures before a recurring action is
+marked failed and stops firing (default: `5`).
+
+`SCHEDULER_CATCHUP_GRACE_SECONDS`: How late an overdue action may still fire after a
+restart; `0` means fire any overdue action once, coalescing missed cron occurrences
+(default: `0`).
+
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the
@@ -391,6 +442,8 @@ The bot supports the following commands:
 
 - `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this
   command. The bot will respond with a confirmation message in the configured language.
+- `/flushschedules` - Removes every scheduled action for the current chat (active and failed). In group chats, only
+  admins can use this command. Conversation history and `/flushcontext` are unaffected.
 
 ### Running the Bot
 
@@ -495,12 +548,12 @@ A local knowledge base can be attached to `LLMAgent` (or `LLMDeepAgent`) via the
 
 ```python
 import asyncio
+from langchain_core.messages import AIMessage, SystemMessage
 from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBuilder
 from manolo_bot.rag.embeddings import build_embeddings
 from manolo_bot.rag.factory import build_rag_backend
-from manolo_bot.rag.prompting import build_rag_instructions
 from manolo_bot.rag.sources import RAGSource
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
@@ -535,9 +588,12 @@ async def main():
     await backend.build_or_load()
     await backend.ingest(sources)
 
-    # Pass the backend explicitly; the agent appends the rag_search tool itself.
-    # Append build_rag_instructions() to the system prompt so the agent knows when to use it.
-    system_instructions = "You are a helpful assistant." + build_rag_instructions(sources)
+    # Pass the backend explicitly; the agent appends the rag_search tool and the
+    # RAG prompt block itself. Override backend.as_instructions(sources) to customize.
+    system_instructions = [
+        SystemMessage(content="You are a helpful assistant."),
+        AIMessage(content="ok!"),
+    ]
     agent = LLMAgent(
         llm=llm,
         bot_config=bot_config,

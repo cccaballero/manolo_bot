@@ -140,6 +140,23 @@ class Config(EnvModel):
     rag_ollama_model = StringField("RAG_OLLAMA_MODEL", default="")
     rag_max_file_bytes = IntegerField("RAG_MAX_FILE_BYTES", default=10 * 1024 * 1024)  # 10MB
 
+    # Scheduler (agent/deep_agent modes only). The app composes a store + engine
+    # into a SchedulerService at startup and injects it explicitly into the
+    # agents, mirroring the RAG/history-policy pattern.
+    scheduler_enabled = BooleanField("SCHEDULER_ENABLED", default=False)
+    scheduler_store = StringField(
+        "SCHEDULER_STORE", default="in_memory", allowed_values=["in_memory", "local_fs", "redis"]
+    )
+    scheduler_engine = StringField("SCHEDULER_ENGINE", default="asyncio", allowed_values=["asyncio", "manual"])
+    scheduler_store_path = StringField(
+        "SCHEDULER_STORE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "scheduler")
+    )
+    scheduler_timezone = StringField("SCHEDULER_TIMEZONE", default="UTC")
+    scheduler_poll_interval_seconds = FloatField("SCHEDULER_POLL_INTERVAL_SECONDS", default=5.0)
+    scheduler_max_actions_per_chat = IntegerField("SCHEDULER_MAX_ACTIONS_PER_CHAT", default=20)
+    scheduler_max_consecutive_failures = IntegerField("SCHEDULER_MAX_CONSECUTIVE_FAILURES", default=5)
+    scheduler_catchup_grace_seconds = IntegerField("SCHEDULER_CATCHUP_GRACE_SECONDS", default=0)
+
     logging_level = StringField(
         "LOGGING_LEVEL", default="INFO", allowed_values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     )

@@ -19,6 +19,7 @@ docutils==0.22.4
     #   myst-parser
     #   sphinx
     #   sphinx-rtd-theme
+fakeredis==2.40.0
 filelock==3.20.3
     # via virtualenv
 identify==2.6.16
@@ -55,6 +56,8 @@ pyyaml==6.0.3
     # via
     #   myst-parser
     #   pre-commit
+redis==8.1.0
+    # via fakeredis
 requests==2.32.5
     # via sphinx
 roman-numerals==4.1.0
@@ -62,6 +65,8 @@ roman-numerals==4.1.0
 ruff==0.14.14
 snowballstemmer==3.1.0
     # via sphinx
+sortedcontainers==2.4.0
+    # via fakeredis
 sphinx==9.1.0
     # via
     #   myst-parser

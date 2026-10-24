@@ -79,6 +79,64 @@ RAG Components
    :undoc-members:
    :show-inheritance:
 
+Scheduler Components
+--------------------
+
+.. automodule:: manolo_bot.scheduler.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.cron
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.service
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.tools
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.prompting
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.stores.inmemory_store
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.stores.filesystem_store
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.stores.factory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.engines.asyncio_engine
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.engines.manual_engine
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: manolo_bot.scheduler.engines.factory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Storage Components
 ------------------
 

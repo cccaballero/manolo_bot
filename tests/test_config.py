@@ -166,5 +166,76 @@ class TestConfig(unittest.TestCase):
         )
 
 
+class TestSchedulerConfig(unittest.TestCase):
+    SCHEDULER_ENV = [
+        "SCHEDULER_ENABLED",
+        "SCHEDULER_STORE",
+        "SCHEDULER_ENGINE",
+        "SCHEDULER_STORE_PATH",
+        "SCHEDULER_TIMEZONE",
+        "SCHEDULER_POLL_INTERVAL_SECONDS",
+        "SCHEDULER_MAX_ACTIONS_PER_CHAT",
+        "SCHEDULER_MAX_CONSECUTIVE_FAILURES",
+        "SCHEDULER_CATCHUP_GRACE_SECONDS",
+    ]
+
+    def setUp(self):
+        os.environ["TELEGRAM_BOT_NAME"] = "Manolo"
+        os.environ["TELEGRAM_BOT_USERNAME"] = "ManoloBot"
+        os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890"
+        for var in self.SCHEDULER_ENV:
+            os.environ.pop(var, None)
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self):
+        for var in self.SCHEDULER_ENV:
+            os.environ.pop(var, None)
+
+    def test_scheduler_defaults(self):
+        import os.path
+        import tempfile
+
+        config = Config(lazy=True)
+        self.assertFalse(config.scheduler_enabled)
+        self.assertEqual(config.scheduler_store, "in_memory")
+        self.assertEqual(config.scheduler_engine, "asyncio")
+        self.assertEqual(
+            config.scheduler_store_path,
+            os.path.join(tempfile.gettempdir(), "manolo_bot", "scheduler"),
+        )
+        self.assertEqual(config.scheduler_timezone, "UTC")
+        self.assertEqual(config.scheduler_poll_interval_seconds, 5.0)
+        self.assertEqual(config.scheduler_max_actions_per_chat, 20)
+        self.assertEqual(config.scheduler_max_consecutive_failures, 5)
+        self.assertEqual(config.scheduler_catchup_grace_seconds, 0)
+
+    def test_scheduler_store_accepts_redis(self):
+        os.environ["SCHEDULER_STORE"] = "redis"
+        config = Config(lazy=True)
+        self.assertEqual(config.scheduler_store, "redis")
+
+    def test_scheduler_env_parsing(self):
+        os.environ["SCHEDULER_ENABLED"] = "True"
+        os.environ["SCHEDULER_STORE"] = "local_fs"
+        os.environ["SCHEDULER_ENGINE"] = "manual"
+        os.environ["SCHEDULER_STORE_PATH"] = "/tmp/scheduler-test"
+        os.environ["SCHEDULER_TIMEZONE"] = "Europe/Madrid"
+        os.environ["SCHEDULER_POLL_INTERVAL_SECONDS"] = "1.5"
+        os.environ["SCHEDULER_MAX_ACTIONS_PER_CHAT"] = "7"
+        os.environ["SCHEDULER_MAX_CONSECUTIVE_FAILURES"] = "2"
+        os.environ["SCHEDULER_CATCHUP_GRACE_SECONDS"] = "3600"
+
+        config = Config(lazy=True)
+        self.assertTrue(config.scheduler_enabled)
+        self.assertEqual(config.scheduler_store, "local_fs")
+        self.assertEqual(config.scheduler_engine, "manual")
+        self.assertEqual(config.scheduler_store_path, "/tmp/scheduler-test")
+        self.assertEqual(config.scheduler_timezone, "Europe/Madrid")
+        self.assertEqual(config.scheduler_poll_interval_seconds, 1.5)
+        self.assertEqual(config.scheduler_max_actions_per_chat, 7)
+        self.assertEqual(config.scheduler_max_consecutive_failures, 2)
+        self.assertEqual(config.scheduler_catchup_grace_seconds, 3600)
+
+
 if __name__ == "__main__":
     unittest.main()

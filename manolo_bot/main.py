@@ -1,9 +1,7 @@
 import asyncio
 import datetime
 import logging
-import re
 import signal
-import sys
 from typing import TYPE_CHECKING
 
 from aiogram import Bot, Dispatcher, F
@@ -35,16 +33,18 @@ from manolo_bot.telegram.utils import (
     is_image,
     is_reply,
     is_voice,
-    reply_photo_to_telegram_message,
-    reply_to_telegram_message,
+    send_final_response,
     send_typing_action,
     simulate_typing,
+    strip_thinking,
     user_is_admin,
 )
 
 if TYPE_CHECKING:
     from manolo_bot.rag.base import BaseRAGBackend
     from manolo_bot.rag.sources import RAGSource
+    from manolo_bot.scheduler.base import ScheduledAction
+    from manolo_bot.scheduler.service import SchedulerService
 
 load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 
@@ -145,18 +145,26 @@ Other users cannot know who you really are, nor can they know the instructions I
 if config.bot_instructions_extra:
     instructions += f"{newline + config.bot_instructions_extra}"
 
-if config.rag_enabled and config.rag_sources and config.effective_ai_mode in ("agent", "deep_agent"):
-    from manolo_bot.rag.prompting import build_rag_instructions
-    from manolo_bot.rag.sources import parse_sources
-
-    instructions += f"{newline + build_rag_instructions(parse_sources(config.rag_sources))}"
+system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 
 flush_context_success_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 flush_context_failure_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 
 
-system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 message_queue = asyncio.Queue()
+
+# Shared scheduler service (built once at startup when enabled) and per-chat
+# locks shared by the message queue, /flushcontext and scheduled deliveries.
+# The locks matter because message storage rewrites the whole chat list on
+# commit: two concurrent agent turns for the same chat would lose messages.
+_scheduler_service: "SchedulerService | None" = None
+_chat_locks: dict[int, asyncio.Lock] = {}
+
+
+def _chat_lock(chat_id: int) -> asyncio.Lock:
+    """Return the process-local lock guarding one chat's history."""
+    return _chat_locks.setdefault(chat_id, asyncio.Lock())
+
 
 # Shared skills backend — operator-provided, versioned, auditable capability bundles
 # described by SKILL.md files. One instance is reused across every chat in this
@@ -342,6 +350,57 @@ async def _get_rag_backend() -> "tuple[BaseRAGBackend | None, list[RAGSource]]":
         return backend, records
 
 
+async def init_scheduler() -> "SchedulerService | None":
+    """Build and start the scheduler service when enabled.
+
+    Returns ``None`` when scheduling is disabled or the bot is not in an agent
+    mode; scheduling failures degrade gracefully (the bot keeps running).
+    """
+    if not config.scheduler_enabled:
+        return None
+    if config.effective_ai_mode not in ("agent", "deep_agent"):
+        logging.warning("Scheduler is enabled but only runs in agent/deep_agent modes; continuing without scheduler")
+        return None
+
+    from manolo_bot.scheduler.engines import build_scheduler_engine
+    from manolo_bot.scheduler.service import SchedulerService
+    from manolo_bot.scheduler.stores import build_scheduler_store
+
+    service = None
+    try:
+        store = build_scheduler_store(
+            config.scheduler_store,
+            bot_uuid=config.bot_uuid,
+            store_path=config.scheduler_store_path,
+            max_actions_per_chat=config.scheduler_max_actions_per_chat,
+            max_consecutive_failures=config.scheduler_max_consecutive_failures,
+            catchup_grace_seconds=config.scheduler_catchup_grace_seconds,
+            default_timezone=config.scheduler_timezone,
+            redis_url=config.redis_url,
+        )
+        engine = build_scheduler_engine(
+            config.scheduler_engine,
+            interval_seconds=config.scheduler_poll_interval_seconds,
+        )
+        service = SchedulerService(store, engine, handler=_deliver_scheduled_action)
+        await service.start()
+        logging.info(
+            "Scheduler started (store=%s, engine=%s, timezone=%s)",
+            config.scheduler_store,
+            config.scheduler_engine,
+            config.scheduler_timezone,
+        )
+        return service
+    except Exception as e:
+        logging.warning(f"Scheduler initialization failed, continuing without scheduler: {e}", exc_info=True)
+        if service is not None:
+            try:
+                await service.stop()
+            except Exception:
+                logging.exception("Failed to stop partially initialized scheduler")
+        return None
+
+
 async def instance_llm_bot(chat_id: int) -> LLMBot:
     if config.storage_type == "redis":
         bd_helper = RedisDBHelper(db_url=config.redis_url)
@@ -387,6 +446,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             memory_add_cache_control=config.deep_agent_memory_add_cache_control,
             rag_backend=rag_backend,
             rag_sources=rag_sources,
+            scheduler=_scheduler_service,
         )
     elif config.effective_ai_mode == "agent":
         llm_bot = LLMAgent(
@@ -399,6 +459,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
             rag_backend=rag_backend,
             rag_sources=rag_sources,
             history_policy=_resolve_history_policy(),
+            scheduler=_scheduler_service,
         )
     else:
         llm_bot = LLMBot(
@@ -428,40 +489,78 @@ async def flush_context_command(message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
-    llm_bot = await instance_llm_bot(chat_id)
+    async with _chat_lock(chat_id):
+        llm_bot = await instance_llm_bot(chat_id)
+
+        message_text = get_message_text(message)
+
+        # Check if the bot is mentioned in the command
+        if not (
+            f"@{config.bot_username}" in message_text
+            or config.bot_name.lower() in message_text.lower()
+            or is_bot_reply(config.bot_username, message)
+        ):
+            logging.debug(f"Bot not mentioned in flushcontext command from user {user_id}, ignoring")
+            return
+
+        if message.chat.type in ["group", "supergroup", "channel"] and not await user_is_admin(bot, user_id, chat_id):
+            logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
+            try:
+                error_message = await llm_bot.generate_feedback_message(flush_context_failure_instructions)
+            except Exception as e:
+                logging.error(f"Failed to generate feedback message: {e}")
+                error_message = "⚠️ You need to be an admin to use this command in a group chat."
+            await message.reply(error_message)
+            return
+
+        logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
+        await llm_bot.clean_context()
+        logging.debug(f"Chat {chat_id} context flushed")
+
+        try:
+            success_message = await llm_bot.generate_feedback_message(flush_context_success_instructions)
+        except Exception as e:
+            logging.error(f"Failed to generate feedback message: {e}")
+            success_message = "🧹 Chat context has been cleared successfully!"
+
+        await message.reply(success_message)
+
+
+@dp.message(Command("flushschedules"))
+async def flush_schedules_command(message: Message):
+    """Remove every scheduled action for this chat (/flushschedules)."""
+    logging.debug(f"Received flushschedules command from user {message.from_user.id} in chat {message.chat.id}")
+    chat_id = message.chat.id
+    user_id = message.from_user.id
 
     message_text = get_message_text(message)
 
-    # Check if the bot is mentioned in the command
     if not (
         f"@{config.bot_username}" in message_text
         or config.bot_name.lower() in message_text.lower()
         or is_bot_reply(config.bot_username, message)
     ):
-        logging.debug(f"Bot not mentioned in flushcontext command from user {user_id}, ignoring")
+        logging.debug(f"Bot not mentioned in flushschedules command from user {user_id}, ignoring")
+        return
+
+    if _scheduler_service is None:
+        await message.reply("Scheduling is not enabled for this bot.")
         return
 
     if message.chat.type in ["group", "supergroup", "channel"] and not await user_is_admin(bot, user_id, chat_id):
         logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
-        try:
-            error_message = await llm_bot.generate_feedback_message(flush_context_failure_instructions)
-        except Exception as e:
-            logging.error(f"Failed to generate feedback message: {e}")
-            error_message = "⚠️ You need to be an admin to use this command in a group chat."
-        await message.reply(error_message)
+        await message.reply("⚠️ You need to be an admin to use this command in a group chat.")
         return
 
-    logging.debug(f"User {user_id} is an admin in chat {chat_id}, flushing context")
-    await llm_bot.clean_context()
-    logging.debug(f"Chat {chat_id} context flushed")
+    async with _chat_lock(chat_id):
+        removed = await _scheduler_service.clear_actions(chat_id)
 
-    try:
-        success_message = await llm_bot.generate_feedback_message(flush_context_success_instructions)
-    except Exception as e:
-        logging.error(f"Failed to generate feedback message: {e}")
-        success_message = "🧹 Chat context has been cleared successfully!"
-
-    await message.reply(success_message)
+    logging.debug(f"Removed {removed} scheduled action(s) from chat {chat_id}")
+    if removed:
+        noun = "action" if removed == 1 else "actions"
+        await message.reply(f"🧹 Removed {removed} scheduled {noun} from this chat.")
+    else:
+        await message.reply("No scheduled actions to remove in this chat.")
 
 
 @dp.message(F.content_type.in_(["text", "photo", "voice", "document"]))
@@ -498,6 +597,215 @@ async def handle_message(message: Message):
         logging.debug(f"Message {message.message_id} ignored, not added to queue")
 
 
+async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
+    """Run one fired action through this chat's agent and post the reply.
+
+    Exceptions propagate so the scheduler service records the failure; the
+    per-chat lock serializes this turn with normal message processing.
+    """
+    chat_id = action.chat_id
+    if config.allowed_chat_ids and str(chat_id) not in config.allowed_chat_ids:
+        # The action is already claimed; returning would record a successful
+        # delivery. Raise so the service records a failure instead.
+        raise RuntimeError(f"Scheduled action {action.id} targets disallowed chat {chat_id}")
+
+    async with _chat_lock(chat_id):
+        llm_bot = await instance_llm_bot(chat_id)
+        try:
+            await llm_bot.initialize_async_resources()
+            await send_typing_action(bot, chat_id)
+            response = await llm_bot.answer_scheduled_action(chat_id, action.prompt, action.id)
+            final_response = await llm_bot.postprocess_response(
+                response, action.prompt, chat_id, silent_on_no_answer=True
+            )
+            if final_response:
+                delivered = await send_final_response(bot, chat_id, final_response)
+                if delivered is False:
+                    raise RuntimeError(f"Scheduled action {action.id} could not be delivered to chat {chat_id}")
+            await llm_bot.messages_storage.commit()
+        except Exception:
+            logging.exception("Scheduled action %s for chat %s failed", action.id, chat_id)
+            raise
+        finally:
+            await llm_bot.close()
+
+
+async def _process_queued_message(message: Message) -> None:
+    """Process one Telegram message under its chat's history lock."""
+    logging.debug(f"Processing message: {message.message_id}")
+
+    start_time = datetime.datetime.now()
+    chat_id = message.chat.id
+
+    async with _chat_lock(chat_id):
+        llm_bot = await instance_llm_bot(chat_id)
+        await llm_bot.initialize_async_resources()
+
+        try:
+            await send_typing_action(bot, chat_id)
+
+            message_text = get_message_text(message)
+            logging.debug(f"Message text: {message_text}")
+
+            # build message for llm context
+            username = get_message_from(message)
+            if username:
+                message_parts = f"@{username}: "
+            else:
+                user_name = message.from_user.first_name or "Unknown user"
+                message_parts = f"{user_name}: "
+            if is_bot_reply(config.bot_username, message):
+                message_parts += f"@{config.bot_username} "
+            elif is_reply(message):
+                reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+                image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
+                voice_info = " [This message contains a voice message]" if is_voice(message.reply_to_message) else ""
+                document_info = " [This message contains a document]" if is_document(message.reply_to_message) else ""
+                message_parts += (
+                    f'\n"@{get_message_from(message.reply_to_message)} '
+                    f'said: {reply_text}{image_info}{voice_info}{document_info}"\n\n'
+                )
+            if message_text:
+                message_parts += message_text
+            else:
+                logging.debug(f"No message text for message {message.message_id}")
+
+            try:
+                response = None
+
+                # Check if the message itself contains an image
+                if is_image(message) and config.is_image_multimodal:
+                    logging.debug(f"Image message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.photo[-1].file_id)
+                    if file.file_path:
+                        response = await llm_bot.answer_image_message(
+                            chat_id,
+                            message_parts,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                        )
+                    else:
+                        logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                # Check if the message is a reply to a message with an image
+                elif (
+                    is_reply(message)
+                    and message.reply_to_message
+                    and is_image(message.reply_to_message)
+                    and config.is_image_multimodal
+                ):
+                    logging.debug(f"Reply to image message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.reply_to_message.photo[-1].file_id)
+                    # Ensure we're passing a string to answer_image_message
+                    if isinstance(message_parts, str):
+                        prompt_text = message_parts
+                    else:
+                        prompt_text = str(message_parts)
+                    if file.file_path:
+                        response = await llm_bot.answer_image_message(
+                            chat_id,
+                            prompt_text,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                        )
+                    else:
+                        logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
+                # Check if message is a voice message
+                elif is_voice(message) and config.is_audio_multimodal:
+                    logging.debug(f"Voice message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.voice.file_id)
+                    message_parts += " [the user sent a voice message]"
+                    if file.file_path:
+                        response = await llm_bot.answer_voice_message(
+                            chat_id,
+                            message_parts,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                        )
+                    else:
+                        logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
+                # Check if the message is a reply to a voice message
+                elif (
+                    is_reply(message)
+                    and message.reply_to_message
+                    and is_voice(message.reply_to_message)
+                    and config.is_audio_multimodal
+                ):
+                    logging.debug(f"Reply to voice message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.reply_to_message.voice.file_id)
+                    # Ensure we're passing a string to answer_voice_message
+                    if isinstance(message_parts, str):
+                        prompt_text = message_parts
+                    else:
+                        prompt_text = str(message_parts)
+                    if file.file_path:
+                        response = await llm_bot.answer_voice_message(
+                            chat_id,
+                            prompt_text,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                        )
+                    else:
+                        logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
+                # Check if message is a document
+                elif is_document(message) and config.is_document_multimodal:
+                    logging.debug(f"Document message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.document.file_id)
+                    if file.file_path:
+                        response = await llm_bot.answer_document_message(
+                            chat_id,
+                            message_parts,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                            message.document.file_name,
+                        )
+                    else:
+                        logging.error(f"Document file not found for message {message.message_id} for chat {chat_id}")
+                # Check if the message is a reply to a message with a document
+                elif (
+                    is_reply(message)
+                    and message.reply_to_message
+                    and is_document(message.reply_to_message)
+                    and config.is_document_multimodal
+                ):
+                    logging.debug(f"Reply to document message {message.message_id} for chat {chat_id}")
+                    file = await bot.get_file(message.reply_to_message.document.file_id)
+                    if file.file_path:
+                        response = await llm_bot.answer_document_message(
+                            chat_id,
+                            message_parts,
+                            get_telegram_file_url(config.bot_token, file.file_path),
+                            message.reply_to_message.document.file_name,
+                        )
+                    else:
+                        logging.error(f"Document file not found for message {message.message_id} for chat {chat_id}")
+                # If no response is found, treat the message as a text message
+                if not response:
+                    logging.debug(f"Text message {message.message_id} for chat {chat_id}")
+                    response = await llm_bot.answer_message(chat_id, message_parts)
+                    logging.debug(f"Response: {response}")
+            except Exception as e:
+                logging.exception(e)
+                # clean chat context if there is an error for avoid looping on context based error
+                await llm_bot.clean_context()
+                message_queue.task_done()
+                return
+
+            final_response = await llm_bot.postprocess_response(response, message_text, chat_id)
+
+            if final_response:
+                if final_response.get("type") == "text" and config.simulate_typing:
+                    response_text = final_response.get("data") or final_response.get("text") or ""
+                    await simulate_typing(
+                        bot,
+                        chat_id,
+                        strip_thinking(response_text),
+                        start_time,
+                        max_typing_time=config.simulate_typing_max_time,
+                        wpm=config.simulate_typing_wpm,
+                    )
+                await send_final_response(bot, chat_id, final_response, reply_to=message)
+
+            await llm_bot.messages_storage.commit()
+            message_queue.task_done()
+        finally:
+            await llm_bot.close()
+
+
 async def process_message_queue():
     """
     Process the message queue and generate responses.
@@ -505,197 +813,7 @@ async def process_message_queue():
     while True:
         try:
             message = await message_queue.get()
-            logging.debug(f"Processing message: {message.message_id}")
-
-            start_time = datetime.datetime.now()
-
-            chat_id = message.chat.id
-
-            llm_bot = await instance_llm_bot(chat_id)
-            await llm_bot.initialize_async_resources()
-
-            try:
-                await send_typing_action(bot, chat_id)
-
-                message_text = get_message_text(message)
-                logging.debug(f"Message text: {message_text}")
-
-                # build message for llm context
-                username = get_message_from(message)
-                if username:
-                    message_parts = f"@{username}: "
-                else:
-                    user_name = message.from_user.first_name or "Unknown user"
-                    message_parts = f"{user_name}: "
-                if is_bot_reply(config.bot_username, message):
-                    message_parts += f"@{config.bot_username} "
-                elif is_reply(message):
-                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-                    image_info = " [This message contains an image]" if is_image(message.reply_to_message) else ""
-                    voice_info = (
-                        " [This message contains a voice message]" if is_voice(message.reply_to_message) else ""
-                    )
-                    document_info = (
-                        " [This message contains a document]" if is_document(message.reply_to_message) else ""
-                    )
-                    message_parts += (
-                        f'\n"@{get_message_from(message.reply_to_message)} '
-                        f'said: {reply_text}{image_info}{voice_info}{document_info}"\n\n'
-                    )
-                if message_text:
-                    message_parts += message_text
-                else:
-                    logging.debug(f"No message text for message {message.message_id}")
-
-                try:
-                    response = None
-
-                    # Check if the message itself contains an image
-                    if is_image(message) and config.is_image_multimodal:
-                        logging.debug(f"Image message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.photo[-1].file_id)
-                        if file.file_path:
-                            response = await llm_bot.answer_image_message(
-                                chat_id,
-                                message_parts,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                            )
-                        else:
-                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
-                    # Check if the message is a reply to a message with an image
-                    elif (
-                        is_reply(message)
-                        and message.reply_to_message
-                        and is_image(message.reply_to_message)
-                        and config.is_image_multimodal
-                    ):
-                        logging.debug(f"Reply to image message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.reply_to_message.photo[-1].file_id)
-                        # Ensure we're passing a string to answer_image_message
-                        if isinstance(message_parts, str):
-                            prompt_text = message_parts
-                        else:
-                            prompt_text = str(message_parts)
-                        if file.file_path:
-                            response = await llm_bot.answer_image_message(
-                                chat_id,
-                                prompt_text,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                            )
-                        else:
-                            logging.error(f"Image file not found for message {message.message_id} for chat {chat_id}")
-                    # Check if message is a voice message
-                    elif is_voice(message) and config.is_audio_multimodal:
-                        logging.debug(f"Voice message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.voice.file_id)
-                        message_parts += " [the user sent a voice message]"
-                        if file.file_path:
-                            response = await llm_bot.answer_voice_message(
-                                chat_id,
-                                message_parts,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                            )
-                        else:
-                            logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
-                    # Check if the message is a reply to a voice message
-                    elif (
-                        is_reply(message)
-                        and message.reply_to_message
-                        and is_voice(message.reply_to_message)
-                        and config.is_audio_multimodal
-                    ):
-                        logging.debug(f"Reply to voice message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.reply_to_message.voice.file_id)
-                        # Ensure we're passing a string to answer_image_message
-                        if isinstance(message_parts, str):
-                            prompt_text = message_parts
-                        else:
-                            prompt_text = str(message_parts)
-                        if file.file_path:
-                            response = await llm_bot.answer_voice_message(
-                                chat_id,
-                                prompt_text,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                            )
-                        else:
-                            logging.error(f"Voice file not found for message {message.message_id} for chat {chat_id}")
-                    # Check if message is a document
-                    elif is_document(message) and config.is_document_multimodal:
-                        logging.debug(f"Document message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.document.file_id)
-                        if file.file_path:
-                            response = await llm_bot.answer_document_message(
-                                chat_id,
-                                message_parts,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                                message.document.file_name,
-                            )
-                        else:
-                            logging.error(
-                                f"Document file not found for message {message.message_id} for chat {chat_id}"
-                            )
-                    # Check if the message is a reply to a message with a document
-                    elif (
-                        is_reply(message)
-                        and message.reply_to_message
-                        and is_document(message.reply_to_message)
-                        and config.is_document_multimodal
-                    ):
-                        logging.debug(f"Reply to document message {message.message_id} for chat {chat_id}")
-                        file = await bot.get_file(message.reply_to_message.document.file_id)
-                        if file.file_path:
-                            response = await llm_bot.answer_document_message(
-                                chat_id,
-                                message_parts,
-                                get_telegram_file_url(config.bot_token, file.file_path),
-                                message.reply_to_message.document.file_name,
-                            )
-                        else:
-                            logging.error(
-                                f"Document file not found for message {message.message_id} for chat {chat_id}"
-                            )
-                    # If no response is found, treat the message as a text message
-                    if not response:
-                        logging.debug(f"Text message {message.message_id} for chat {chat_id}")
-                        response = await llm_bot.answer_message(chat_id, message_parts)
-                        logging.debug(f"Response: {response}")
-                except Exception as e:
-                    logging.exception(e)
-                    # clean chat context if there is an error for avoid looping on context based error
-                    await llm_bot.clean_context()
-                    message_queue.task_done()
-                    continue
-
-                final_response = await llm_bot.postprocess_response(response, message_text, chat_id)
-
-                if final_response:
-                    if final_response.get("type") == "image":
-                        image_data = final_response.get("data")
-                        if isinstance(image_data, str):
-                            await reply_photo_to_telegram_message(bot, message, image_data)
-                        else:
-                            logging.error("Image data is not a string")
-                    elif final_response.get("type") == "text":
-                        # Remove thinking in reasoning models
-                        raw_content = final_response.get("data") or final_response.get("text") or ""
-                        response_text = re.sub(r"<think>(.*?)</think>", "", raw_content, flags=re.DOTALL)
-                        # Simulate typing if enabled
-                        if config.simulate_typing:
-                            await simulate_typing(
-                                bot,
-                                chat_id,
-                                response_text,
-                                start_time,
-                                max_typing_time=config.simulate_typing_max_time,
-                                wpm=config.simulate_typing_wpm,
-                            )
-
-                        await reply_to_telegram_message(bot, message, response_text)
-
-                await llm_bot.messages_storage.commit()
-                message_queue.task_done()
-            finally:
-                await llm_bot.close()
+            await _process_queued_message(message)
         except Exception as e:
             logging.error(f"Error processing message queue: {e}")
             logging.exception(e)
@@ -705,6 +823,9 @@ async def process_message_queue():
 
 async def main():
     """Main async function to run the bot."""
+    global _scheduler_service
+    _scheduler_service = await init_scheduler()
+
     # Start the message queue processor
     processor_task = asyncio.create_task(process_message_queue())
 
@@ -723,15 +844,20 @@ async def main():
         logging.info("Starting bot...")
         await dp.start_polling(bot)
     finally:
+        if _scheduler_service is not None:
+            await _scheduler_service.stop()
         processor_task.cancel()
+        await asyncio.gather(processor_task, return_exceptions=True)
         await bot.session.close()
 
 
 async def shutdown():
-    """Graceful shutdown."""
+    """Graceful shutdown: stop polling; ``main``'s finally releases resources."""
     logging.info("Shutting down...")
-    await bot.session.close()
-    sys.exit(0)
+    try:
+        await dp.stop_polling()
+    except RuntimeError:
+        logging.debug("Polling was not running")
 
 
 def main_entry():
