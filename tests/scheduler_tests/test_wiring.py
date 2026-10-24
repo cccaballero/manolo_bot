@@ -25,7 +25,9 @@ class TestSchedulerWiring(unittest.TestCase):
         self.assertIn("SchedulerService", main)
         self.assertIn("answer_scheduled_action", main)
         self.assertIn("send_final_response", main)
-        self.assertIn("build_scheduler_instructions", main)
+        self.assertIn("system_instructions", main)
+        self.assertNotIn("build_scheduler_instructions", main)
+        self.assertNotIn("build_active_schedules_block", main)
         self.assertIn('Command("flushschedules")', main)
         self.assertIn("clear_actions", main)
         self.assertEqual(main.count("scheduler=_scheduler_service"), 2)
@@ -40,6 +42,8 @@ class TestSchedulerWiring(unittest.TestCase):
         deep_agent = source("manolo_bot/ai/llmdeepagent.py")
         self.assertIn("_resolve_scheduler_tools", agent)
         self.assertIn("_resolve_scheduler_tools", deep_agent)
+        self.assertIn("as_instructions", agent)
+        self.assertIn("active_instructions", agent)
         self.assertIn("SCHEDULED_TRIGGER_PREFIX", agent)
 
     def test_config_exposes_scheduler_fields(self):

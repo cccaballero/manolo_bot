@@ -592,18 +592,19 @@ A local document knowledge base can be attached to ``LLMAgent`` (or ``LLMDeepAge
 Build a backend via the factory, index ``RAGSource`` records — descriptions may contain
 commas, since records never go through the comma-separated env parsing — and pass the
 backend explicitly; the agent appends the ``rag_search`` tool itself, plus one
-``rag_search_<slug>`` tool per source. Append ``build_rag_instructions()`` to the system
-prompt so the agent knows when to use them.
+``rag_search_<slug>`` tool per source. The backend's ``as_instructions()`` block is
+injected into the system prompt automatically; subclass the backend and override it
+to customize the wording.
 
 .. code-block:: python
 
    import asyncio
+   from langchain_core.messages import AIMessage, SystemMessage
    from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
    from manolo_bot.ai.llmagent import LLMAgent
    from manolo_bot.ai.llmbot import LLMBuilder
    from manolo_bot.rag.embeddings import build_embeddings
    from manolo_bot.rag.factory import build_rag_backend
-   from manolo_bot.rag.prompting import build_rag_instructions
    from manolo_bot.rag.sources import RAGSource
    from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
@@ -638,7 +639,10 @@ prompt so the agent knows when to use them.
        await backend.build_or_load()
        await backend.ingest(sources)
 
-       system_instructions = "You are a helpful assistant." + build_rag_instructions(sources)
+       system_instructions = [
+           SystemMessage(content="You are a helpful assistant."),
+           AIMessage(content="ok!"),
+       ]
        agent = LLMAgent(
            llm=llm,
            bot_config=bot_config,
@@ -700,6 +704,7 @@ composed from two independent seams and injected explicitly, mirroring RAG:
 
 .. code-block:: python
 
+   from langchain_core.messages import AIMessage, SystemMessage
    from manolo_bot.scheduler.engines import build_scheduler_engine
    from manolo_bot.scheduler.service import SchedulerService
    from manolo_bot.scheduler.stores import build_scheduler_store
@@ -718,13 +723,20 @@ composed from two independent seams and injected explicitly, mirroring RAG:
    engine = build_scheduler_engine("asyncio", interval_seconds=5)
    scheduler = SchedulerService(store, engine, handler=deliver)
 
-   agent = LLMAgent(..., scheduler=scheduler)
+   system_instructions = [
+       SystemMessage(content="You are a helpful assistant."),
+       AIMessage(content="ok!"),
+   ]
+   agent = LLMAgent(..., system_instructions=system_instructions, scheduler=scheduler)
    await scheduler.start()
    # ...
    await scheduler.stop()
 
 ``scheduler=`` appends ``schedule_action``, ``list_scheduled_actions`` and
 ``delete_scheduled_action`` to the agent's tools (an MCP/custom tool with the same name wins).
+It also injects ``scheduler.as_instructions()`` and ``await scheduler.active_instructions(chat_id)``
+into the system prompt; subclass ``SchedulerService`` and override those methods to customize
+or suppress them.
 The chat id used by the tools always comes from the run's ``RunnableConfig`` metadata, never
 from a tool argument, so actions cannot leak across chats.
 
@@ -732,6 +744,11 @@ A scheduled prompt can ask the agent to stay silent when a condition is not met 
 ``NO_ANSWER``. The agent turn still runs and is persisted, but no chat message is sent — useful
 for recurring checks such as “every day, check whether there is a match tomorrow; only send a
 preview if there is one”.
+
+The chat's active schedules are embedded in the agent's system prompt (when the Telegram app
+builds it), so the agent still knows about them after ``/flushcontext``. When an action fires its
+id is included in the trigger marker, allowing the agent to cancel that exact action without
+listing first.
 
 Use ``build_scheduler_engine("manual")`` when an external process owns timing; call
 ``await scheduler.sweep()`` from that process (or library endpoint) instead of running an

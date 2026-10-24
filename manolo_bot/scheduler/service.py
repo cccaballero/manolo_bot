@@ -217,6 +217,25 @@ class SchedulerService(SchedulerDispatch):
 
         return build_scheduler_tools(self)
 
+    def as_instructions(self) -> str:
+        """Return the generic scheduling prompt block.
+
+        Override in a subclass to customize the wording; return an empty
+        string to suppress the block.
+        """
+        from manolo_bot.scheduler.prompting import build_scheduler_instructions
+
+        return build_scheduler_instructions(self.timezone_name, self.store.max_actions_per_chat)
+
+    async def active_instructions(self, chat_id: int) -> str:
+        """Return the live per-chat schedule snapshot for the system prompt.
+
+        Override in a subclass to customize or suppress it.
+        """
+        from manolo_bot.scheduler.prompting import build_active_schedules_block
+
+        return build_active_schedules_block(await self.list_actions(chat_id))
+
     def _require_handler(self) -> ActionHandler:
         if self.handler is None:
             raise SchedulerError("SchedulerService has no handler configured")

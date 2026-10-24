@@ -231,3 +231,14 @@ class BaseRAGBackend(ABC):
         :param entries: Source entries as ``RAGSource`` records.
         """
         raise NotImplementedError
+
+    def as_instructions(self, sources: Sequence[RAGSource]) -> str:
+        """Return the RAG prompt block for these sources.
+
+        Concrete default so custom backends inherit the standard wording;
+        override to customize it. The import is local to avoid a cycle
+        (``prompting`` imports ``RAGSource``, which imports this module).
+        """
+        from manolo_bot.rag.prompting import build_rag_instructions
+
+        return build_rag_instructions(sources)

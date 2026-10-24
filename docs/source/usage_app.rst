@@ -215,6 +215,11 @@ A scheduled prompt can ask the agent to stay silent when a condition is not met 
 checks such as “every day, check whether there is a match tomorrow; only send a preview if there is
 one.”
 
+The chat's active schedules are included in the agent's system prompt, so it still knows about
+them after `/flushcontext` (which clears conversation state, not schedules). A fired action's
+trigger includes its id, so the agent can cancel that exact action; `/flushschedules` removes
+all schedules for the chat.
+
 Search Configuration
 ~~~~~~~~~~~~~~~~~~~~
 

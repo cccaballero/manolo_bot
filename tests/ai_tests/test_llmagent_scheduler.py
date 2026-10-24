@@ -5,6 +5,7 @@ still being implemented in parallel), a fake object stands in for it.
 """
 
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, SystemMessage
@@ -17,8 +18,13 @@ from manolo_bot.scheduler.base import (
     LIST_SCHEDULED_ACTIONS_TOOL_NAME,
     SCHEDULE_ACTION_TOOL_NAME,
     SCHEDULED_TRIGGER_PREFIX,
+    STATUS_FAILED,
+    ScheduledAction,
 )
-from manolo_bot.scheduler.prompting import build_scheduler_instructions
+from manolo_bot.scheduler.prompting import (
+    build_active_schedules_block,
+    build_scheduler_instructions,
+)
 
 
 class FakeTool(BaseTool):
@@ -32,15 +38,27 @@ class FakeTool(BaseTool):
 
 
 class FakeScheduler:
-    """Minimal stand-in for ``SchedulerService`` (only ``as_tools`` is used)."""
+    """Minimal stand-in for ``SchedulerService`` used by the agent tests."""
 
     def __init__(self, tools: list[BaseTool]) -> None:
         self._tools = list(tools)
         self.as_tools_calls = 0
+        self.as_instructions_calls = 0
+        self.active_instructions_calls = 0
+        self.active_chat_id = None
 
     def as_tools(self) -> list[BaseTool]:
         self.as_tools_calls += 1
         return list(self._tools)
+
+    def as_instructions(self) -> str:
+        self.as_instructions_calls += 1
+        return "\n\n## Scheduling\n\nfake scheduler instructions"
+
+    async def active_instructions(self, chat_id: int) -> str:
+        self.active_instructions_calls += 1
+        self.active_chat_id = chat_id
+        return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
 def _make_agent(scheduler=None) -> LLMAgent:
@@ -120,6 +138,17 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
         agent.answer_message.assert_awaited_once_with(42, f"{SCHEDULED_TRIGGER_PREFIX}Water the plants")
         self.assertEqual(response.content, "Watered the plants")
 
+    async def test_answer_scheduled_action_includes_action_id(self):
+        # Arrange
+        agent = _make_agent()
+        agent.answer_message = AsyncMock(return_value=AIMessage(content="Done"))
+
+        # Act
+        await agent.answer_scheduled_action(42, "Water the plants", action_id="abc123")
+
+        # Assert
+        agent.answer_message.assert_awaited_once_with(42, f"{SCHEDULED_TRIGGER_PREFIX}id=abc123 Water the plants")
+
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_initialize_async_resources_includes_scheduler_tools(self, mock_create_agent, mock_get_all_tools):
@@ -156,6 +185,25 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertEqual(scheduler.as_tools_calls, 1)
+
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    async def test_initialize_injects_scheduler_instructions(self, mock_create_agent, mock_get_all_tools):
+        # Arrange
+        mock_get_all_tools.return_value = []
+        scheduler = FakeScheduler([])
+
+        # Act
+        agent = _make_agent(scheduler=scheduler)
+        await agent.initialize_async_resources()
+
+        # Assert
+        content = agent.system_instructions[0].content
+        self.assertIn("fake scheduler instructions", content)
+        self.assertIn("id=fake", content)
+        self.assertEqual(scheduler.as_instructions_calls, 1)
+        self.assertEqual(scheduler.active_instructions_calls, 1)
+        self.assertEqual(scheduler.active_chat_id, agent.messages_storage.chat_id)
 
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
@@ -199,6 +247,9 @@ class TestSchedulerPrompting(unittest.TestCase):
         self.assertIn("ISO-8601", text)
         self.assertIn(SCHEDULED_TRIGGER_PREFIX.strip(), text)
         self.assertIn("NO_ANSWER", text)
+        self.assertIn("survive `/flushcontext`", text)
+        self.assertIn("Never claim", text)
+        self.assertIn("one execution", text)
         self.assertIn("7", text)
         self.assertIn("THIS chat", text)
 
@@ -209,6 +260,45 @@ class TestSchedulerPrompting(unittest.TestCase):
         # Assert
         self.assertIn("UTC", text)
         self.assertIn("20", text)
+
+
+class TestActiveSchedulesBlock(unittest.TestCase):
+    NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    def _action(self, index: int, *, prompt: str = "do it", cron: str | None = None, status: str = "active"):
+        return ScheduledAction(
+            id=f"action-{index}",
+            chat_id=42,
+            prompt=prompt,
+            run_at=self.NOW,
+            created_at=self.NOW,
+            cron=cron,
+            status=status,
+        )
+
+    def test_empty_chat_returns_empty_string(self):
+        self.assertEqual(build_active_schedules_block([]), "")
+
+    def test_renders_ids_schedule_and_tool_hint(self):
+        block = build_active_schedules_block([self._action(1, cron="0 9 * * *")])
+
+        self.assertIn("id=action-1", block)
+        self.assertIn("cron='0 9 * * *'", block)
+        self.assertIn(LIST_SCHEDULED_ACTIONS_TOOL_NAME, block)
+        self.assertIn(DELETE_SCHEDULED_ACTION_TOOL_NAME, block)
+
+    def test_truncates_prompts_and_caps_rows(self):
+        actions = [self._action(index, prompt="x" * 300) for index in range(12)]
+
+        block = build_active_schedules_block(actions)
+
+        self.assertIn("…", block)
+        self.assertIn("and 2 more", block)
+        self.assertNotIn("x" * 200, block)
+
+    def test_marks_failed_actions(self):
+        block = build_active_schedules_block([self._action(1, status=STATUS_FAILED)])
+        self.assertIn("status=failed", block)
 
 
 if __name__ == "__main__":

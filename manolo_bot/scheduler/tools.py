@@ -120,6 +120,14 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         except Exception:
             logger.exception("Failed to schedule an action for chat %s", chat_id)
             return INTERNAL_ERROR_MESSAGE
+        schedule = f"cron={action.cron!r}" if action.cron else "one-shot"
+        logger.info(
+            "schedule_action chat=%s id=%s %s next=%s",
+            chat_id,
+            action.id,
+            schedule,
+            action.run_at.isoformat(),
+        )
         return _format_schedule_confirmation(action, service.timezone_name)
 
     @tool(LIST_SCHEDULED_ACTIONS_TOOL_NAME)
@@ -143,6 +151,7 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         except Exception:
             logger.exception("Failed to list scheduled actions for chat %s", chat_id)
             return INTERNAL_ERROR_MESSAGE
+        logger.debug("list_scheduled_actions chat=%s count=%s", chat_id, len(actions))
         if not actions:
             return "No scheduled actions in this chat."
         return "\n".join(_format_action_line(action) for action in actions)
@@ -167,6 +176,7 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         except Exception:
             logger.exception("Failed to delete scheduled action %s for chat %s", action_id, chat_id)
             return INTERNAL_ERROR_MESSAGE
+        logger.info("delete_scheduled_action chat=%s id=%s deleted=%s", chat_id, action_id, deleted)
         if deleted:
             return f"Deleted scheduled action {action_id}."
         return f"No scheduled action {action_id} in this chat."

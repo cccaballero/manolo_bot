@@ -199,6 +199,11 @@ An action prompt can ask the agent to stay silent when a condition is not met by
 recurring checks such as “every day, check whether there is a match tomorrow; only send a preview
 if there is one.”
 
+Active schedules for the chat are embedded in the agent's system prompt, so it still knows about
+them after `/flushcontext` (which clears conversation state, not schedules). When an action
+fires, its id is included in the trigger marker, so the agent can cancel that exact action
+without listing first. `/flushschedules` removes all schedules for the chat.
+
 `SCHEDULER_ENABLED`: Enable scheduling (True, False). Default is False.
 
 `SCHEDULER_STORE`: Persistence backend (`in_memory`, `local_fs`). Default is `in_memory`.
@@ -540,12 +545,12 @@ A local knowledge base can be attached to `LLMAgent` (or `LLMDeepAgent`) via the
 
 ```python
 import asyncio
+from langchain_core.messages import AIMessage, SystemMessage
 from manolo_bot.ai.config import BotConfig, LLMConfig
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBuilder
 from manolo_bot.rag.embeddings import build_embeddings
 from manolo_bot.rag.factory import build_rag_backend
-from manolo_bot.rag.prompting import build_rag_instructions
 from manolo_bot.rag.sources import RAGSource
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
@@ -580,9 +585,12 @@ async def main():
     await backend.build_or_load()
     await backend.ingest(sources)
 
-    # Pass the backend explicitly; the agent appends the rag_search tool itself.
-    # Append build_rag_instructions() to the system prompt so the agent knows when to use it.
-    system_instructions = "You are a helpful assistant." + build_rag_instructions(sources)
+    # Pass the backend explicitly; the agent appends the rag_search tool and the
+    # RAG prompt block itself. Override backend.as_instructions(sources) to customize.
+    system_instructions = [
+        SystemMessage(content="You are a helpful assistant."),
+        AIMessage(content="ok!"),
+    ]
     agent = LLMAgent(
         llm=llm,
         bot_config=bot_config,

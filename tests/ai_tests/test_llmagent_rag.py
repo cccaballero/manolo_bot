@@ -106,6 +106,7 @@ class TestLLMAgentRAGBackend(unittest.IsolatedAsyncioTestCase):
             self.assertIn("search_stub", names)
             self.assertIn("rag_search", names)
             self.assertEqual(len(captured["tools"]), 2)
+            self.assertIn("## RAG", agent.system_instructions[0].content)
 
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")

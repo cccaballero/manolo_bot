@@ -30,7 +30,7 @@ class FakeTool(BaseTool):
 
 
 class FakeScheduler:
-    """Minimal stand-in for ``SchedulerService`` (only ``as_tools`` is used)."""
+    """Minimal stand-in for ``SchedulerService`` used by the deep-agent tests."""
 
     def __init__(self, tools: list[BaseTool]) -> None:
         self._tools = list(tools)
@@ -39,6 +39,12 @@ class FakeScheduler:
     def as_tools(self) -> list[BaseTool]:
         self.as_tools_calls += 1
         return list(self._tools)
+
+    def as_instructions(self) -> str:
+        return "\n\n## Scheduling\n\nfake scheduler instructions"
+
+    async def active_instructions(self, chat_id: int) -> str:
+        return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
 def _make_config(**overrides) -> BotConfig:

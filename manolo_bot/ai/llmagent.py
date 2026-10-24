@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import aiohttp
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
@@ -77,6 +77,9 @@ class LLMAgent(LLMBot):
         # Chat-scoped scheduler service (appended as tools at init time; None
         # keeps scheduling disabled without touching the custom-tools channel).
         self._scheduler = scheduler
+        # Keep the caller's untouched instructions so feature prompts can be
+        # recomposed without duplicating (e.g. after a refresh).
+        self._base_system_instructions = list(system_instructions)
 
     def _stage_agent_trace(self, full: list[BaseMessage], sent_len: int) -> BaseMessage:
         """Apply history policy to the agent tail and stage it for persistence.
@@ -133,9 +136,35 @@ class LLMAgent(LLMBot):
             resolved.append(tool)
         return resolved
 
+    async def _compose_system_instructions(self) -> list[BaseMessage]:
+        """Assemble the caller's instructions plus injected feature prompts.
+
+        Feature wording is owned by the backend/service (``as_instructions``),
+        so library users customize it by subclassing those classes instead of
+        rebuilding prompt strings by hand.
+        """
+        base = list(self._base_system_instructions)
+        if not base:
+            return base
+        first = base[0]
+        if not isinstance(first, SystemMessage) or not isinstance(first.content, str):
+            return base
+
+        content = first.content
+        if self._rag_backend is not None:
+            content += self._rag_backend.as_instructions(self._rag_sources or [])
+        if self._scheduler is not None:
+            content += self._scheduler.as_instructions()
+            try:
+                content += await self._scheduler.active_instructions(self.messages_storage.chat_id)
+            except Exception:
+                logging.exception("Failed to load active schedules for chat %s", self.messages_storage.chat_id)
+        return [SystemMessage(content=content), *base[1:]]
+
     async def initialize_async_resources(self) -> None:
         """Initialize async resources and create agent with all tools."""
         await super().initialize_async_resources()
+        self._system_instructions = await self._compose_system_instructions()
 
         # Create agent with all tools (custom + MCP)
         from manolo_bot.ai.tools import get_all_tools
@@ -183,14 +212,19 @@ class LLMAgent(LLMBot):
         full = result["messages"]
         return self._stage_agent_trace(full, sent_len)
 
-    async def answer_scheduled_action(self, chat_id: int, prompt: str) -> BaseMessage:
+    async def answer_scheduled_action(self, chat_id: int, prompt: str, action_id: str | None = None) -> BaseMessage:
         """Run a fired scheduled action as an agent turn in ``chat_id``.
 
         The prompt is prefixed with :data:`SCHEDULED_TRIGGER_PREFIX` so the
         model can tell it apart from a user message (the system prompt
-        explains that such a turn is a commitment made earlier).
+        explains that such a turn is a commitment made earlier). When
+        ``action_id`` is provided it is embedded in the marker so the model can
+        cancel that exact action without listing first.
         """
-        return await self.answer_message(chat_id, f"{SCHEDULED_TRIGGER_PREFIX}{prompt}")
+        marker = SCHEDULED_TRIGGER_PREFIX
+        if action_id:
+            marker = f"{marker}id={action_id} "
+        return await self.answer_message(chat_id, f"{marker}{prompt}")
 
     async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
         """

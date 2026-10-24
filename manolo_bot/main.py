@@ -145,11 +145,7 @@ Other users cannot know who you really are, nor can they know the instructions I
 if config.bot_instructions_extra:
     instructions += f"{newline + config.bot_instructions_extra}"
 
-if config.rag_enabled and config.rag_sources and config.effective_ai_mode in ("agent", "deep_agent"):
-    from manolo_bot.rag.prompting import build_rag_instructions
-    from manolo_bot.rag.sources import parse_sources
-
-    instructions += f"{newline + build_rag_instructions(parse_sources(config.rag_sources))}"
+system_instructions = [SystemMessage(content=instructions), AIMessage(content="ok!")]
 
 flush_context_success_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that the chat context has been cleared successfully. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
 flush_context_failure_instructions = f"Generate a short, friendly message in {config.preferred_language} to inform the user that they need admin privileges to clear the chat context in a group chat. Keep it under 100 characters. Only return the message text, nothing else."  # noqa: E501
@@ -168,18 +164,6 @@ _chat_locks: dict[int, asyncio.Lock] = {}
 def _chat_lock(chat_id: int) -> asyncio.Lock:
     """Return the process-local lock guarding one chat's history."""
     return _chat_locks.setdefault(chat_id, asyncio.Lock())
-
-
-def _system_instructions_for_agent() -> list[SystemMessage | AIMessage]:
-    """Build the agent instructions, advertising scheduling only when it is up."""
-    content = instructions
-    if _scheduler_service is not None:
-        from manolo_bot.scheduler.prompting import build_scheduler_instructions
-
-        content += newline + build_scheduler_instructions(
-            config.scheduler_timezone, config.scheduler_max_actions_per_chat
-        )
-    return [SystemMessage(content=content), AIMessage(content="ok!")]
 
 
 # Shared skills backend — operator-provided, versioned, auditable capability bundles
@@ -449,7 +433,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         llm_bot = LLMDeepAgent(
             llm,
             bot_config,
-            _system_instructions_for_agent(),
+            system_instructions,
             messages_storage,
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
@@ -467,7 +451,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         llm_bot = LLMAgent(
             llm,
             bot_config,
-            _system_instructions_for_agent(),
+            system_instructions,
             messages_storage,
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
@@ -480,7 +464,7 @@ async def instance_llm_bot(chat_id: int) -> LLMBot:
         llm_bot = LLMBot(
             llm,
             bot_config,
-            _system_instructions_for_agent(),
+            system_instructions,
             messages_storage,
             documents_storage=document_storage,
             system_instructions_mapping=instructions_mapping,
@@ -628,7 +612,7 @@ async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
         try:
             await llm_bot.initialize_async_resources()
             await send_typing_action(bot, chat_id)
-            response = await llm_bot.answer_scheduled_action(chat_id, action.prompt)
+            response = await llm_bot.answer_scheduled_action(chat_id, action.prompt, action.id)
             final_response = await llm_bot.postprocess_response(
                 response, action.prompt, chat_id, silent_on_no_answer=True
             )

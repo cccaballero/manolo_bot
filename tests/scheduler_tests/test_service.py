@@ -506,6 +506,24 @@ class TestListAndDelete(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.engine.notifications, [])
 
 
+class TestServiceInstructions(ServiceFixture, unittest.IsolatedAsyncioTestCase):
+    def test_as_instructions_uses_store_settings(self) -> None:
+        service = self.make_service()
+        text = service.as_instructions()
+        self.assertIn("UTC", text)
+        self.assertIn("20", text)
+
+    async def test_active_instructions_is_chat_scoped(self) -> None:
+        service = self.make_service()
+        own = await self.seed(chat_id=42, run_at=NOW + timedelta(hours=1))
+        foreign = await self.seed(chat_id=7, run_at=NOW + timedelta(hours=1))
+
+        text = await service.active_instructions(42)
+
+        self.assertIn(own.id, text)
+        self.assertNotIn(foreign.id, text)
+
+
 class SweepOnlyEngine(RecordingEngine):
     """Engine that consumes no action snapshots (the shipped engines)."""
 

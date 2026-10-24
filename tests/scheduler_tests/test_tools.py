@@ -210,6 +210,16 @@ class TestToolDescriptions(ToolsFixture):
         self.assertIn("NO_ANSWER", self.tools["schedule_action"].description)
 
 
+class TestToolLogging(ToolsFixture):
+    async def test_delete_logs_the_outcome(self) -> None:
+        action = await self.seed()
+
+        with self.assertLogs("manolo_bot.scheduler.tools", level="INFO") as logs:
+            await self.tools["delete_scheduled_action"].ainvoke({"action_id": action.id}, config=CONFIG)
+
+        self.assertTrue(any(action.id in line and "deleted=True" in line for line in logs.output))
+
+
 class TestDeleteTool(ToolsFixture):
     async def test_delete_reports_both_branches(self) -> None:
         action = await self.seed()
