@@ -376,6 +376,7 @@ async def init_scheduler() -> "SchedulerService | None":
             max_consecutive_failures=config.scheduler_max_consecutive_failures,
             catchup_grace_seconds=config.scheduler_catchup_grace_seconds,
             default_timezone=config.scheduler_timezone,
+            redis_url=config.redis_url,
         )
         engine = build_scheduler_engine(
             config.scheduler_engine,

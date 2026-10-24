@@ -698,7 +698,7 @@ Scheduler
 The scheduler adds chat-scoped scheduled actions to ``LLMAgent`` and ``LLMDeepAgent``. It is
 composed from two independent seams and injected explicitly, mirroring RAG:
 
-- a **store** decides *what* is due and persists actions;
+- a **store** decides *what* is due and persists actions (`in_memory`, `local_fs`, or `redis`);
 - an **engine** decides *when* to check;
 - ``SchedulerService`` composes them and exposes the agent tools plus ``sweep()`` / ``fire()``.
 

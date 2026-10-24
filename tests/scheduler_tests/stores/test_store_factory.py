@@ -11,6 +11,7 @@ from manolo_bot.scheduler.base import STATUS_ACTIVE, ScheduledAction
 from manolo_bot.scheduler.stores.factory import build_scheduler_store
 from manolo_bot.scheduler.stores.filesystem_store import FilesystemSchedulerStore
 from manolo_bot.scheduler.stores.inmemory_store import InMemorySchedulerStore
+from manolo_bot.scheduler.stores.redis_store import RedisSchedulerStore
 
 
 class TestSchedulerStoreFactory(unittest.IsolatedAsyncioTestCase):
@@ -27,6 +28,19 @@ class TestSchedulerStoreFactory(unittest.IsolatedAsyncioTestCase):
             assert isinstance(store, FilesystemSchedulerStore)
             self.assertEqual(store.path, Path(tmp) / "my-bot" / "schedules.json")
             self.assertEqual(store.store_path, Path(tmp))
+
+    def test_routes_redis(self) -> None:
+        store = build_scheduler_store(
+            "redis",
+            bot_uuid="my-bot",
+            max_actions_per_chat=3,
+            redis_url="redis://example:6379/2",
+        )
+        self.assertIsInstance(store, RedisSchedulerStore)
+        assert isinstance(store, RedisSchedulerStore)
+        self.assertEqual(store.bot_uuid, "my-bot")
+        self.assertEqual(store.max_actions_per_chat, 3)
+        self.assertEqual(store.snapshot_key, "my-bot:scheduler:snapshot")
 
     def test_normalizes_name_whitespace_and_case(self) -> None:
         self.assertIsInstance(build_scheduler_store("  In_Memory  "), InMemorySchedulerStore)
@@ -50,8 +64,8 @@ class TestSchedulerStoreFactory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.default_timezone, "Europe/Madrid")
 
     def test_rejects_unknown_store(self) -> None:
-        with self.assertRaisesRegex(ValueError, r"Unsupported scheduler store: 'redis'"):
-            build_scheduler_store("redis")
+        with self.assertRaisesRegex(ValueError, r"Unsupported scheduler store: 'postgres'"):
+            build_scheduler_store("postgres")
         with self.assertRaises(ValueError):
             build_scheduler_store("")
 

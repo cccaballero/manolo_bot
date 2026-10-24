@@ -144,7 +144,9 @@ class Config(EnvModel):
     # into a SchedulerService at startup and injects it explicitly into the
     # agents, mirroring the RAG/history-policy pattern.
     scheduler_enabled = BooleanField("SCHEDULER_ENABLED", default=False)
-    scheduler_store = StringField("SCHEDULER_STORE", default="in_memory", allowed_values=["in_memory", "local_fs"])
+    scheduler_store = StringField(
+        "SCHEDULER_STORE", default="in_memory", allowed_values=["in_memory", "local_fs", "redis"]
+    )
     scheduler_engine = StringField("SCHEDULER_ENGINE", default="asyncio", allowed_values=["asyncio", "manual"])
     scheduler_store_path = StringField(
         "SCHEDULER_STORE_PATH", default=os.path.join(tempfile.gettempdir(), "manolo_bot", "scheduler")

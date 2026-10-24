@@ -209,6 +209,11 @@ class TestSchedulerConfig(unittest.TestCase):
         self.assertEqual(config.scheduler_max_consecutive_failures, 5)
         self.assertEqual(config.scheduler_catchup_grace_seconds, 0)
 
+    def test_scheduler_store_accepts_redis(self):
+        os.environ["SCHEDULER_STORE"] = "redis"
+        config = Config(lazy=True)
+        self.assertEqual(config.scheduler_store, "redis")
+
     def test_scheduler_env_parsing(self):
         os.environ["SCHEDULER_ENABLED"] = "True"
         os.environ["SCHEDULER_STORE"] = "local_fs"

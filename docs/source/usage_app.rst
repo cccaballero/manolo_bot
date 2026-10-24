@@ -196,6 +196,7 @@ fires, the bot runs the prompt through that chat's agent and posts the reply.
 * `SCHEDULER_STORE`: Persistence backend (default: `in_memory`).
     * `in_memory`: Ephemeral; lost on restart. Intended for tests and single-process demos.
     * `local_fs`: A per-bot JSON snapshot under `SCHEDULER_STORE_PATH`, protected by a file lock and atomic replace. Single-node persistence, not horizontally scalable.
+    * `redis`: A shared durable snapshot with cross-process locking, reusing `REDIS_URL`. Claims are atomic across processes; multi-instance delivery still needs a distributed per-chat lock and a shared message store.
 * `SCHEDULER_ENGINE`: Trigger backend (default: `asyncio`).
     * `asyncio`: In-process poll loop that sweeps due actions every `SCHEDULER_POLL_INTERVAL_SECONDS`.
     * `manual`: No automatic trigger. Useful for tests, serverless setups, or when an external worker/system cron calls `SchedulerService.sweep()`.
