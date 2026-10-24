@@ -784,12 +784,20 @@ class LLMBot:
 
         return response
 
-    async def postprocess_response(self, response: BaseMessage, message_text: str, chat_id: int) -> dict | None:
+    async def postprocess_response(
+        self,
+        response: BaseMessage,
+        message_text: str,
+        chat_id: int,
+        *,
+        silent_on_no_answer: bool = False,
+    ) -> dict | None:
         """
         Postprocess the response from the LLM.
         :param response: Response from the LLM
         :param message_text: Text of the user message
         :param chat_id: Chat ID
+        :param silent_on_no_answer: When True, a NO_ANSWER response returns None without persisting it
         return: Final response data
         """
 
@@ -830,6 +838,11 @@ class LLMBot:
         elif "NO_ANSWER" not in response_content:
             logging.debug(f"Response for chat {chat_id}")
             final_response = {"type": "text", "data": response_content}
+        elif silent_on_no_answer:
+            # Scheduled turn whose condition was not met: stay silent instead
+            # of posting the usual placeholder emoji.
+            logging.debug(f"NO_ANSWER response for chat {chat_id}; scheduled delivery suppressed")
+            return None
         else:
             logging.debug(f"NO_ANSWER response for chat {chat_id}")
             final_response = {

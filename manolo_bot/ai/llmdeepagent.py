@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from manolo_bot.ai.history_policy import BaseHistoryPolicy
     from manolo_bot.rag.base import BaseRAGBackend
     from manolo_bot.rag.sources import RAGSource
+    from manolo_bot.scheduler.service import SchedulerService
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,7 @@ class LLMDeepAgent(LLMAgent):
         rag_backend: "BaseRAGBackend | None" = None,
         rag_sources: "Sequence[RAGSource] | None" = None,
         history_policy: "BaseHistoryPolicy | None" = None,
+        scheduler: "SchedulerService | None" = None,
     ) -> None:
         super().__init__(
             llm,
@@ -166,6 +168,7 @@ class LLMDeepAgent(LLMAgent):
             rag_backend=rag_backend,
             rag_sources=rag_sources,
             history_policy=history_policy,
+            scheduler=scheduler,
         )
         self._backend_wrapper = backend
         self._backend: BackendProtocol = backend.backend if backend else StateBackend()
@@ -263,6 +266,7 @@ class LLMDeepAgent(LLMAgent):
             self._mcp_manager, self.bot_config, document_storage=self.documents_storage, custom_tools=self.tools
         )
         tools = self._resolve_rag_tools(tools)
+        tools = self._resolve_scheduler_tools(tools)
 
         instructions_text = self._system_instructions[0].content if self._system_instructions else ""
 

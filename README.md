@@ -185,6 +185,49 @@ their tools at init, so re-resolve or recreate the agent to pick up index change
 `0` = unlimited); oversized sources are skipped with a warning. Keep `RAG_CHUNK_SIZE` well below your
 provider's per-request token limit; the defaults are safe.
 
+#### Scheduler (agent and deep_agent modes)
+
+Lets the agent schedule future actions in a chat. It exposes `schedule_action` (a one-shot
+ISO-8601 `run_at`, or a recurring 5-field `cron` expression), `list_scheduled_actions` and
+`delete_scheduled_action`. Every action is scoped to the chat that created it; when it fires
+the bot runs the prompt through that chat's agent and posts the reply. The `llm` mode ignores
+these settings, and initialization failures degrade gracefully (the bot keeps running without
+scheduling).
+
+An action prompt can ask the agent to stay silent when a condition is not met by replying
+`NO_ANSWER`; the agent turn still runs, but nothing is posted to the chat. This is useful for
+recurring checks such as “every day, check whether there is a match tomorrow; only send a preview
+if there is one.”
+
+`SCHEDULER_ENABLED`: Enable scheduling (True, False). Default is False.
+
+`SCHEDULER_STORE`: Persistence backend (`in_memory`, `local_fs`). Default is `in_memory`.
+- `in_memory`: ephemeral; lost on restart, intended for tests and single-process demos.
+- `local_fs`: a per-bot JSON snapshot under `SCHEDULER_STORE_PATH`, protected by a file lock
+  and atomic replace. Single-node only (not horizontally scalable).
+
+`SCHEDULER_ENGINE`: Trigger backend (`asyncio`, `manual`). Default is `asyncio`.
+- `asyncio`: an in-process poll loop that sweeps due actions every `SCHEDULER_POLL_INTERVAL_SECONDS`.
+- `manual`: no automatic trigger; useful for tests, serverless setups, or when an external
+  worker/system cron calls `SchedulerService.sweep()`.
+
+`SCHEDULER_STORE_PATH`: Directory for `local_fs` state. Defaults to a system temporary
+directory (e.g. `/tmp/manolo_bot/scheduler`).
+
+`SCHEDULER_TIMEZONE`: IANA timezone used to evaluate cron expressions and naive one-shot
+values (default: `UTC`).
+
+`SCHEDULER_POLL_INTERVAL_SECONDS`: Sweep interval for the asyncio engine (default: `5`).
+
+`SCHEDULER_MAX_ACTIONS_PER_CHAT`: Maximum open actions per chat (default: `20`).
+
+`SCHEDULER_MAX_CONSECUTIVE_FAILURES`: Consecutive failures before a recurring action is
+marked failed and stops firing (default: `5`).
+
+`SCHEDULER_CATCHUP_GRACE_SECONDS`: How late an overdue action may still fire after a
+restart; `0` means fire any overdue action once, coalescing missed cron occurrences
+(default: `0`).
+
 #### Enabling image Generation with Stable Diffusion
 
 `WEBUI_SD_API_URL`: you can define a Stable Diffusion Web UI API URL for image generation. If this option is enabled the
@@ -391,6 +434,8 @@ The bot supports the following commands:
 
 - `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this
   command. The bot will respond with a confirmation message in the configured language.
+- `/flushschedules` - Removes every scheduled action for the current chat (active and failed). In group chats, only
+  admins can use this command. Conversation history and `/flushcontext` are unaffected.
 
 ### Running the Bot
 

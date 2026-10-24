@@ -302,9 +302,9 @@ class TestTelegramUtils(unittest.IsolatedAsyncioTestCase):
             # Act
             await reply_to_telegram_message(mock_bot, mock_message, response_content)
 
-            # Assert
-            mock_message.reply.assert_called_once_with("", parse_mode="MarkdownV2")
-            mock_logging.assert_called_once_with(f"Sent response for chat {mock_message.chat.id}")
+            # Assert: blank responses are a no-op instead of a failed Telegram call.
+            mock_message.reply.assert_not_called()
+            mock_logging.assert_called_once_with(f"Nothing to send for chat {mock_message.chat.id}")
 
     def test_message_with_bot_username_prefix_is_cleaned(self):
         # Arrange

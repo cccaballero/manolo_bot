@@ -688,6 +688,66 @@ For a custom index (e.g. Chroma, pgvector), subclass ``BaseRAGBackend`` from
 ``clear()``, ``remove()``, ``list_sources()``, ``needs_reindex()``, ``find_removed()``,
 ``as_tool()`` and ``as_source_tools()``; wire it up through ``build_rag_backend()``.
 
+Scheduler
+---------
+
+The scheduler adds chat-scoped scheduled actions to ``LLMAgent`` and ``LLMDeepAgent``. It is
+composed from two independent seams and injected explicitly, mirroring RAG:
+
+- a **store** decides *what* is due and persists actions;
+- an **engine** decides *when* to check;
+- ``SchedulerService`` composes them and exposes the agent tools plus ``sweep()`` / ``fire()``.
+
+.. code-block:: python
+
+   from manolo_bot.scheduler.engines import build_scheduler_engine
+   from manolo_bot.scheduler.service import SchedulerService
+   from manolo_bot.scheduler.stores import build_scheduler_store
+
+   async def deliver(action):
+       # Run the action through your agent and send the reply.
+       # Raise on failure so the service records it.
+       ...
+
+   store = build_scheduler_store(
+       "local_fs",
+       bot_uuid=bot_config.bot_uuid,
+       store_path="/tmp/manolo_bot/scheduler",
+       default_timezone="UTC",
+   )
+   engine = build_scheduler_engine("asyncio", interval_seconds=5)
+   scheduler = SchedulerService(store, engine, handler=deliver)
+
+   agent = LLMAgent(..., scheduler=scheduler)
+   await scheduler.start()
+   # ...
+   await scheduler.stop()
+
+``scheduler=`` appends ``schedule_action``, ``list_scheduled_actions`` and
+``delete_scheduled_action`` to the agent's tools (an MCP/custom tool with the same name wins).
+The chat id used by the tools always comes from the run's ``RunnableConfig`` metadata, never
+from a tool argument, so actions cannot leak across chats.
+
+A scheduled prompt can ask the agent to stay silent when a condition is not met by replying
+``NO_ANSWER``. The agent turn still runs and is persisted, but no chat message is sent — useful
+for recurring checks such as “every day, check whether there is a match tomorrow; only send a
+preview if there is one”.
+
+Use ``build_scheduler_engine("manual")`` when an external process owns timing; call
+``await scheduler.sweep()`` from that process (or library endpoint) instead of running an
+in-process loop.
+
+For a custom persistence backend, subclass ``BaseSchedulerStore`` from
+``manolo_bot.scheduler.base`` and implement ``build_or_load()``, ``add()``, ``list()``,
+``delete()``, ``claim_due()``, ``claim_one()``, ``mark_delivered()``, ``record_failure()``,
+``clear()`` and ``list_all()``; reuse the state-machine helpers in that module so claim and
+failure semantics stay identical. Register it in ``build_scheduler_store()``.
+
+For a custom trigger, subclass ``BaseSchedulerEngine`` and call ``dispatch.sweep()`` (or
+``dispatch.fire(chat_id, action_id)``); register it in ``build_scheduler_engine()``.
+Out-of-process engines (system cron, Celery workers) work through the same service but need a
+shared store and a shared message store, since their worker runs outside the bot process.
+
 Dynamic System Instructions
 ---------------------------
 

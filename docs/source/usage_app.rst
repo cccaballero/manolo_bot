@@ -183,6 +183,38 @@ For example, to chat on Gemini while embedding with a local OpenAI-compatible se
 
 Ingest is per-file isolated: one bad file can't kill the index — failures are logged with a warning and retried on the next run. ``ingest()`` is idempotent (unchanged files are skipped without any embedding call; changed files are replaced, never duplicated). ``remove()`` drops documents without touching the rest, and ``list_sources()`` reports what is currently indexed.
 
+Scheduler
+~~~~~~~~~
+
+Give the agent the ability to schedule future actions in a chat. The scheduler is wired into
+the ``agent`` and ``deep_agent`` modes only — the ``llm`` mode ignores these settings. When
+enabled, the agent receives ``schedule_action``, ``list_scheduled_actions`` and
+``delete_scheduled_action`` tools. Actions are scoped to the chat that created them; when one
+fires, the bot runs the prompt through that chat's agent and posts the reply.
+
+* `SCHEDULER_ENABLED`: Set to `True` to enable scheduling (default: `False`).
+* `SCHEDULER_STORE`: Persistence backend (default: `in_memory`).
+    * `in_memory`: Ephemeral; lost on restart. Intended for tests and single-process demos.
+    * `local_fs`: A per-bot JSON snapshot under `SCHEDULER_STORE_PATH`, protected by a file lock and atomic replace. Single-node persistence, not horizontally scalable.
+* `SCHEDULER_ENGINE`: Trigger backend (default: `asyncio`).
+    * `asyncio`: In-process poll loop that sweeps due actions every `SCHEDULER_POLL_INTERVAL_SECONDS`.
+    * `manual`: No automatic trigger. Useful for tests, serverless setups, or when an external worker/system cron calls `SchedulerService.sweep()`.
+* `SCHEDULER_STORE_PATH`: Directory for `local_fs` state. Defaults to a system temporary directory (``/tmp/manolo_bot/scheduler`` on Linux).
+* `SCHEDULER_TIMEZONE`: IANA timezone used to evaluate cron expressions and naive one-shot values (default: `UTC`).
+* `SCHEDULER_POLL_INTERVAL_SECONDS`: Sweep interval for the asyncio engine (default: `5`).
+* `SCHEDULER_MAX_ACTIONS_PER_CHAT`: Maximum open actions per chat (default: `20`).
+* `SCHEDULER_MAX_CONSECUTIVE_FAILURES`: Consecutive failures before a recurring action is marked failed and stops firing (default: `5`).
+* `SCHEDULER_CATCHUP_GRACE_SECONDS`: How late an overdue action may still fire after a restart; `0` means fire any overdue action once, coalescing missed cron occurrences (default: `0`).
+
+Cron expressions use five fields (minute hour day-of-month month day-of-week) and are
+evaluated in `SCHEDULER_TIMEZONE`. One-shot `run_at` values accept an ISO-8601 offset;
+naive values are interpreted in the same timezone.
+
+A scheduled prompt can ask the agent to stay silent when a condition is not met by replying
+`NO_ANSWER`; the agent turn still runs, but nothing is posted to the chat. This supports recurring
+checks such as “every day, check whether there is a match tomorrow; only send a preview if there is
+one.”
+
 Search Configuration
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -266,6 +298,7 @@ Available Commands
 ------------------
 
 * `/flushcontext`: Use this in a chat to clear the bot's memory for that specific conversation. In groups, this is restricted to administrators.
+* `/flushschedules`: Removes every scheduled action for the current chat (active and failed). In groups, this is restricted to administrators. Conversation history and `/flushcontext` are unaffected.
 
 Running with Docker
 -------------------
