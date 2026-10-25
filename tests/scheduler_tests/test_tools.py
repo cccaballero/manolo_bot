@@ -24,8 +24,11 @@ from tests.scheduler_tests.test_service import (
     RecordingHandler,
 )
 
-CHAT_ID = 7
+CHAT_ID = "7"
 CONFIG = {"metadata": {"chat_id": CHAT_ID}}
+NUMERIC_CONFIG = {"metadata": {"chat_id": 7}}
+OPAQUE_SCOPE = "C012345"
+OPAQUE_CONFIG = {"metadata": {"chat_id": OPAQUE_SCOPE}}
 
 
 class BrokenStore(FakeStore):
@@ -34,7 +37,7 @@ class BrokenStore(FakeStore):
     async def add(self, action: ScheduledAction) -> ScheduledAction:
         raise RuntimeError("store exploded")
 
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
         raise RuntimeError("store exploded")
 
 
@@ -57,7 +60,7 @@ class ToolsFixture(unittest.IsolatedAsyncioTestCase):
         *,
         prompt: str = "do the thing",
         run_at: datetime = NOW,
-        chat_id: int = CHAT_ID,
+        chat_id: str = CHAT_ID,
         cron: str | None = None,
         max_runs: int | None = None,
         status: str = "active",
@@ -108,13 +111,38 @@ class TestScheduleTool(ToolsFixture):
         self.assertIn("one-shot", result)
         self.assertIn("UTC", result)
 
-    async def test_schedule_accepts_string_chat_id(self) -> None:
+    async def test_schedule_accepts_numeric_and_string_chat_ids(self) -> None:
         result = await self.tools["schedule_action"].ainvoke(
             {"prompt": "ping", "run_at": "2026-10-20T13:00:00Z"},
-            config={"metadata": {"chat_id": "7"}},
+            config=NUMERIC_CONFIG,
         )
         self.assertIn("Scheduled action", result)
         self.assertEqual(self.store.added[0].chat_id, CHAT_ID)
+
+        result = await self.tools["schedule_action"].ainvoke(
+            {"prompt": "pong", "run_at": "2026-10-20T13:00:00Z"},
+            config=CONFIG,
+        )
+        self.assertIn("Scheduled action", result)
+        self.assertEqual(self.store.added[1].chat_id, CHAT_ID)
+
+    async def test_schedule_accepts_opaque_scope(self) -> None:
+        result = await self.tools["schedule_action"].ainvoke(
+            {"prompt": "ping", "run_at": "2026-10-20T13:00:00Z"},
+            config=OPAQUE_CONFIG,
+        )
+
+        self.assertIn("Scheduled action", result)
+        self.assertEqual(self.store.added[0].chat_id, OPAQUE_SCOPE)
+
+    async def test_schedule_scope_overrides_chat_id(self) -> None:
+        result = await self.tools["schedule_action"].ainvoke(
+            {"prompt": "ping", "run_at": "2026-10-20T13:00:00Z"},
+            config={"metadata": {"schedule_scope": OPAQUE_SCOPE, "chat_id": CHAT_ID}},
+        )
+
+        self.assertIn("Scheduled action", result)
+        self.assertEqual(self.store.added[0].chat_id, OPAQUE_SCOPE)
 
     async def test_schedule_reports_cron_and_max_runs(self) -> None:
         result = await self.tools["schedule_action"].ainvoke(
@@ -125,7 +153,16 @@ class TestScheduleTool(ToolsFixture):
         self.assertIn("max_runs: 3", result)
 
     async def test_schedule_without_chat_context_returns_unavailable(self) -> None:
-        for config in (None, {}, {"metadata": {}}, {"metadata": {"chat_id": None}}):
+        configs = (
+            None,
+            {},
+            {"metadata": {}},
+            {"metadata": {"chat_id": None}},
+            {"metadata": {"chat_id": ""}},
+            {"metadata": {"chat_id": "   "}},
+            {"metadata": {"schedule_scope": "  "}},
+        )
+        for config in configs:
             with self.subTest(config=config):
                 result = await self.tools["schedule_action"].ainvoke(
                     {"prompt": "ping", "run_at": "2026-10-20T13:00:00Z"},
@@ -241,3 +278,37 @@ class TestDeleteTool(ToolsFixture):
     async def test_delete_without_chat_context_returns_unavailable(self) -> None:
         result = await self.tools["delete_scheduled_action"].ainvoke({"action_id": "action-1"})
         self.assertEqual(result, NO_CHAT_CONTEXT_MESSAGE)
+
+
+class TestOpaqueScopeTools(ToolsFixture):
+    async def test_list_and_delete_use_the_opaque_scope(self) -> None:
+        own = await self.seed(chat_id=OPAQUE_SCOPE, run_at=NOW + timedelta(hours=1))
+        foreign = await self.seed(chat_id=CHAT_ID, run_at=NOW + timedelta(hours=1))
+
+        result = await self.tools["list_scheduled_actions"].ainvoke({}, config=OPAQUE_CONFIG)
+        self.assertIn(own.id, result)
+        self.assertNotIn(foreign.id, result)
+
+        crossed = await self.tools["delete_scheduled_action"].ainvoke(
+            {"action_id": foreign.id},
+            config=OPAQUE_CONFIG,
+        )
+        self.assertEqual(crossed, f"No scheduled action {foreign.id} in this chat.")
+        self.assertIn(foreign.id, self.store.actions)
+
+        deleted = await self.tools["delete_scheduled_action"].ainvoke(
+            {"action_id": own.id},
+            config=OPAQUE_CONFIG,
+        )
+        self.assertEqual(deleted, f"Deleted scheduled action {own.id}.")
+        self.assertNotIn(own.id, self.store.actions)
+
+    async def test_schedule_scope_drives_list_and_delete(self) -> None:
+        action = await self.seed(chat_id=OPAQUE_SCOPE, run_at=NOW + timedelta(hours=1))
+        config = {"metadata": {"schedule_scope": OPAQUE_SCOPE, "chat_id": CHAT_ID}}
+
+        listed = await self.tools["list_scheduled_actions"].ainvoke({}, config=config)
+        self.assertIn(action.id, listed)
+
+        deleted = await self.tools["delete_scheduled_action"].ainvoke({"action_id": action.id}, config=config)
+        self.assertEqual(deleted, f"Deleted scheduled action {action.id}.")

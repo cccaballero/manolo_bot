@@ -34,6 +34,7 @@ from manolo_bot.telegram.utils import (
     is_image,
     is_reply,
     is_voice,
+    parse_telegram_chat_id,
     send_final_response,
     send_typing_action,
     simulate_typing,
@@ -554,7 +555,7 @@ async def flush_schedules_command(message: Message):
         return
 
     async with _chat_lock(chat_id):
-        removed = await _scheduler_service.clear_actions(chat_id)
+        removed = await _scheduler_service.clear_actions(str(chat_id))
 
     logging.debug(f"Removed {removed} scheduled action(s) from chat {chat_id}")
     if removed:
@@ -604,7 +605,14 @@ async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
     Exceptions propagate so the scheduler service records the failure; the
     per-chat lock serializes this turn with normal message processing.
     """
-    chat_id = action.chat_id
+    # Telegram chat ids are numeric; the scheduler scope is opaque. Coerce here
+    # so instance_llm_bot, _chat_lock, message storage and aiogram all share the
+    # same int namespace as normal messages. A non-numeric scope is a wiring
+    # error, so surface it as an actionable delivery failure.
+    try:
+        chat_id = parse_telegram_chat_id(action.chat_id)
+    except ValueError as exc:
+        raise RuntimeError(f"Scheduled action {action.id} cannot be delivered: {exc}") from exc
     if config.allowed_chat_ids and str(chat_id) not in config.allowed_chat_ids:
         # The action is already claimed; returning would record a successful
         # delivery. Raise so the service records a failure instead.

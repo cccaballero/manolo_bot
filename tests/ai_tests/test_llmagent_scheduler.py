@@ -45,7 +45,7 @@ class FakeScheduler:
         self.as_tools_calls = 0
         self.as_instructions_calls = 0
         self.active_instructions_calls = 0
-        self.active_chat_id = None
+        self.active_scope = None
 
     def as_tools(self) -> list[BaseTool]:
         self.as_tools_calls += 1
@@ -55,26 +55,29 @@ class FakeScheduler:
         self.as_instructions_calls += 1
         return "\n\n## Scheduling\n\nfake scheduler instructions"
 
-    async def active_instructions(self, chat_id: int) -> str:
+    async def active_instructions(self, scope: str) -> str:
         self.active_instructions_calls += 1
-        self.active_chat_id = chat_id
+        self.active_scope = scope
         return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
-def _make_agent(scheduler=None, system_instructions=None) -> LLMAgent:
+def _make_agent(scheduler=None, system_instructions=None, schedule_scope=None) -> LLMAgent:
     """Build an LLMAgent with mocks (no network, no real config)."""
     mock_llm = MagicMock()
     mock_config = MagicMock(spec=Config)
     mock_config.enable_mcp = False
     mock_config.use_tools = False
+    mock_storage = MagicMock()
+    mock_storage.chat_id = 4242
     if system_instructions is None:
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
     return LLMAgent(
         mock_llm,
         mock_config,
         system_instructions,
-        MagicMock(),
+        mock_storage,
         scheduler=scheduler,
+        schedule_scope=schedule_scope,
     )
 
 
@@ -205,7 +208,85 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
         self.assertIn("id=fake", content)
         self.assertEqual(scheduler.as_instructions_calls, 1)
         self.assertEqual(scheduler.active_instructions_calls, 1)
-        self.assertEqual(scheduler.active_chat_id, agent.messages_storage.chat_id)
+        self.assertEqual(scheduler.active_scope, "4242")
+
+    async def test_composition_uses_schedule_scope_when_set(self) -> None:
+        # Arrange: opaque scheduler scope distinct from the storage chat id.
+        scheduler = FakeScheduler([])
+        agent = _make_agent(scheduler=scheduler, schedule_scope="C012345")
+
+        # Act
+        composed = await agent._compose_system_instructions()
+
+        # Assert: scope wins over the conversation storage key.
+        self.assertEqual(scheduler.active_scope, "C012345")
+        self.assertIn("id=fake", composed[0].content)
+
+    async def test_composition_falls_back_to_storage_chat_id_without_scope(self) -> None:
+        # Arrange
+        scheduler = FakeScheduler([])
+        agent = _make_agent(scheduler=scheduler)
+
+        # Act
+        await agent._compose_system_instructions()
+
+        # Assert: unchanged pre-scope behavior.
+        self.assertEqual(scheduler.active_scope, str(agent.messages_storage.chat_id))
+
+    def test_get_langchain_config_includes_schedule_scope_when_set(self) -> None:
+        # Arrange
+        agent = _make_agent(schedule_scope="C012345")
+
+        # Act
+        config = agent._get_langchain_config(99)
+
+        # Assert: metadata carries both the scope and the raw chat id.
+        self.assertEqual(config["metadata"]["schedule_scope"], "C012345")
+        self.assertEqual(config["metadata"]["chat_id"], 99)
+
+    def test_get_langchain_config_omits_schedule_scope_when_none(self) -> None:
+        # Arrange
+        agent = _make_agent()
+
+        # Act
+        config = agent._get_langchain_config(99)
+
+        # Assert
+        self.assertNotIn("schedule_scope", config["metadata"])
+        self.assertEqual(config["metadata"]["chat_id"], 99)
+
+    def test_blank_schedule_scope_behaves_as_none(self) -> None:
+        # Arrange
+        agent = _make_agent(schedule_scope="   ")
+
+        # Act
+        config = agent._get_langchain_config(99)
+
+        # Assert
+        self.assertIsNone(agent._schedule_scope)
+        self.assertNotIn("schedule_scope", config["metadata"])
+
+    def test_padded_schedule_scope_is_canonicalized(self) -> None:
+        # Arrange
+        agent = _make_agent(schedule_scope="  C012345\t")
+
+        # Act
+        config = agent._get_langchain_config(99)
+
+        # Assert: the padding never becomes part of the scheduler namespace.
+        self.assertEqual(agent._schedule_scope, "C012345")
+        self.assertEqual(config["metadata"]["schedule_scope"], "C012345")
+
+    async def test_blank_schedule_scope_falls_back_during_composition(self) -> None:
+        # Arrange
+        scheduler = FakeScheduler([])
+        agent = _make_agent(scheduler=scheduler, schedule_scope="\t ")
+
+        # Act
+        await agent._compose_system_instructions()
+
+        # Assert
+        self.assertEqual(scheduler.active_scope, str(agent.messages_storage.chat_id))
 
     async def test_composition_preserves_system_message_metadata(self) -> None:
         system = SystemMessage(

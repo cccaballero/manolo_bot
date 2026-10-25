@@ -52,7 +52,7 @@ class FakeStore(BaseSchedulerStore):
         self.actions: dict[str, ScheduledAction] = {}
         self.build_calls = 0
         self.added: list[ScheduledAction] = []
-        self.deleted: list[tuple[int, str]] = []
+        self.deleted: list[tuple[str, str]] = []
         self.delivered: list[str] = []
         self.failures: list[tuple[str, str]] = []
 
@@ -65,13 +65,13 @@ class FakeStore(BaseSchedulerStore):
         self.added.append(action.clone())
         return action.clone()
 
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
         return sorted(
             (action.clone() for action in self.actions.values() if action.chat_id == chat_id),
             key=lambda action: (action.run_at, action.id),
         )
 
-    async def delete(self, chat_id: int, action_id: str) -> bool:
+    async def delete(self, chat_id: str, action_id: str) -> bool:
         self.deleted.append((chat_id, action_id))
         action = self.actions.get(action_id)
         if action is None or action.chat_id != chat_id:
@@ -91,7 +91,7 @@ class FakeStore(BaseSchedulerStore):
             claimed.append(snapshot.clone())
         return claimed
 
-    async def claim_one(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    async def claim_one(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         action = self.actions.get(action_id)
         if action is None or action.chat_id != chat_id or not is_open(action) or action.run_at > now:
             return None
@@ -115,7 +115,7 @@ class FakeStore(BaseSchedulerStore):
         else:
             self.actions[action.id] = replacement
 
-    async def clear(self, chat_id: int) -> None:
+    async def clear(self, chat_id: str) -> None:
         for action_id in [key for key, action in self.actions.items() if action.chat_id == chat_id]:
             del self.actions[action_id]
 
@@ -192,7 +192,7 @@ class ServiceFixture:
         *,
         prompt: str = "do the thing",
         run_at: datetime = NOW,
-        chat_id: int = 42,
+        chat_id: str = "42",
         cron: str | None = None,
         max_runs: int | None = None,
         status: str = STATUS_ACTIVE,
@@ -307,7 +307,7 @@ class TestFire(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         service = self.make_service()
         action = await self.seed(run_at=NOW - timedelta(seconds=1))
 
-        self.assertTrue(await service.fire(42, action.id))
+        self.assertTrue(await service.fire("42", action.id))
 
         self.assertEqual(self.store.delivered, [action.id])
         self.assertNotIn(action.id, self.store.actions)
@@ -315,12 +315,12 @@ class TestFire(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_fire_returns_false_for_future_unknown_or_foreign_actions(self) -> None:
         service = self.make_service()
-        future = await self.seed(run_at=NOW + timedelta(hours=1), chat_id=42)
-        foreign = await self.seed(run_at=NOW - timedelta(minutes=1), chat_id=99)
+        future = await self.seed(run_at=NOW + timedelta(hours=1), chat_id="42")
+        foreign = await self.seed(run_at=NOW - timedelta(minutes=1), chat_id="99")
 
-        self.assertFalse(await service.fire(42, future.id))
-        self.assertFalse(await service.fire(42, "missing"))
-        self.assertFalse(await service.fire(42, foreign.id))
+        self.assertFalse(await service.fire("42", future.id))
+        self.assertFalse(await service.fire("42", "missing"))
+        self.assertFalse(await service.fire("42", foreign.id))
 
         self.assertEqual(self.store.delivered, [])
         self.assertEqual(self.engine.notifications, [])
@@ -330,7 +330,7 @@ class TestFire(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         service = self.make_service(handler=RecordingHandler(error=ValueError("nope")))
         action = await self.seed(run_at=NOW - timedelta(seconds=1))
 
-        self.assertTrue(await service.fire(42, action.id))
+        self.assertTrue(await service.fire("42", action.id))
 
         self.assertEqual(self.store.failures, [(action.id, "ValueError: nope")])
         self.assertEqual(self.store.actions[action.id].status, STATUS_FAILED)
@@ -340,17 +340,17 @@ class TestFire(ServiceFixture, unittest.IsolatedAsyncioTestCase):
     async def test_fire_without_handler_raises(self) -> None:
         service = self.make_service(handler=None)
         with self.assertRaises(SchedulerError) as ctx:
-            await service.fire(42, "action-1")
+            await service.fire("42", "action-1")
         self.assertIn("no handler", str(ctx.exception))
 
 
 class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
     async def test_add_one_shot_from_offset_string(self) -> None:
         service = self.make_service()
-        action = await service.add_action(42, "  ping  ", run_at="2026-10-20T15:00:00+02:00")
+        action = await service.add_action("42", "  ping  ", run_at="2026-10-20T15:00:00+02:00")
 
         self.assertEqual(action.prompt, "ping")
-        self.assertEqual(action.chat_id, 42)
+        self.assertEqual(action.chat_id, "42")
         self.assertEqual(action.run_at, datetime(2026, 10, 20, 13, 0, tzinfo=UTC))
         self.assertIsNone(action.cron)
         self.assertEqual(action.created_at, NOW)
@@ -359,17 +359,17 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_add_parses_z_suffix(self) -> None:
         service = self.make_service()
-        action = await service.add_action(42, "ping", run_at="2026-10-20T13:00:00Z")
+        action = await service.add_action("42", "ping", run_at="2026-10-20T13:00:00Z")
         self.assertEqual(action.run_at, datetime(2026, 10, 20, 13, 0, tzinfo=UTC))
 
     async def test_add_naive_string_uses_store_timezone(self) -> None:
         service = self.make_service(store=FakeStore(timezone_name="Europe/Madrid"))
-        action = await service.add_action(42, "ping", run_at="2026-10-20T15:00:00")
+        action = await service.add_action("42", "ping", run_at="2026-10-20T15:00:00")
         self.assertEqual(action.run_at, datetime(2026, 10, 20, 13, 0, tzinfo=UTC))
 
     async def test_add_naive_datetime_uses_store_timezone(self) -> None:
         service = self.make_service()
-        action = await service.add_action(42, "ping", run_at=datetime(2026, 10, 20, 13, 0))
+        action = await service.add_action("42", "ping", run_at=datetime(2026, 10, 20, 13, 0))
         self.assertEqual(action.run_at, datetime(2026, 10, 20, 13, 0, tzinfo=UTC))
 
     async def test_add_rejects_past_and_current_run_at(self) -> None:
@@ -377,7 +377,7 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         for value in ("2026-10-20T11:59:59+00:00", NOW):
             with self.subTest(value=value):
                 with self.assertRaises(SchedulerValidationError) as ctx:
-                    await service.add_action(42, "ping", run_at=value)
+                    await service.add_action("42", "ping", run_at=value)
                 self.assertIn("future", str(ctx.exception))
                 self.assertIn(NOW.isoformat(), str(ctx.exception))
         self.assertEqual(self.store.added, [])
@@ -385,10 +385,10 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
     async def test_add_rejects_both_or_neither_schedule(self) -> None:
         service = self.make_service()
         with self.assertRaises(SchedulerValidationError) as ctx:
-            await service.add_action(42, "ping")
+            await service.add_action("42", "ping")
         self.assertIn("exactly one", str(ctx.exception))
         with self.assertRaises(SchedulerValidationError) as ctx:
-            await service.add_action(42, "ping", run_at="2026-10-20T13:00:00Z", cron="0 9 * * *")
+            await service.add_action("42", "ping", run_at="2026-10-20T13:00:00Z", cron="0 9 * * *")
         self.assertIn("exactly one", str(ctx.exception))
 
     async def test_add_rejects_empty_and_oversized_prompts(self) -> None:
@@ -396,21 +396,21 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         for prompt in ("", "   \n\t "):
             with self.subTest(prompt=prompt):
                 with self.assertRaises(SchedulerValidationError) as ctx:
-                    await service.add_action(42, prompt, run_at="2026-10-20T13:00:00Z")
+                    await service.add_action("42", prompt, run_at="2026-10-20T13:00:00Z")
                 self.assertIn("empty", str(ctx.exception))
         with self.assertRaises(SchedulerValidationError) as ctx:
-            await service.add_action(42, "x" * 4001, run_at="2026-10-20T13:00:00Z")
+            await service.add_action("42", "x" * 4001, run_at="2026-10-20T13:00:00Z")
         self.assertIn("too long", str(ctx.exception))
 
     async def test_add_rejects_unparseable_run_at(self) -> None:
         service = self.make_service()
         with self.assertRaises(SchedulerValidationError) as ctx:
-            await service.add_action(42, "ping", run_at="tomorrow")
+            await service.add_action("42", "ping", run_at="tomorrow")
         self.assertIn("ISO-8601", str(ctx.exception))
 
     async def test_add_normalizes_cron_and_computes_next_run(self) -> None:
         service = self.make_service()
-        action = await service.add_action(42, "ping", cron=" 0   9  *  *  1-5 ")
+        action = await service.add_action("42", "ping", cron=" 0   9  *  *  1-5 ")
 
         self.assertEqual(action.cron, "0 9 * * 1-5")
         self.assertEqual(action.run_at, datetime(2026, 10, 21, 9, 0, tzinfo=UTC))
@@ -420,37 +420,37 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
         for expression in ("not a cron", "* * * *", ""):
             with self.subTest(expression=expression):
                 with self.assertRaises(SchedulerValidationError):
-                    await service.add_action(42, "ping", cron=expression)
+                    await service.add_action("42", "ping", cron=expression)
 
     async def test_add_rejects_invalid_store_timezone(self) -> None:
         service = self.make_service(store=FakeStore(timezone_name="Nowhere/Nothing"))
         with self.assertRaises(SchedulerValidationError) as ctx:
-            await service.add_action(42, "ping", cron="0 9 * * *")
+            await service.add_action("42", "ping", cron="0 9 * * *")
         self.assertIn("Nowhere/Nothing", str(ctx.exception))
         with self.assertRaises(SchedulerValidationError):
-            await service.add_action(42, "ping", run_at=datetime(2026, 10, 20, 13, 0))
+            await service.add_action("42", "ping", run_at=datetime(2026, 10, 20, 13, 0))
 
     async def test_add_validates_max_runs(self) -> None:
         service = self.make_service()
-        action = await service.add_action(42, "ping", run_at="2026-10-20T13:00:00Z", max_runs=3)
+        action = await service.add_action("42", "ping", run_at="2026-10-20T13:00:00Z", max_runs=3)
         self.assertEqual(action.max_runs, 3)
-        unlimited = await service.add_action(42, "pong", run_at="2026-10-20T13:00:00Z")
+        unlimited = await service.add_action("42", "pong", run_at="2026-10-20T13:00:00Z")
         self.assertIsNone(unlimited.max_runs)
         for value in (0, -5, True):
             with self.subTest(max_runs=value):
                 with self.assertRaises(SchedulerValidationError) as ctx:
-                    await service.add_action(42, "ping", run_at="2026-10-20T14:00:00Z", max_runs=value)
+                    await service.add_action("42", "ping", run_at="2026-10-20T14:00:00Z", max_runs=value)
                 self.assertIn("max_runs", str(ctx.exception))
 
     async def test_add_propagates_store_quota_error(self) -> None:
         service = self.make_service(store=FakeStore(max_actions_per_chat=1))
-        await service.add_action(42, "first", run_at="2026-10-20T13:00:00Z")
+        await service.add_action("42", "first", run_at="2026-10-20T13:00:00Z")
         with self.assertRaises(SchedulerLimitError):
-            await service.add_action(42, "second", run_at="2026-10-20T14:00:00Z")
+            await service.add_action("42", "second", run_at="2026-10-20T14:00:00Z")
 
     async def test_add_returns_an_independent_copy(self) -> None:
         service = self.make_service()
-        created = await service.add_action(42, "ping", run_at="2026-10-20T13:00:00Z")
+        created = await service.add_action("42", "ping", run_at="2026-10-20T13:00:00Z")
         created.prompt = "mutated"
         self.assertEqual(self.store.actions[created.id].prompt, "ping")
 
@@ -458,11 +458,11 @@ class TestAddAction(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 class TestListAndDelete(ServiceFixture, unittest.IsolatedAsyncioTestCase):
     async def test_list_is_chat_scoped_and_returns_copies(self) -> None:
         service = self.make_service()
-        later = await self.seed(prompt="later", run_at=NOW + timedelta(hours=2), chat_id=42)
-        sooner = await self.seed(prompt="sooner", run_at=NOW + timedelta(hours=1), chat_id=42)
-        await self.seed(prompt="other chat", run_at=NOW, chat_id=7)
+        later = await self.seed(prompt="later", run_at=NOW + timedelta(hours=2), chat_id="42")
+        sooner = await self.seed(prompt="sooner", run_at=NOW + timedelta(hours=1), chat_id="42")
+        await self.seed(prompt="other chat", run_at=NOW, chat_id="7")
 
-        actions = await service.list_actions(42)
+        actions = await service.list_actions("42")
 
         self.assertEqual([action.id for action in actions], [sooner.id, later.id])
         actions[0].prompt = "mutated"
@@ -470,30 +470,30 @@ class TestListAndDelete(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_is_chat_scoped_and_notifies_on_success(self) -> None:
         service = self.make_service()
-        own = await self.seed(chat_id=42)
-        foreign = await self.seed(chat_id=7)
+        own = await self.seed(chat_id="42")
+        foreign = await self.seed(chat_id="7")
 
-        self.assertFalse(await service.delete_action(42, foreign.id))
+        self.assertFalse(await service.delete_action("42", foreign.id))
         self.assertIn(foreign.id, self.store.actions)
         self.assertEqual(self.engine.notifications, [])
 
-        self.assertTrue(await service.delete_action(42, own.id))
+        self.assertTrue(await service.delete_action("42", own.id))
         self.assertNotIn(own.id, self.store.actions)
         self.assertEqual(len(self.engine.notifications), 1)
 
     async def test_delete_missing_returns_false_without_notifying(self) -> None:
         service = self.make_service()
-        self.assertFalse(await service.delete_action(42, "missing"))
+        self.assertFalse(await service.delete_action("42", "missing"))
         self.assertEqual(self.engine.notifications, [])
 
     async def test_clear_actions_is_chat_scoped_and_reports_count(self) -> None:
         service = self.make_service()
-        first = await self.seed(chat_id=42, run_at=NOW + timedelta(hours=1))
-        second = await self.seed(chat_id=42, run_at=NOW + timedelta(hours=2))
-        foreign = await self.seed(chat_id=7, run_at=NOW + timedelta(hours=1))
+        first = await self.seed(chat_id="42", run_at=NOW + timedelta(hours=1))
+        second = await self.seed(chat_id="42", run_at=NOW + timedelta(hours=2))
+        foreign = await self.seed(chat_id="7", run_at=NOW + timedelta(hours=1))
         notifications_before = len(self.engine.notifications)
 
-        self.assertEqual(await service.clear_actions(42), 2)
+        self.assertEqual(await service.clear_actions("42"), 2)
 
         self.assertNotIn(first.id, self.store.actions)
         self.assertNotIn(second.id, self.store.actions)
@@ -502,8 +502,75 @@ class TestListAndDelete(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_clear_actions_empty_chat_returns_zero_without_notifying(self) -> None:
         service = self.make_service()
-        self.assertEqual(await service.clear_actions(42), 0)
+        self.assertEqual(await service.clear_actions("42"), 0)
         self.assertEqual(self.engine.notifications, [])
+
+
+class TestOpaqueScopes(ServiceFixture, unittest.IsolatedAsyncioTestCase):
+    async def test_non_numeric_scope_round_trip(self) -> None:
+        service = self.make_service()
+        created = await service.add_action("C012345", "ping", run_at="2026-10-20T13:00:00Z")
+
+        self.assertEqual(created.chat_id, "C012345")
+        listed = await service.list_actions("C012345")
+        self.assertEqual([action.id for action in listed], [created.id])
+        self.assertIn(created.id, await service.active_instructions("C012345"))
+        self.assertTrue(await service.delete_action("C012345", created.id))
+        self.assertEqual(await service.list_actions("C012345"), [])
+
+    async def test_scopes_do_not_leak_into_each_other(self) -> None:
+        service = self.make_service()
+        first = await service.add_action("C012345", "first", run_at="2026-10-20T13:00:00Z")
+        second = await service.add_action(
+            "dashboard:user:agent:uuid",
+            "second",
+            run_at="2026-10-20T14:00:00Z",
+        )
+
+        self.assertEqual([action.id for action in await service.list_actions("C012345")], [first.id])
+        self.assertEqual(
+            [action.id for action in await service.list_actions("dashboard:user:agent:uuid")],
+            [second.id],
+        )
+        self.assertFalse(await service.delete_action("C012345", second.id))
+        self.assertEqual(await service.clear_actions("C012345"), 1)
+        self.assertEqual(
+            [action.id for action in await service.list_actions("dashboard:user:agent:uuid")],
+            [second.id],
+        )
+
+    async def test_fire_with_non_numeric_scope(self) -> None:
+        service = self.make_service()
+        due = await self.seed(chat_id="C012345", run_at=NOW - timedelta(seconds=1))
+
+        self.assertFalse(await service.fire("C999", due.id))
+        self.assertTrue(await service.fire("C012345", due.id))
+
+        self.assertEqual(self.store.delivered, [due.id])
+        self.assertNotIn(due.id, self.store.actions)
+
+    async def test_integer_scope_is_normalized_at_the_boundary(self) -> None:
+        service = self.make_service()
+        stored = await self.seed(chat_id="42", run_at=NOW + timedelta(hours=1))
+        other = await self.seed(chat_id="C012345", run_at=NOW + timedelta(hours=2))
+        created = await service.add_action(42, "boundary", run_at="2026-10-20T14:00:00Z")
+        self.assertEqual(created.chat_id, "42")
+
+        listed = await service.list_actions(42)
+        self.assertEqual([action.id for action in listed], [stored.id, created.id])
+        self.assertNotIn(other.id, [action.id for action in listed])
+
+        self.assertEqual(await service.clear_actions(42), 2)
+        self.assertEqual(await service.list_actions("42"), [])
+        self.assertEqual([action.id for action in await service.list_actions("C012345")], [other.id])
+
+    async def test_fire_normalizes_integer_scope(self) -> None:
+        service = self.make_service()
+        due = await self.seed(chat_id="42", run_at=NOW - timedelta(seconds=1))
+
+        self.assertTrue(await service.fire(42, due.id))
+
+        self.assertEqual(self.store.delivered, [due.id])
 
 
 class TestServiceInstructions(ServiceFixture, unittest.IsolatedAsyncioTestCase):
@@ -515,10 +582,10 @@ class TestServiceInstructions(ServiceFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_active_instructions_is_chat_scoped(self) -> None:
         service = self.make_service()
-        own = await self.seed(chat_id=42, run_at=NOW + timedelta(hours=1))
-        foreign = await self.seed(chat_id=7, run_at=NOW + timedelta(hours=1))
+        own = await self.seed(chat_id="42", run_at=NOW + timedelta(hours=1))
+        foreign = await self.seed(chat_id="7", run_at=NOW + timedelta(hours=1))
 
-        text = await service.active_instructions(42)
+        text = await service.active_instructions("42")
 
         self.assertIn(own.id, text)
         self.assertNotIn(foreign.id, text)
@@ -594,7 +661,7 @@ class TestEngineSnapshotCapability(ServiceFixture, unittest.IsolatedAsyncioTestC
         service = self.make_service(store=store, engine=SweepOnlyEngine())
 
         await service.start()
-        await service.add_action(42, "hi", run_at=NOW + timedelta(hours=1))
-        await service.delete_action(42, (await service.list_actions(42))[0].id)
+        await service.add_action("42", "hi", run_at=NOW + timedelta(hours=1))
+        await service.delete_action("42", (await service.list_actions("42"))[0].id)
 
         self.assertEqual(store.list_all_calls, 0)

@@ -17,6 +17,7 @@ from manolo_bot.scheduler.base import (
     apply_interrupted,
     ensure_chat_limit,
     ensure_utc,
+    normalize_scope,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ class InMemorySchedulerStore(BaseSchedulerStore):
             catchup_grace_seconds=catchup_grace_seconds,
             default_timezone=default_timezone,
         )
-        self._actions: dict[int, dict[str, ScheduledAction]] = {}
+        self._actions: dict[str, dict[str, ScheduledAction]] = {}
         self._lock = asyncio.Lock()
 
     async def build_or_load(self) -> None:
@@ -66,20 +67,21 @@ class InMemorySchedulerStore(BaseSchedulerStore):
             chat_actions[stored.id] = stored
             return stored.clone()
 
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
-        """Return one chat's records sorted by ``(run_at, id)``."""
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
+        """Return one scope's records sorted by ``(run_at, id)``."""
         async with self._lock:
-            return self._sorted_clones(self._actions.get(chat_id, {}))
+            return self._sorted_clones(self._actions.get(normalize_scope(chat_id), {}))
 
-    async def delete(self, chat_id: int, action_id: str) -> bool:
-        """Delete one action from one chat, returning whether it existed."""
+    async def delete(self, chat_id: str, action_id: str) -> bool:
+        """Delete one action from one scope, returning whether it existed."""
+        scope = normalize_scope(chat_id)
         async with self._lock:
-            chat_actions = self._actions.get(chat_id)
+            chat_actions = self._actions.get(scope)
             if chat_actions is None or action_id not in chat_actions:
                 return False
             del chat_actions[action_id]
             if not chat_actions:
-                del self._actions[chat_id]
+                del self._actions[scope]
             return True
 
     async def claim_due(self, now: datetime, limit: int = 10) -> list[ScheduledAction]:
@@ -108,19 +110,20 @@ class InMemorySchedulerStore(BaseSchedulerStore):
                 claimed.append(claimed_action.clone())
             return claimed
 
-    async def claim_one(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    async def claim_one(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         """Atomically claim one specific action, or return None if not due."""
+        scope = normalize_scope(chat_id)
         now = ensure_utc(now)
         async with self._lock:
-            action = self._actions.get(chat_id, {}).get(action_id)
+            action = self._actions.get(scope, {}).get(action_id)
             if action is None or action.status != STATUS_ACTIVE or action.run_at > now:
                 return None
             replacement = apply_catchup_grace(action, now, self.default_timezone, self.catchup_grace_seconds)
             if replacement is not None:
-                self._actions[chat_id][action_id] = replacement
+                self._actions[scope][action_id] = replacement
                 return None
             claimed = apply_claim(action, now, self.default_timezone)
-            self._actions[chat_id][action_id] = claimed
+            self._actions[scope][action_id] = claimed
             return claimed.clone()
 
     async def mark_delivered(self, action: ScheduledAction, now: datetime) -> None:
@@ -156,10 +159,11 @@ class InMemorySchedulerStore(BaseSchedulerStore):
             updated = apply_failure(action, error, self.max_consecutive_failures)
             chat_actions[action.id] = updated
 
-    async def clear(self, chat_id: int) -> None:
-        """Remove every scheduled action belonging to one chat."""
+    async def clear(self, chat_id: str) -> None:
+        """Remove every scheduled action belonging to one scope."""
+        scope = normalize_scope(chat_id)
         async with self._lock:
-            self._actions.pop(chat_id, None)
+            self._actions.pop(scope, None)
 
     async def list_all(self) -> list[ScheduledAction]:
         """Return every action across chats, sorted by ``(chat_id, run_at, id)``."""

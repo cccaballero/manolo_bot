@@ -20,6 +20,24 @@ def get_telegram_file_url(bot_token: str, file_path: str) -> str:
     return f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
 
 
+def parse_telegram_chat_id(scope: str) -> int:
+    """
+    Convert a scheduler scope back to a numeric Telegram chat id.
+
+    Scheduler scopes are opaque tokens; the Telegram app only supports numeric
+    chat ids, so a non-numeric scope is a wiring error and must fail with an
+    actionable message instead of a bare ValueError at delivery time.
+    :param scope: Scheduler scope token.
+    :return: The numeric chat id.
+    """
+    try:
+        return int(scope)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Scope {scope!r} is not a numeric Telegram chat id; the Telegram app requires numeric scopes."
+        ) from exc
+
+
 async def fallback_telegram_call(bot: Bot, message: Message, response_content: str) -> bool:
     """
     Call the Telegram API without using Markdown formatting.

@@ -24,6 +24,7 @@ from manolo_bot.scheduler.base import (
     apply_interrupted,
     ensure_chat_limit,
     ensure_utc,
+    normalize_scope,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,15 +98,17 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
         async with self._lock:
             return await asyncio.to_thread(self._add_sync, action)
 
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
-        """Return one chat's records sorted by ``(run_at, id)``."""
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
+        """Return one scope's records sorted by ``(run_at, id)``."""
+        scope = normalize_scope(chat_id)
         async with self._lock:
-            return await asyncio.to_thread(self._list_sync, chat_id)
+            return await asyncio.to_thread(self._list_sync, scope)
 
-    async def delete(self, chat_id: int, action_id: str) -> bool:
-        """Delete one action from one chat, returning whether it existed."""
+    async def delete(self, chat_id: str, action_id: str) -> bool:
+        """Delete one action from one scope, returning whether it existed."""
+        scope = normalize_scope(chat_id)
         async with self._lock:
-            return await asyncio.to_thread(self._delete_sync, chat_id, action_id)
+            return await asyncio.to_thread(self._delete_sync, scope, action_id)
 
     async def claim_due(self, now: datetime, limit: int = 10) -> list[ScheduledAction]:
         """Atomically claim up to ``limit`` due actions across every chat.
@@ -116,11 +119,12 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
         async with self._lock:
             return await asyncio.to_thread(self._claim_due_sync, now, limit)
 
-    async def claim_one(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    async def claim_one(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         """Atomically claim one specific action, or return None if not due."""
+        scope = normalize_scope(chat_id)
         now = ensure_utc(now)
         async with self._lock:
-            return await asyncio.to_thread(self._claim_one_sync, chat_id, action_id, now)
+            return await asyncio.to_thread(self._claim_one_sync, scope, action_id, now)
 
     async def mark_delivered(self, action: ScheduledAction, now: datetime) -> None:
         """Finalize a successful delivery (remove one-shots, reactivate cron)."""
@@ -132,10 +136,11 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
         async with self._lock:
             await asyncio.to_thread(self._record_failure_sync, action, error)
 
-    async def clear(self, chat_id: int) -> None:
-        """Remove every scheduled action belonging to one chat."""
+    async def clear(self, chat_id: str) -> None:
+        """Remove every scheduled action belonging to one scope."""
+        scope = normalize_scope(chat_id)
         async with self._lock:
-            await asyncio.to_thread(self._clear_sync, chat_id)
+            await asyncio.to_thread(self._clear_sync, scope)
 
     async def list_all(self) -> list[ScheduledAction]:
         """Return every action across chats, sorted by ``(chat_id, run_at, id)``."""
@@ -168,12 +173,12 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
             self._write_sync(records)
             return stored.clone()
 
-    def _list_sync(self, chat_id: int) -> list[ScheduledAction]:
+    def _list_sync(self, chat_id: str) -> list[ScheduledAction]:
         with self._file_lock():
             records = self._read_sync()
         return self._sorted_clones(records.get(chat_id, {}))
 
-    def _delete_sync(self, chat_id: int, action_id: str) -> bool:
+    def _delete_sync(self, chat_id: str, action_id: str) -> bool:
         with self._file_lock():
             records = self._read_sync()
             chat_actions = records.get(chat_id)
@@ -215,7 +220,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
                 self._write_sync(records)
             return claimed
 
-    def _claim_one_sync(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    def _claim_one_sync(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         with self._file_lock():
             records = self._read_sync()
             chat_actions = records.get(chat_id)
@@ -267,7 +272,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
             chat_actions[action.id] = updated
             self._write_sync(records)
 
-    def _clear_sync(self, chat_id: int) -> None:
+    def _clear_sync(self, chat_id: str) -> None:
         with self._file_lock():
             records = self._read_sync()
             if chat_id not in records:
@@ -280,7 +285,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
             records = self._read_sync()
         return [action.clone() for action in self._all_actions(records)]
 
-    def _read_sync(self) -> dict[int, dict[str, ScheduledAction]]:
+    def _read_sync(self) -> dict[str, dict[str, ScheduledAction]]:
         """Load and parse the snapshot; missing or corrupt files read as empty."""
         if not self.path.is_file():
             return {}
@@ -297,7 +302,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
         if not isinstance(entries, list):
             logger.warning("Scheduler state at %s has no action list; starting empty", self.path)
             return {}
-        records: dict[int, dict[str, ScheduledAction]] = {}
+        records: dict[str, dict[str, ScheduledAction]] = {}
         for entry in entries:
             if not isinstance(entry, dict):
                 logger.warning("Skipping malformed scheduler record in %s", self.path)
@@ -310,7 +315,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
             records.setdefault(action.chat_id, {})[action.id] = action
         return records
 
-    def _write_sync(self, records: dict[int, dict[str, ScheduledAction]]) -> None:
+    def _write_sync(self, records: dict[str, dict[str, ScheduledAction]]) -> None:
         """Atomically replace the snapshot with ``records``."""
         parent = self.path.parent
         parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +349,7 @@ class FilesystemSchedulerStore(BaseSchedulerStore):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
-    def _all_actions(records: dict[int, dict[str, ScheduledAction]]) -> list[ScheduledAction]:
+    def _all_actions(records: dict[str, dict[str, ScheduledAction]]) -> list[ScheduledAction]:
         """Flatten every chat's records, sorted by ``(chat_id, run_at, id)``."""
         return sorted(
             (action for chat_actions in records.values() for action in chat_actions.values()),

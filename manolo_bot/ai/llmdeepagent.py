@@ -156,6 +156,7 @@ class LLMDeepAgent(LLMAgent):
         rag_sources: "Sequence[RAGSource] | None" = None,
         history_policy: "BaseHistoryPolicy | None" = None,
         scheduler: "SchedulerService | None" = None,
+        schedule_scope: str | int | None = None,
     ) -> None:
         super().__init__(
             llm,
@@ -169,6 +170,7 @@ class LLMDeepAgent(LLMAgent):
             rag_sources=rag_sources,
             history_policy=history_policy,
             scheduler=scheduler,
+            schedule_scope=schedule_scope,
         )
         self._backend_wrapper = backend
         self._backend: BackendProtocol = backend.backend if backend else StateBackend()

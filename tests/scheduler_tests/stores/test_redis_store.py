@@ -25,7 +25,7 @@ NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
 def make_action(
     action_id: str,
     *,
-    chat_id: int = 42,
+    chat_id: str = "42",
     run_at: datetime = NOW,
     prompt: str = "do the thing",
     cron: str | None = None,
@@ -64,24 +64,26 @@ class TestRedisStoreCRUD(RedisStoreFixture):
         await self.seed(later)
         await self.seed(sooner)
 
+        self.assertEqual([a.id for a in await self.store.list("42")], ["sooner", "later"])
+        # An integer scope addresses the same records as its string form.
         self.assertEqual([a.id for a in await self.store.list(42)], ["sooner", "later"])
 
     async def test_list_returns_clones(self) -> None:
         await self.seed(make_action("a"))
 
-        first = (await self.store.list(42))[0]
+        first = (await self.store.list("42"))[0]
         first.prompt = "mutated"
 
-        self.assertEqual((await self.store.list(42))[0].prompt, "do the thing")
+        self.assertEqual((await self.store.list("42"))[0].prompt, "do the thing")
 
     async def test_chat_isolation_and_delete(self) -> None:
-        own = await self.seed(make_action("own", chat_id=42))
-        foreign = await self.seed(make_action("foreign", chat_id=7))
+        own = await self.seed(make_action("own", chat_id="42"))
+        foreign = await self.seed(make_action("foreign", chat_id="7"))
 
-        self.assertFalse(await self.store.delete(42, foreign.id))
-        self.assertEqual([a.id for a in await self.store.list(7)], ["foreign"])
-        self.assertTrue(await self.store.delete(42, own.id))
-        self.assertEqual(await self.store.list(42), [])
+        self.assertFalse(await self.store.delete("42", foreign.id))
+        self.assertEqual([a.id for a in await self.store.list("7")], ["foreign"])
+        self.assertTrue(await self.store.delete("42", own.id))
+        self.assertEqual(await self.store.list("42"), [])
 
     async def test_quota_is_enforced(self) -> None:
         store = RedisSchedulerStore(
@@ -90,26 +92,44 @@ class TestRedisStoreCRUD(RedisStoreFixture):
             max_actions_per_chat=2,
         )
         await store.build_or_load()
-        await store.add(make_action("a", chat_id=7))
-        await store.add(make_action("b", chat_id=7))
+        await store.add(make_action("a", chat_id="7"))
+        await store.add(make_action("b", chat_id="7"))
         with self.assertRaises(SchedulerLimitError):
-            await store.add(make_action("c", chat_id=7))
+            await store.add(make_action("c", chat_id="7"))
 
     async def test_clear_removes_only_one_chat(self) -> None:
-        await self.seed(make_action("own", chat_id=42))
-        await self.seed(make_action("foreign", chat_id=7))
+        await self.seed(make_action("own", chat_id="42"))
+        await self.seed(make_action("foreign", chat_id="7"))
 
-        await self.store.clear(42)
+        await self.store.clear("42")
 
-        self.assertEqual(await self.store.list(42), [])
-        self.assertEqual([a.id for a in await self.store.list(7)], ["foreign"])
+        self.assertEqual(await self.store.list("42"), [])
+        self.assertEqual([a.id for a in await self.store.list("7")], ["foreign"])
 
-    async def test_list_all(self) -> None:
-        await self.seed(make_action("b", chat_id=7))
-        await self.seed(make_action("a", chat_id=42))
+    async def test_list_all_sorts_scopes_lexicographically(self) -> None:
+        await self.seed(make_action("b", chat_id="7"))
+        await self.seed(make_action("a", chat_id="42"))
 
-        # Sorted by chat_id first: chat 7 before chat 42.
-        self.assertEqual([a.id for a in await self.store.list_all()], ["b", "a"])
+        # Scopes sort lexicographically: "42" before "7".
+        self.assertEqual([a.id for a in await self.store.list_all()], ["a", "b"])
+
+    async def test_list_all_orders_equal_times_lexicographically_by_scope(self) -> None:
+        await self.seed(make_action("seven", chat_id="7", run_at=NOW))
+        await self.seed(make_action("forty-two", chat_id="42", run_at=NOW))
+
+        self.assertEqual([a.id for a in await self.store.list_all()], ["forty-two", "seven"])
+
+    async def test_string_scopes_are_isolated(self) -> None:
+        await self.seed(make_action("a", chat_id="C012345", run_at=NOW + timedelta(hours=1)))
+        await self.seed(make_action("b", chat_id="C999", run_at=NOW))
+
+        self.assertEqual([a.id for a in await self.store.list("C012345")], ["a"])
+        self.assertEqual([a.id for a in await self.store.list("C999")], ["b"])
+        self.assertIsNone(await self.store.claim_one("C012345", "b", NOW))
+        self.assertFalse(await self.store.delete("C012345", "b"))
+        self.assertFalse(await self.store.delete("C999", "a"))
+        self.assertTrue(await self.store.delete("C012345", "a"))
+        self.assertEqual([a.id for a in await self.store.list_all()], ["b"])
 
     async def test_lock_is_released(self) -> None:
         await self.seed(make_action("a"))
@@ -124,11 +144,11 @@ class TestRedisStoreClaims(RedisStoreFixture):
 
         self.assertEqual([a.id for a in claimed], ["a"])
         self.assertEqual(claimed[0].status, STATUS_FIRING)
-        self.assertEqual((await self.store.list(42))[0].status, STATUS_FIRING)
+        self.assertEqual((await self.store.list("42"))[0].status, STATUS_FIRING)
         self.assertIsNone(await self.redis.get(self.store.lock_key))
 
         await self.store.mark_delivered(claimed[0], NOW)
-        self.assertEqual(await self.store.list(42), [])
+        self.assertEqual(await self.store.list("42"), [])
 
     async def test_cron_claim_advances_and_reactivates(self) -> None:
         await self.seed(make_action("cron", cron="*/15 * * * *", run_at=NOW - timedelta(minutes=1)))
@@ -138,7 +158,7 @@ class TestRedisStoreClaims(RedisStoreFixture):
         self.assertEqual(claimed[0].run_count, 1)
 
         await self.store.mark_delivered(claimed[0], NOW)
-        stored = (await self.store.list(42))[0]
+        stored = (await self.store.list("42"))[0]
         self.assertEqual(stored.status, STATUS_ACTIVE)
         self.assertEqual(stored.run_count, 1)
 
@@ -148,16 +168,24 @@ class TestRedisStoreClaims(RedisStoreFixture):
         claimed = await self.store.claim_due(NOW)
         await self.store.mark_delivered(claimed[0], NOW)
 
-        self.assertEqual(await self.store.list(42), [])
+        self.assertEqual(await self.store.list("42"), [])
+
+    async def test_claim_due_orders_equal_times_lexicographically_by_scope(self) -> None:
+        await self.seed(make_action("seven", chat_id="7", run_at=NOW - timedelta(minutes=1)))
+        await self.seed(make_action("forty-two", chat_id="42", run_at=NOW - timedelta(minutes=1)))
+
+        claimed = await self.store.claim_due(NOW)
+
+        self.assertEqual([a.id for a in claimed], ["forty-two", "seven"])
 
     async def test_claim_one_rejects_future_unknown_and_foreign(self) -> None:
         future = await self.seed(make_action("future", run_at=NOW + timedelta(hours=1)))
-        foreign = await self.seed(make_action("foreign", chat_id=7, run_at=NOW - timedelta(minutes=1)))
+        foreign = await self.seed(make_action("foreign", chat_id="7", run_at=NOW - timedelta(minutes=1)))
 
-        self.assertIsNone(await self.store.claim_one(42, future.id, NOW))
-        self.assertIsNone(await self.store.claim_one(42, "missing", NOW))
-        self.assertIsNone(await self.store.claim_one(42, foreign.id, NOW))
-        self.assertTrue((await self.store.claim_one(7, foreign.id, NOW)) is not None)
+        self.assertIsNone(await self.store.claim_one("42", future.id, NOW))
+        self.assertIsNone(await self.store.claim_one("42", "missing", NOW))
+        self.assertIsNone(await self.store.claim_one("42", foreign.id, NOW))
+        self.assertTrue((await self.store.claim_one("7", foreign.id, NOW)) is not None)
 
     async def test_catchup_grace_fails_stale_one_shot(self) -> None:
         store = RedisSchedulerStore(
@@ -169,7 +197,7 @@ class TestRedisStoreClaims(RedisStoreFixture):
         await store.add(make_action("stale", run_at=NOW - timedelta(hours=1)))
 
         self.assertEqual(await store.claim_due(NOW), [])
-        self.assertEqual((await store.list(42))[0].status, STATUS_FAILED)
+        self.assertEqual((await store.list("42"))[0].status, STATUS_FAILED)
 
     async def test_failure_marks_one_shot_failed(self) -> None:
         await self.seed(make_action("a", run_at=NOW - timedelta(minutes=1)))
@@ -177,7 +205,7 @@ class TestRedisStoreClaims(RedisStoreFixture):
 
         await self.store.record_failure(claimed, "boom", NOW)
 
-        stored = (await self.store.list(42))[0]
+        stored = (await self.store.list("42"))[0]
         self.assertEqual(stored.status, STATUS_FAILED)
         self.assertEqual(stored.attempts, 1)
         self.assertEqual(stored.last_error, "boom")
@@ -189,7 +217,7 @@ class TestRedisStoreClaims(RedisStoreFixture):
         recovered = RedisSchedulerStore(bot_uuid="test-bot", redis_client=self.redis)
         await recovered.build_or_load()
 
-        self.assertEqual((await recovered.list(42))[0].status, STATUS_FAILED)
+        self.assertEqual((await recovered.list("42"))[0].status, STATUS_FAILED)
 
 
 class TestRedisStorePersistence(RedisStoreFixture):
@@ -199,7 +227,7 @@ class TestRedisStorePersistence(RedisStoreFixture):
 
         await other.build_or_load()
 
-        self.assertEqual([a.id for a in await other.list(42)], ["a"])
+        self.assertEqual([a.id for a in await other.list("42")], ["a"])
 
     async def test_corrupt_snapshot_raises_and_is_not_overwritten(self) -> None:
         raw = b"{not json"
@@ -208,7 +236,7 @@ class TestRedisStorePersistence(RedisStoreFixture):
         with self.assertRaises(ValueError):
             await self.store.build_or_load()
         with self.assertRaises(ValueError):
-            await self.store.list(42)
+            await self.store.list("42")
 
         self.assertEqual(await self.redis.get(self.store.snapshot_key), raw)
 
