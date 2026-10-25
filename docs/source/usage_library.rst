@@ -63,8 +63,8 @@ Existing numeric Telegram ids keep their meaning, so no migration is needed.
 
 Path-based backends — extracted document storage and the ``local_fs`` deep-agent workspace
 and memory — use the key as a directory name when it matches ``[a-z0-9_-]{1,64}``, and a
-stable ``h.<sha256[:40]>`` directory otherwise. Existing numeric chat directories therefore
-keep working.
+stable ``h.<sha256[:40]>`` directory otherwise, including Windows reserved device names such
+as ``con`` or ``nul``. Existing numeric chat directories therefore keep working.
 
 * **MemoryMessagesStorage**: Stores messages in RAM. Useful for testing or simple CLI tools. History is lost when the process restarts.
 * **RedisMessagesStorage**: Stores messages in a Redis database. Recommended for production and persistent history.

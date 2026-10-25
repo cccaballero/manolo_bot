@@ -1,5 +1,5 @@
 from manolo_bot.storage.documents.base import BaseDocumentStorage
-from manolo_bot.storage.keys import normalize_storage_key
+from manolo_bot.storage.keys import escape_key_component, normalize_storage_key
 from manolo_bot.storage.messages.redis_storage import RedisDBHelper
 
 
@@ -11,7 +11,7 @@ def get_documents_key(bot_uuid: str, chat_id: str | int) -> str:
     :param chat_id: The opaque storage key of the conversation.
     :return: The Redis key.
     """
-    key = normalize_storage_key(chat_id)
+    key = escape_key_component(normalize_storage_key(chat_id))
     return f"{bot_uuid}:documents:{key}"
 
 
@@ -24,8 +24,8 @@ def get_document_key(bot_uuid: str, chat_id: str | int, filename: str) -> str:
     :param filename: The name of the document.
     :return: The Redis key.
     """
-    key = normalize_storage_key(chat_id)
-    return f"{bot_uuid}:documents:{key}:{filename}"
+    key = escape_key_component(normalize_storage_key(chat_id))
+    return f"{bot_uuid}:documents:{key}:{escape_key_component(filename)}"
 
 
 class RedisDocumentsStorage(BaseDocumentStorage):

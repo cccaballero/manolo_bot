@@ -53,7 +53,7 @@ class FileDocumentsStorage(BaseDocumentStorage):
         """
         # Prevent directory traversal
         file_path = (chat_path / f"{filename}.txt").resolve()
-        if not str(file_path).startswith(str(chat_path)):
+        if file_path.parent != chat_path:
             raise ValueError(f"Insecure filename or path: {filename}")
         return file_path
 

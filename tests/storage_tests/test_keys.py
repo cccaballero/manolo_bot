@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from manolo_bot.storage.keys import normalize_storage_key, storage_path_segment
+from manolo_bot.storage.keys import escape_key_component, normalize_storage_key, storage_path_segment
 
 
 class TestNormalizeStorageKey(unittest.TestCase):
@@ -69,9 +69,27 @@ class TestStoragePathSegment(unittest.TestCase):
         hashed_shape = "h." + "a" * 40
         self.assertNotEqual(storage_path_segment(hashed_shape), hashed_shape)
 
+    def test_windows_reserved_names_are_hashed(self) -> None:
+        for key in ("con", "prn", "aux", "nul", "com1", "com9", "lpt1", "lpt9"):
+            with self.subTest(key=key):
+                segment = storage_path_segment(key)
+                self.assertTrue(segment.startswith("h."), segment)
+
     def test_padding_is_ignored(self) -> None:
         self.assertEqual(storage_path_segment(" 42 "), "42")
         self.assertEqual(storage_path_segment(" C012345 "), storage_path_segment("C012345"))
+
+
+class TestEscapeKeyComponent(unittest.TestCase):
+    def test_plain_components_are_unchanged(self) -> None:
+        self.assertEqual(escape_key_component("42"), "42")
+        self.assertEqual(escape_key_component("-1001234567890"), "-1001234567890")
+        self.assertEqual(escape_key_component("abc12345_report.pdf"), "abc12345_report.pdf")
+
+    def test_delimiters_and_percent_are_escaped(self) -> None:
+        self.assertEqual(escape_key_component("dashboard:user"), "dashboard%3Auser")
+        self.assertEqual(escape_key_component("100%"), "100%25")
+        self.assertEqual(escape_key_component("a/b"), "a%2Fb")
 
 
 if __name__ == "__main__":

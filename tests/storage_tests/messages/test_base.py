@@ -183,6 +183,9 @@ class TestGetMessagesKey(unittest.TestCase):
     def test_opaque_chat_key_is_preserved(self):
         self.assertEqual(get_messages_key("bot", "C012345"), "bot:C012345")
 
+    def test_colon_key_is_escaped(self):
+        self.assertEqual(get_messages_key("bot", "documents:42"), "bot:documents%3A42")
+
     def test_blank_keys_raise(self):
         for value in (None, "", "   "):
             with self.subTest(value=value):

@@ -12,7 +12,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from manolo_bot.storage.keys import normalize_storage_key
+from manolo_bot.storage.keys import escape_key_component, normalize_storage_key
 
 #: Marker prefix that distinguishes the auto-generated conversation summary
 #: (stored as a leading SystemMessage) from any other system message.
@@ -28,7 +28,7 @@ def get_messages_key(bot_uuid: str, chat_id: str | int) -> str:
     to its decimal representation, so ``42`` and ``"42"`` address the same
     history.
     """
-    return f"{bot_uuid}:{normalize_storage_key(chat_id)}"
+    return f"{bot_uuid}:{escape_key_component(normalize_storage_key(chat_id))}"
 
 
 def convert_json_to_message(json_message: str) -> BaseMessage:

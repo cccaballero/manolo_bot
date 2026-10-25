@@ -133,6 +133,18 @@ class TestFileDocumentsStorage(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.test_dir / "escape").exists())
         self.assertEqual(await self.storage.retrieve(key, "doc"), "contained")
 
+    async def test_sibling_prefix_filename_cannot_escape_the_chat_directory(self):
+        # Chat directories 1 and 10 share the "/base/<bot>/1" prefix. A filename
+        # that hops to the sibling must not read or overwrite its documents.
+        await self.storage.store(1, "own", "chat-1 secret")
+        await self.storage.store(10, "private", "chat-10 TOP SECRET")
+
+        self.assertIsNone(await self.storage.retrieve(1, "../10/private"))
+        with self.assertRaises(ValueError):
+            await self.storage.store(1, "../10/private", "overwritten")
+
+        self.assertEqual(await self.storage.retrieve(10, "private"), "chat-10 TOP SECRET")
+
     async def test_blank_key_raises(self):
         for key in (None, "", "   ", "\n\t "):
             with self.subTest(key=key):

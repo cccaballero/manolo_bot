@@ -392,8 +392,8 @@ Telegram ids keep their meaning, so no migration is needed.
 Path-based backends — extracted document storage (`DOCUMENT_STORAGE_PATH`) and the `local_fs`
 deep-agent workspace and memory (`DEEP_AGENT_WORKSPACE_PATH`, `DEEP_AGENT_MEMORY_PATH`) — use the
 key as a directory name when it matches `[a-z0-9_-]{1,64}`, and a stable `h.<sha256[:40]>`
-directory otherwise (e.g. for `chat_id="my-bot:shared"`). Existing numeric directories therefore
-keep working.
+directory otherwise (e.g. for `chat_id="my-bot:shared"`), including Windows reserved device
+names such as `con` or `nul`. Existing numeric directories therefore keep working.
 
 ### MCP (Model Context Protocol) Support
 
@@ -515,7 +515,8 @@ Storage constructors and `answer_*` methods accept `str | int`: numeric ids norm
 form, so `42` and `"42"` are the same key, and a key may equally be `"C012345"` (Slack) or
 `"dashboard:{user}:{agent}:{uuid}"`. File-based document storage and the deep-agent `local_fs`
 workspace/memory use the key verbatim as a directory when it matches `[a-z0-9_-]{1,64}` (existing
-numeric directories unchanged) and a stable `h.<sha256>` directory name otherwise.
+numeric directories unchanged) and a stable `h.<sha256>` directory name otherwise, including for
+Windows reserved device names (`con`, `nul`, …).
 
 ### Using LLMAgent (Recommended)
 
