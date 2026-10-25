@@ -4,7 +4,7 @@ The scheduler is split into two independent seams that are composed by
 :class:`manolo_bot.scheduler.service.SchedulerService`:
 
 - :class:`BaseSchedulerStore` decides **what** is due (persistence and state
-  transitions). Every operation is scoped to a chat id.
+  transitions). Every operation is scoped to an opaque chat token.
 - :class:`BaseSchedulerEngine` decides **when** to check (triggering only). It
   never reads or mutates actions.
 
@@ -65,17 +65,33 @@ def ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def normalize_scope(value: str | int) -> str:
+    """Return the scheduler scope token for ``value``.
+
+    Scopes are opaque strings: a numeric chat id normalizes to its decimal
+    representation so ``42`` and ``"42"`` address the same records. ``None``
+    and blank values are rejected because they cannot identify a scope.
+    """
+    if value is None:
+        raise ValueError("Scheduler scope must not be empty.")
+    scope = str(value)
+    if not scope.strip():
+        raise ValueError("Scheduler scope must not be empty.")
+    return scope
+
+
 @dataclass
 class ScheduledAction:
-    """A chat-scoped action the agent must carry out at ``run_at``.
+    """An action scoped to an opaque chat token, carried out at ``run_at``.
 
-    ``run_at`` is always stored as an aware UTC datetime. For recurring
-    actions it is the next occurrence and is advanced at claim time; for
-    one-shot actions it is the only occurrence.
+    ``chat_id`` is an opaque scope token (a Telegram chat id today, a string
+    like ``"C012345"`` for other consumers). ``run_at`` is always stored as an
+    aware UTC datetime. For recurring actions it is the next occurrence and is
+    advanced at claim time; for one-shot actions it is the only occurrence.
     """
 
     id: str
-    chat_id: int
+    chat_id: str
     prompt: str
     run_at: datetime
     created_at: datetime
@@ -87,7 +103,7 @@ class ScheduledAction:
     last_error: str | None = None
 
     def __post_init__(self) -> None:
-        self.chat_id = int(self.chat_id)
+        self.chat_id = normalize_scope(self.chat_id)
         self.run_at = ensure_utc(self.run_at)
         self.created_at = ensure_utc(self.created_at)
         if self.max_runs is not None:
@@ -120,7 +136,7 @@ class ScheduledAction:
     def from_dict(cls, data: dict[str, Any]) -> ScheduledAction:
         return cls(
             id=str(data["id"]),
-            chat_id=int(data["chat_id"]),
+            chat_id=data["chat_id"],
             prompt=str(data["prompt"]),
             run_at=ensure_utc(datetime.fromisoformat(str(data["run_at"]))),
             created_at=ensure_utc(datetime.fromisoformat(str(data["created_at"]))),
@@ -250,8 +266,11 @@ def apply_interrupted(action: ScheduledAction) -> ScheduledAction:
 class BaseSchedulerStore(ABC):
     """Persistence contract for scheduled actions.
 
-    Every method that reads or mutates user data takes ``chat_id``; cross-chat
-    access is impossible through the public API. Implementations must:
+    Every method that reads or mutates user data takes an opaque ``chat_id``
+    scope token; cross-scope access is impossible through the public API.
+    Implementations normalize incoming values with :func:`normalize_scope` at
+    the boundary, so ``42`` and ``"42"`` address the same records.
+    Implementations must:
 
     - persist the claim before returning from ``claim_due``/``claim_one``;
     - make claims atomic across concurrent callers (process-local lock for
@@ -284,19 +303,19 @@ class BaseSchedulerStore(ABC):
         """Persist a new action, enforcing the per-chat quota."""
 
     @abstractmethod
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
-        """Return the chat's active, firing and failed actions sorted by run time."""
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
+        """Return the scope's active, firing and failed actions sorted by run time."""
 
     @abstractmethod
-    async def delete(self, chat_id: int, action_id: str) -> bool:
-        """Delete an action from one chat, returning whether it existed."""
+    async def delete(self, chat_id: str, action_id: str) -> bool:
+        """Delete an action from one scope, returning whether it existed."""
 
     @abstractmethod
     async def claim_due(self, now: datetime, limit: int = 10) -> list[ScheduledAction]:
         """Atomically claim up to ``limit`` due actions across all chats."""
 
     @abstractmethod
-    async def claim_one(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    async def claim_one(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         """Atomically claim one specific action, or return None if not due."""
 
     @abstractmethod
@@ -308,8 +327,8 @@ class BaseSchedulerStore(ABC):
         """Record a failed delivery and apply the failure policy."""
 
     @abstractmethod
-    async def clear(self, chat_id: int) -> None:
-        """Remove every scheduled action belonging to one chat."""
+    async def clear(self, chat_id: str) -> None:
+        """Remove every scheduled action belonging to one scope."""
 
     @abstractmethod
     async def list_all(self) -> list[ScheduledAction]:
@@ -322,7 +341,7 @@ class SchedulerDispatch(Protocol):
     async def sweep(self) -> int:
         """Claim and dispatch one batch of due actions; return how many ran."""
 
-    async def fire(self, chat_id: int, action_id: str) -> bool:
+    async def fire(self, chat_id: str, action_id: str) -> bool:
         """Claim and dispatch one specific action; False when it is not due."""
 
 
@@ -382,6 +401,7 @@ __all__ = [
     "ensure_utc",
     "is_open",
     "new_action_id",
+    "normalize_scope",
 ]
 
 #: Convenience tuple for clash detection / wiring tests.

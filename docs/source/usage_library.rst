@@ -695,8 +695,11 @@ For a custom index (e.g. Chroma, pgvector), subclass ``BaseRAGBackend`` from
 Scheduler
 ---------
 
-The scheduler adds chat-scoped scheduled actions to ``LLMAgent`` and ``LLMDeepAgent``. It is
-composed from two independent seams and injected explicitly, mirroring RAG:
+The scheduler adds scheduled actions scoped to an opaque string token to ``LLMAgent`` and
+``LLMDeepAgent``. The token is not necessarily a numeric Telegram chat id: it can be a Telegram
+chat id (``"42"``), another platform's id (``"C012345"``) or a composite key such as
+``"dashboard:{user}:{agent}:{uuid}"``. It is composed from two independent seams and injected
+explicitly, mirroring RAG:
 
 - a **store** decides *what* is due and persists actions (`in_memory`, `local_fs`, or `redis`);
 - an **engine** decides *when* to check;
@@ -727,25 +730,52 @@ composed from two independent seams and injected explicitly, mirroring RAG:
        SystemMessage(content="You are a helpful assistant."),
        AIMessage(content="ok!"),
    ]
-   agent = LLMAgent(..., system_instructions=system_instructions, scheduler=scheduler)
+   agent = LLMAgent(
+       ...,
+       system_instructions=system_instructions,
+       scheduler=scheduler,
+       schedule_scope="dashboard:{user}:{agent}:{uuid}",  # None = messages_storage.chat_id
+   )
    await scheduler.start()
    # ...
    await scheduler.stop()
 
 ``scheduler=`` appends ``schedule_action``, ``list_scheduled_actions`` and
 ``delete_scheduled_action`` to the agent's tools (an MCP/custom tool with the same name wins).
-It also injects ``scheduler.as_instructions()`` and ``await scheduler.active_instructions(chat_id)``
-into the system prompt; subclass ``SchedulerService`` and override those methods to customize
-or suppress them.
-The chat id used by the tools always comes from the run's ``RunnableConfig`` metadata, never
-from a tool argument, so actions cannot leak across chats.
+It also injects ``scheduler.as_instructions()`` and ``await scheduler.active_instructions(scope)``
+(the same scope the tools use) into the system prompt; subclass ``SchedulerService`` and override
+those methods to customize or suppress them.
+The tools never take the scope as an argument, so actions cannot leak across scopes. They read
+it from the run's ``RunnableConfig`` metadata — ``metadata["schedule_scope"]`` first, then
+``metadata["chat_id"]``. With ``schedule_scope=`` set on the agent, that value is added to the
+metadata and also used for ``await scheduler.active_instructions(...)``; with the default
+``None``, the tools fall back to the per-run chat id while the prompt block uses
+``messages_storage.chat_id``, preserving classic per-chat behavior. Setting the same scope for
+both keeps the tools and the active-schedules prompt block in agreement.
+
+This separation lets a consumer keep one conversation storage key while scheduling per real
+chat — build one agent per chat (or per scope) over the same storage key:
+
+.. code-block:: python
+
+   # Conversation history is shared under one key...
+   storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id="my-bot:shared")
+   # ...while schedules belong to this real chat's opaque scope.
+   agent = LLMAgent(
+       ...,
+       messages_storage=storage,
+       scheduler=scheduler,
+       schedule_scope="C012345",
+   )
+
+The Telegram app never sets ``schedule_scope``, so it keeps using the numeric chat id.
 
 A scheduled prompt can ask the agent to stay silent when a condition is not met by replying
 ``NO_ANSWER``. The agent turn still runs and is persisted, but no chat message is sent — useful
 for recurring checks such as “every day, check whether there is a match tomorrow; only send a
 preview if there is one”.
 
-The chat's active schedules are embedded in the agent's system prompt (when the Telegram app
+The scope's active schedules are embedded in the agent's system prompt (when the Telegram app
 builds it), so the agent still knows about them after ``/flushcontext``. When an action fires its
 id is included in the trigger marker, allowing the agent to cancel that exact action without
 listing first.

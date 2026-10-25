@@ -7,6 +7,7 @@ import aiohttp
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.config import BotConfig
@@ -49,6 +50,7 @@ class LLMAgent(LLMBot):
         rag_sources: "Sequence[RAGSource] | None" = None,
         history_policy: "BaseHistoryPolicy | None" = None,
         scheduler: "SchedulerService | None" = None,
+        schedule_scope: str | int | None = None,
     ) -> None:
         super().__init__(
             llm,
@@ -77,6 +79,14 @@ class LLMAgent(LLMBot):
         # Chat-scoped scheduler service (appended as tools at init time; None
         # keeps scheduling disabled without touching the custom-tools channel).
         self._scheduler = scheduler
+        # Scheduler scopes are opaque strings; when unset the agents fall back
+        # to the conversation storage key (see _compose_system_instructions)
+        # and no schedule_scope metadata is injected.
+        if schedule_scope is None:
+            self._schedule_scope: str | None = None
+        else:
+            normalized_scope = str(schedule_scope)
+            self._schedule_scope = normalized_scope if normalized_scope.strip() else None
         # Keep the caller's untouched instructions so feature prompts can be
         # recomposed without duplicating (e.g. after a refresh).
         self._base_system_instructions = list(system_instructions)
@@ -98,6 +108,18 @@ class LLMAgent(LLMBot):
         for m in selected[:-1]:
             self.messages_storage.add_message(m)
         return selected[-1]
+
+    def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
+        """Add the opaque scheduler scope to the config metadata when set.
+
+        Scheduler tools resolve their scope from ``metadata["schedule_scope"]``
+        first, falling back to ``metadata["chat_id"]``. ``super()`` returns a
+        fresh dict, so the mutation below never touches shared state.
+        """
+        config = super()._get_langchain_config(chat_id)
+        if self._schedule_scope is not None:
+            config["metadata"]["schedule_scope"] = self._schedule_scope
+        return config
 
     def _resolve_rag_tools(self, tools: list[BaseTool]) -> list[BaseTool]:
         """Append global + per-source RAG retriever tools (each skips on MCP clash)."""
@@ -154,11 +176,12 @@ class LLMAgent(LLMBot):
         if self._rag_backend is not None:
             content += self._rag_backend.as_instructions(self._rag_sources or [])
         if self._scheduler is not None:
+            scope = self._schedule_scope if self._schedule_scope is not None else self.messages_storage.chat_id
             content += self._scheduler.as_instructions()
             try:
-                content += await self._scheduler.active_instructions(self.messages_storage.chat_id)
+                content += await self._scheduler.active_instructions(str(scope))
             except Exception:
-                logging.exception("Failed to load active schedules for chat %s", self.messages_storage.chat_id)
+                logging.exception("Failed to load active schedules for chat %s", scope)
         return [first.model_copy(update={"content": content}), *base[1:]]
 
     async def initialize_async_resources(self) -> None:

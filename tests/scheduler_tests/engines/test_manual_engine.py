@@ -16,7 +16,7 @@ class FakeDispatch:
         self.calls += 1
         return 0
 
-    async def fire(self, chat_id: int, action_id: str) -> bool:
+    async def fire(self, chat_id: str, action_id: str) -> bool:
         return False
 
 

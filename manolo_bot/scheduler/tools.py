@@ -29,16 +29,24 @@ NO_CHAT_CONTEXT_MESSAGE = "Scheduling is unavailable: no chat context was provid
 INTERNAL_ERROR_MESSAGE = "The scheduling service hit an internal error; please try again later."
 
 
-def _extract_chat_id(config: RunnableConfig | None) -> int | None:
-    """Read ``chat_id`` from runnable metadata, returning None when absent/invalid."""
-    metadata = (config or {}).get("metadata") or {}
-    value = metadata.get("chat_id")
+def _metadata_scope(metadata: dict, key: str) -> str | None:
+    """Return one metadata value as a non-blank scope token, or ``None``."""
+    value = metadata.get(key)
     if value is None:
         return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    scope = str(value)
+    return scope if scope.strip() else None
+
+
+def _extract_scope(config: RunnableConfig | None) -> str | None:
+    """Read the schedule scope from runnable metadata.
+
+    ``schedule_scope`` wins when present, so a consumer can keep a shared
+    conversation storage key while scheduling per real chat. Falls back to
+    ``chat_id``; both are opaque tokens, never coerced with ``int()``.
+    """
+    metadata = (config or {}).get("metadata") or {}
+    return _metadata_scope(metadata, "schedule_scope") or _metadata_scope(metadata, "chat_id")
 
 
 def _format_schedule_confirmation(action: ScheduledAction, timezone_name: str) -> str:
@@ -110,7 +118,7 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         If the prompt says to stay silent when a condition is not met, reply
         exactly NO_ANSWER and nothing else; the bot will not post anything.
         """
-        chat_id = _extract_chat_id(config)
+        chat_id = _extract_scope(config)
         if chat_id is None:
             return NO_CHAT_CONTEXT_MESSAGE
         try:
@@ -141,7 +149,7 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         against max_runs, its status, and a short prompt preview. Failed
         actions also include their last error.
         """
-        chat_id = _extract_chat_id(config)
+        chat_id = _extract_scope(config)
         if chat_id is None:
             return NO_CHAT_CONTEXT_MESSAGE
         try:
@@ -166,7 +174,7 @@ def build_scheduler_tools(service: SchedulerService) -> list[BaseTool]:
         Use the ids reported by the list tool. Actions from other chats are
         never visible or deletable here.
         """
-        chat_id = _extract_chat_id(config)
+        chat_id = _extract_scope(config)
         if chat_id is None:
             return NO_CHAT_CONTEXT_MESSAGE
         try:

@@ -24,6 +24,7 @@ from manolo_bot.scheduler.base import (
     apply_interrupted,
     ensure_chat_limit,
     ensure_utc,
+    normalize_scope,
 )
 
 logger = logging.getLogger(__name__)
@@ -190,21 +191,23 @@ class RedisSchedulerStore(BaseSchedulerStore):
             await self._save_actions(client, actions)
             return action.clone()
 
-    async def list(self, chat_id: int) -> list[ScheduledAction]:
-        """Return one chat's records sorted by ``(run_at, id)``."""
+    async def list(self, chat_id: str) -> list[ScheduledAction]:
+        """Return one scope's records sorted by ``(run_at, id)``."""
+        scope = normalize_scope(chat_id)
         client = await self._client()
         actions = await self._load_actions(client)
         return sorted(
-            (action.clone() for action in actions.values() if action.chat_id == chat_id),
+            (action.clone() for action in actions.values() if action.chat_id == scope),
             key=lambda action: (action.run_at, action.id),
         )
 
-    async def delete(self, chat_id: int, action_id: str) -> bool:
-        """Delete one action from one chat, returning whether it existed."""
+    async def delete(self, chat_id: str, action_id: str) -> bool:
+        """Delete one action from one scope, returning whether it existed."""
+        scope = normalize_scope(chat_id)
         async with self._locked() as client:
             actions = await self._load_actions(client)
             action = actions.get(action_id)
-            if action is None or action.chat_id != chat_id:
+            if action is None or action.chat_id != scope:
                 return False
             del actions[action_id]
             await self._save_actions(client, actions)
@@ -235,13 +238,14 @@ class RedisSchedulerStore(BaseSchedulerStore):
                 await self._save_actions(client, actions)
             return claimed
 
-    async def claim_one(self, chat_id: int, action_id: str, now: datetime) -> ScheduledAction | None:
+    async def claim_one(self, chat_id: str, action_id: str, now: datetime) -> ScheduledAction | None:
         """Atomically claim one specific action, or return None if not due."""
+        scope = normalize_scope(chat_id)
         now = ensure_utc(now)
         async with self._locked() as client:
             actions = await self._load_actions(client)
             action = actions.get(action_id)
-            if action is None or action.chat_id != chat_id or action.status != STATUS_ACTIVE or action.run_at > now:
+            if action is None or action.chat_id != scope or action.status != STATUS_ACTIVE or action.run_at > now:
                 return None
             skipped = apply_catchup_grace(action, now, self.default_timezone, self.catchup_grace_seconds)
             if skipped is not None:
@@ -287,11 +291,12 @@ class RedisSchedulerStore(BaseSchedulerStore):
             actions[action.id] = apply_failure(action, error, self.max_consecutive_failures)
             await self._save_actions(client, actions)
 
-    async def clear(self, chat_id: int) -> None:
-        """Remove every scheduled action belonging to one chat."""
+    async def clear(self, chat_id: str) -> None:
+        """Remove every scheduled action belonging to one scope."""
+        scope = normalize_scope(chat_id)
         async with self._locked() as client:
             actions = await self._load_actions(client)
-            remaining = {action_id: action for action_id, action in actions.items() if action.chat_id != chat_id}
+            remaining = {action_id: action for action_id, action in actions.items() if action.chat_id != scope}
             if len(remaining) != len(actions):
                 await self._save_actions(client, remaining)
 

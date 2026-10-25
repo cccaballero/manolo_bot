@@ -31,6 +31,7 @@ from manolo_bot.scheduler.base import (
     SchedulerError,
     SchedulerValidationError,
     new_action_id,
+    normalize_scope,
 )
 from manolo_bot.scheduler.cron import next_cron_run, validate_cron, validate_timezone
 
@@ -117,11 +118,12 @@ class SchedulerService(SchedulerDispatch):
             await self._notify_engine()
         return len(due)
 
-    async def fire(self, chat_id: int, action_id: str) -> bool:
+    async def fire(self, chat_id: str, action_id: str) -> bool:
         """Claim and dispatch one specific action; ``False`` when it is not due."""
         handler = self._require_handler()
+        scope = normalize_scope(chat_id)
         now = self.clock()
-        action = await self.store.claim_one(chat_id, action_id, now)
+        action = await self.store.claim_one(scope, action_id, now)
         if action is None:
             return False
         await self._dispatch(action, handler)
@@ -130,7 +132,7 @@ class SchedulerService(SchedulerDispatch):
 
     async def add_action(
         self,
-        chat_id: int,
+        chat_id: str,
         prompt: str,
         *,
         run_at: str | datetime | None = None,
@@ -143,6 +145,7 @@ class SchedulerService(SchedulerDispatch):
         ``cron`` (5-field expression) must be provided. Naive datetimes are
         interpreted in the store timezone, then normalized to aware UTC.
         """
+        scope = normalize_scope(chat_id)
         now = self.clock()
         cleaned_prompt = (prompt or "").strip()
         if not cleaned_prompt:
@@ -176,7 +179,7 @@ class SchedulerService(SchedulerDispatch):
 
         action = ScheduledAction(
             id=new_action_id(),
-            chat_id=chat_id,
+            chat_id=scope,
             prompt=cleaned_prompt,
             run_at=fire_at,
             created_at=now,
@@ -187,27 +190,28 @@ class SchedulerService(SchedulerDispatch):
         await self._notify_engine()
         return created.clone()
 
-    async def list_actions(self, chat_id: int) -> list[ScheduledAction]:
-        """Return the chat's actions (copies, sorted by next run)."""
-        return [action.clone() for action in await self.store.list(chat_id)]
+    async def list_actions(self, chat_id: str) -> list[ScheduledAction]:
+        """Return the scope's actions (copies, sorted by next run)."""
+        return [action.clone() for action in await self.store.list(normalize_scope(chat_id))]
 
-    async def delete_action(self, chat_id: int, action_id: str) -> bool:
+    async def delete_action(self, chat_id: str, action_id: str) -> bool:
         """Delete one action scoped to ``chat_id``; notify the engine on success."""
-        deleted = await self.store.delete(chat_id, action_id)
+        deleted = await self.store.delete(normalize_scope(chat_id), action_id)
         if deleted:
             await self._notify_engine()
         return deleted
 
-    async def clear_actions(self, chat_id: int) -> int:
-        """Delete every action in one chat, returning how many existed.
+    async def clear_actions(self, chat_id: str) -> int:
+        """Delete every action in one scope, returning how many existed.
 
         Used by the ``/flushschedules`` command. Counts before clearing because
         the store contract's ``clear()`` is fire-and-forget.
         """
-        actions = await self.store.list(chat_id)
+        scope = normalize_scope(chat_id)
+        actions = await self.store.list(scope)
         if not actions:
             return 0
-        await self.store.clear(chat_id)
+        await self.store.clear(scope)
         await self._notify_engine()
         return len(actions)
 
@@ -227,14 +231,14 @@ class SchedulerService(SchedulerDispatch):
 
         return build_scheduler_instructions(self.timezone_name, self.store.max_actions_per_chat)
 
-    async def active_instructions(self, chat_id: int) -> str:
-        """Return the live per-chat schedule snapshot for the system prompt.
+    async def active_instructions(self, chat_id: str) -> str:
+        """Return the live per-scope schedule snapshot for the system prompt.
 
         Override in a subclass to customize or suppress it.
         """
         from manolo_bot.scheduler.prompting import build_active_schedules_block
 
-        return build_active_schedules_block(await self.list_actions(chat_id))
+        return build_active_schedules_block(await self.list_actions(normalize_scope(chat_id)))
 
     def _require_handler(self) -> ActionHandler:
         if self.handler is None:

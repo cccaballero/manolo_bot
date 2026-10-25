@@ -189,8 +189,9 @@ provider's per-request token limit; the defaults are safe.
 
 Lets the agent schedule future actions in a chat. It exposes `schedule_action` (a one-shot
 ISO-8601 `run_at`, or a recurring 5-field `cron` expression), `list_scheduled_actions` and
-`delete_scheduled_action`. Every action is scoped to the chat that created it; when it fires
-the bot runs the prompt through that chat's agent and posts the reply. The `llm` mode ignores
+`delete_scheduled_action`. Every action is scoped to the chat that created it, stored under an
+opaque scope token (a non-empty string, not necessarily a numeric chat id); when it fires the
+bot runs the prompt through that chat's agent and posts the reply. The `llm` mode ignores
 these settings, and initialization failures degrade gracefully (the bot keeps running without
 scheduling).
 
@@ -203,6 +204,23 @@ Active schedules for the chat are embedded in the agent's system prompt, so it s
 them after `/flushcontext` (which clears conversation state, not schedules). When an action
 fires, its id is included in the trigger marker, so the agent can cancel that exact action
 without listing first. `/flushschedules` removes all schedules for the chat.
+
+The Telegram app uses the numeric chat id as the scope. Library consumers can decouple the
+scope from the conversation storage key with `LLMAgent(..., schedule_scope=...)` (also accepted
+by `LLMDeepAgent`): the scheduler tools and the active-schedules prompt block then use that
+opaque token, while history stays under `messages_storage.chat_id`. Any non-empty string works,
+e.g. `"42"`, `"C012345"` or `"dashboard:{user}:{agent}:{uuid}"`. Default `None` keeps the current
+per-chat behavior.
+
+```python
+storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id="my-bot:shared")
+agent = LLMAgent(
+    ...,
+    messages_storage=storage,
+    scheduler=scheduler,
+    schedule_scope="C012345",  # per real chat, shared history key
+)
+```
 
 `SCHEDULER_ENABLED`: Enable scheduling (True, False). Default is False.
 

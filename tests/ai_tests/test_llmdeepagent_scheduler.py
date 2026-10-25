@@ -43,7 +43,7 @@ class FakeScheduler:
     def as_instructions(self) -> str:
         return "\n\n## Scheduling\n\nfake scheduler instructions"
 
-    async def active_instructions(self, chat_id: int) -> str:
+    async def active_instructions(self, scope: str) -> str:
         return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
@@ -103,6 +103,31 @@ class TestLLMDeepAgentScheduler(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertIsNone(agent._scheduler)
+
+    def test_schedule_scope_is_forwarded_to_llm_agent(self):
+        # Act
+        agent = LLMDeepAgent(
+            _make_llm(),
+            _make_config(),
+            [SystemMessage(content="You are a helpful assistant")],
+            MagicMock(),
+            schedule_scope="C012345",
+        )
+
+        # Assert: opaque scope stored by the base class, not the storage key.
+        self.assertEqual(agent._schedule_scope, "C012345")
+
+    def test_schedule_scope_defaults_to_none(self):
+        # Act
+        agent = LLMDeepAgent(
+            _make_llm(),
+            _make_config(),
+            [SystemMessage(content="You are a helpful assistant")],
+            MagicMock(),
+        )
+
+        # Assert
+        self.assertIsNone(agent._schedule_scope)
 
     @patch("manolo_bot.ai.llmdeepagent.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)

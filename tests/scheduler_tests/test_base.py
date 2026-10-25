@@ -23,6 +23,7 @@ from manolo_bot.scheduler.base import (
     ensure_utc,
     is_open,
     new_action_id,
+    normalize_scope,
 )
 
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
@@ -78,6 +79,48 @@ class TestScheduledAction(unittest.TestCase):
         self.assertEqual(len(set(BASE_SCHEDULER_TOOL_NAMES)), 3)
         self.assertTrue(SCHEDULED_TRIGGER_PREFIX.startswith("["))
         self.assertGreater(MAX_PROMPT_CHARS, 0)
+
+
+class TestScheduledActionScope(unittest.TestCase):
+    def test_int_chat_id_normalizes_to_string(self) -> None:
+        self.assertEqual(make_action(chat_id=42).chat_id, "42")
+
+    def test_string_chat_id_is_preserved(self) -> None:
+        self.assertEqual(make_action(chat_id="C012345").chat_id, "C012345")
+
+    def test_to_dict_emits_the_string_scope(self) -> None:
+        payload = make_action(chat_id=42).to_dict()
+        self.assertEqual(payload["chat_id"], "42")
+        self.assertIsInstance(payload["chat_id"], str)
+
+    def test_from_dict_accepts_int_and_str_scopes(self) -> None:
+        payload = make_action(chat_id=42).to_dict()
+        payload["chat_id"] = 42
+        self.assertEqual(ScheduledAction.from_dict(payload).chat_id, "42")
+        payload["chat_id"] = "C012345"
+        self.assertEqual(ScheduledAction.from_dict(payload).chat_id, "C012345")
+
+    def test_empty_scopes_are_rejected(self) -> None:
+        for value in (None, "", "   ", "\n\t "):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    make_action(chat_id=value)
+
+
+class TestNormalizeScope(unittest.TestCase):
+    def test_numeric_values_become_strings(self) -> None:
+        self.assertEqual(normalize_scope(42), "42")
+        self.assertEqual(normalize_scope("42"), "42")
+
+    def test_opaque_values_are_preserved(self) -> None:
+        self.assertEqual(normalize_scope("C012345"), "C012345")
+        self.assertEqual(normalize_scope("dashboard:user:agent:uuid"), "dashboard:user:agent:uuid")
+
+    def test_blank_values_raise(self) -> None:
+        for value in (None, "", "   "):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    normalize_scope(value)
 
 
 class TestEnsureUtc(unittest.TestCase):

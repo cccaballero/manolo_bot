@@ -554,7 +554,7 @@ async def flush_schedules_command(message: Message):
         return
 
     async with _chat_lock(chat_id):
-        removed = await _scheduler_service.clear_actions(chat_id)
+        removed = await _scheduler_service.clear_actions(str(chat_id))
 
     logging.debug(f"Removed {removed} scheduled action(s) from chat {chat_id}")
     if removed:
@@ -604,7 +604,10 @@ async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
     Exceptions propagate so the scheduler service records the failure; the
     per-chat lock serializes this turn with normal message processing.
     """
-    chat_id = action.chat_id
+    # Telegram chat ids are numeric; the scheduler scope is opaque. Coerce here
+    # so instance_llm_bot, _chat_lock, message storage and aiogram all share the
+    # same int namespace as normal messages.
+    chat_id = int(action.chat_id)
     if config.allowed_chat_ids and str(chat_id) not in config.allowed_chat_ids:
         # The action is already claimed; returning would record a successful
         # delivery. Raise so the service records a failure instead.

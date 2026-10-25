@@ -21,7 +21,7 @@ NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 def _action(
-    chat_id: int = 1,
+    chat_id: str = "1",
     *,
     action_id: str,
     run_at: datetime | None = None,
@@ -65,53 +65,57 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.store.list_all(), [])
 
     async def test_add_writes_versioned_snapshot(self) -> None:
-        await self.store.add(_action(1, action_id="a"))
+        await self.store.add(_action("1", action_id="a"))
         payload = json.loads(self.store.path.read_text(encoding="utf-8"))
         self.assertEqual(payload["version"], 1)
         self.assertEqual([entry["id"] for entry in payload["actions"]], ["a"])
+        self.assertEqual(payload["actions"][0]["chat_id"], "1")
+        self.assertIsInstance(payload["actions"][0]["chat_id"], str)
 
     async def test_state_survives_a_new_store_instance(self) -> None:
-        await self.store.add(_action(1, action_id="a", run_at=NOW + timedelta(hours=1)))
-        await self.store.add(_action(2, action_id="b"))
+        await self.store.add(_action("1", action_id="a", run_at=NOW + timedelta(hours=1)))
+        await self.store.add(_action("2", action_id="b"))
 
         fresh = await self._new_store()
         self.assertEqual([action.id for action in await fresh.list_all()], ["a", "b"])
-        self.assertEqual([action.id for action in await fresh.list(1)], ["a"])
-        self.assertEqual([action.id for action in await fresh.list(2)], ["b"])
+        self.assertEqual([action.id for action in await fresh.list("1")], ["a"])
+        self.assertEqual([action.id for action in await fresh.list("2")], ["b"])
 
     async def test_crud_and_sorting_persist(self) -> None:
-        await self.store.add(_action(1, action_id="late", run_at=NOW + timedelta(hours=2)))
-        await self.store.add(_action(1, action_id="early", run_at=NOW))
+        await self.store.add(_action("1", action_id="late", run_at=NOW + timedelta(hours=2)))
+        await self.store.add(_action("1", action_id="early", run_at=NOW))
 
         fresh = await self._new_store()
-        listed = await fresh.list(1)
+        listed = await fresh.list("1")
         self.assertEqual([action.id for action in listed], ["early", "late"])
+        # An integer scope addresses the same records as its string form.
+        self.assertEqual([action.id for action in await fresh.list(1)], ["early", "late"])
 
-        self.assertTrue(await self.store.delete(1, "late"))
-        self.assertFalse(await self.store.delete(1, "late"))
-        self.assertEqual([action.id for action in await (await self._new_store()).list(1)], ["early"])
+        self.assertTrue(await self.store.delete("1", "late"))
+        self.assertFalse(await self.store.delete("1", "late"))
+        self.assertEqual([action.id for action in await (await self._new_store()).list("1")], ["early"])
 
     async def test_chat_isolation_and_same_id_across_chats(self) -> None:
-        await self.store.add(_action(1, action_id="shared", prompt="chat one"))
-        await self.store.add(_action(2, action_id="shared", prompt="chat two"))
+        await self.store.add(_action("1", action_id="shared", prompt="chat one"))
+        await self.store.add(_action("2", action_id="shared", prompt="chat two"))
 
-        self.assertEqual([action.prompt for action in await self.store.list(1)], ["chat one"])
-        self.assertEqual([action.prompt for action in await self.store.list(2)], ["chat two"])
-        self.assertFalse(await self.store.delete(1, "missing"))
+        self.assertEqual([action.prompt for action in await self.store.list("1")], ["chat one"])
+        self.assertEqual([action.prompt for action in await self.store.list("2")], ["chat two"])
+        self.assertFalse(await self.store.delete("1", "missing"))
 
-        self.assertTrue(await self.store.delete(1, "shared"))
-        self.assertEqual(await self.store.list(1), [])
-        self.assertEqual([action.prompt for action in await self.store.list(2)], ["chat two"])
+        self.assertTrue(await self.store.delete("1", "shared"))
+        self.assertEqual(await self.store.list("1"), [])
+        self.assertEqual([action.prompt for action in await self.store.list("2")], ["chat two"])
 
     async def test_quota_ignores_failed_records(self) -> None:
         store = await self._new_store(max_actions_per_chat=1)
-        first = await store.add(_action(1, action_id="first"))
+        first = await store.add(_action("1", action_id="first"))
         with self.assertRaises(SchedulerLimitError):
-            await store.add(_action(1, action_id="second"))
+            await store.add(_action("1", action_id="second"))
 
         await store.record_failure(first, "boom", NOW)
-        await store.add(_action(1, action_id="second"))
-        self.assertEqual([action.id for action in await store.list(1)], ["first", "second"])
+        await store.add(_action("1", action_id="second"))
+        self.assertEqual([action.id for action in await store.list("1")], ["first", "second"])
 
     async def test_corrupt_snapshot_loads_empty_and_is_repairable(self) -> None:
         self.store.path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +123,7 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
 
         fresh = await self._new_store()
         self.assertEqual(await fresh.list_all(), [])
-        await fresh.add(_action(1, action_id="repaired"))
+        await fresh.add(_action("1", action_id="repaired"))
         self.assertEqual([action.id for action in await (await self._new_store()).list_all()], ["repaired"])
 
     async def test_crash_recovery_on_load_persists_recovered_records(self) -> None:
@@ -127,15 +131,15 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
         payload = {
             "version": 1,
             "actions": [
-                _action(1, action_id="once", status=STATUS_FIRING).to_dict(),
-                _action(2, action_id="cron", status=STATUS_FIRING, cron="*/5 * * * *").to_dict(),
+                _action("1", action_id="once", status=STATUS_FIRING).to_dict(),
+                _action("2", action_id="cron", status=STATUS_FIRING, cron="*/5 * * * *").to_dict(),
             ],
         }
         self.store.path.write_text(json.dumps(payload), encoding="utf-8")
 
         fresh = await self._new_store()
-        once = (await fresh.list(1))[0]
-        cron = (await fresh.list(2))[0]
+        once = (await fresh.list("1"))[0]
+        cron = (await fresh.list("2"))[0]
         self.assertEqual(once.status, STATUS_FAILED)
         self.assertEqual(cron.status, STATUS_ACTIVE)
         self.assertIn("interrupted", once.last_error or "")
@@ -146,8 +150,8 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(statuses, {"once": STATUS_FAILED, "cron": STATUS_ACTIVE})
 
     async def test_one_shot_claim_is_persisted_before_return(self) -> None:
-        await self.store.add(_action(1, action_id="once", run_at=NOW - timedelta(minutes=1)))
-        claimed = await self.store.claim_one(1, "once", NOW)
+        await self.store.add(_action("1", action_id="once", run_at=NOW - timedelta(minutes=1)))
+        claimed = await self.store.claim_one("1", "once", NOW)
         assert claimed is not None
 
         # The claim hits disk before claim_one returns; a fresh instance would
@@ -156,11 +160,11 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([entry["status"] for entry in payload["actions"]], [STATUS_FIRING])
 
         await self.store.mark_delivered(claimed, NOW)
-        self.assertEqual(await (await self._new_store()).list(1), [])
+        self.assertEqual(await (await self._new_store()).list("1"), [])
 
     async def test_cron_claim_and_delivery_persist(self) -> None:
-        await self.store.add(_action(1, action_id="cron", run_at=NOW - timedelta(minutes=1), cron="*/5 * * * *"))
-        claimed = await self.store.claim_one(1, "cron", NOW)
+        await self.store.add(_action("1", action_id="cron", run_at=NOW - timedelta(minutes=1), cron="*/5 * * * *"))
+        claimed = await self.store.claim_one("1", "cron", NOW)
         assert claimed is not None
         self.assertGreater(claimed.run_at, NOW)
         self.assertEqual(claimed.run_count, 1)
@@ -172,28 +176,28 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(datetime.fromisoformat(persisted["run_at"]), claimed.run_at)
 
         await self.store.mark_delivered(claimed, NOW)
-        reactivated = (await (await self._new_store()).list(1))[0]
+        reactivated = (await (await self._new_store()).list("1"))[0]
         self.assertEqual(reactivated.status, STATUS_ACTIVE)
         self.assertEqual(reactivated.run_count, 1)
         self.assertEqual(reactivated.attempts, 0)
 
     async def test_failure_persists(self) -> None:
-        await self.store.add(_action(1, action_id="once", run_at=NOW - timedelta(minutes=1)))
-        claimed = await self.store.claim_one(1, "once", NOW)
+        await self.store.add(_action("1", action_id="once", run_at=NOW - timedelta(minutes=1)))
+        claimed = await self.store.claim_one("1", "once", NOW)
         assert claimed is not None
 
         fresh = await self._new_store()
         await fresh.record_failure(claimed, "provider down", NOW)
-        failed = (await (await self._new_store()).list(1))[0]
+        failed = (await (await self._new_store()).list("1"))[0]
         self.assertEqual(failed.status, STATUS_FAILED)
         self.assertEqual(failed.attempts, 1)
         self.assertEqual(failed.last_error, "provider down")
 
     async def test_claim_due_respects_limit_and_sorting(self) -> None:
-        await self.store.add(_action(2, action_id="z", run_at=NOW - timedelta(minutes=3)))
-        await self.store.add(_action(1, action_id="b", run_at=NOW - timedelta(minutes=2)))
-        await self.store.add(_action(1, action_id="a", run_at=NOW - timedelta(minutes=2)))
-        await self.store.add(_action(1, action_id="future", run_at=NOW + timedelta(minutes=1)))
+        await self.store.add(_action("2", action_id="z", run_at=NOW - timedelta(minutes=3)))
+        await self.store.add(_action("1", action_id="b", run_at=NOW - timedelta(minutes=2)))
+        await self.store.add(_action("1", action_id="a", run_at=NOW - timedelta(minutes=2)))
+        await self.store.add(_action("1", action_id="future", run_at=NOW + timedelta(minutes=1)))
 
         claimed = await self.store.claim_due(NOW, limit=2)
         self.assertEqual([action.id for action in claimed], ["z", "a"])
@@ -208,55 +212,85 @@ class TestFilesystemSchedulerStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_catchup_grace_skips_overdue_actions(self) -> None:
         store = await self._new_store(catchup_grace_seconds=60)
-        await store.add(_action(1, action_id="once", run_at=NOW - timedelta(minutes=2)))
-        await store.add(_action(2, action_id="cron", run_at=NOW - timedelta(minutes=2), cron="*/5 * * * *"))
+        await store.add(_action("1", action_id="once", run_at=NOW - timedelta(minutes=2)))
+        await store.add(_action("2", action_id="cron", run_at=NOW - timedelta(minutes=2), cron="*/5 * * * *"))
 
         self.assertEqual(await store.claim_due(NOW), [])
         fresh = await self._new_store(catchup_grace_seconds=60)
-        self.assertEqual((await fresh.list(1))[0].status, STATUS_FAILED)
-        recurring = (await fresh.list(2))[0]
+        self.assertEqual((await fresh.list("1"))[0].status, STATUS_FAILED)
+        recurring = (await fresh.list("2"))[0]
         self.assertEqual(recurring.status, STATUS_ACTIVE)
         self.assertGreater(recurring.run_at, NOW)
 
     async def test_cron_max_runs_removes_record(self) -> None:
         await self.store.add(
             _action(
-                1,
+                "1",
                 action_id="cron",
                 run_at=NOW - timedelta(minutes=1),
                 cron="*/5 * * * *",
                 max_runs=1,
             )
         )
-        claimed = await self.store.claim_one(1, "cron", NOW)
+        claimed = await self.store.claim_one("1", "cron", NOW)
         assert claimed is not None
         await self.store.mark_delivered(claimed, NOW)
         self.assertEqual(await (await self._new_store()).list_all(), [])
 
     async def test_clear_only_affects_one_chat(self) -> None:
-        await self.store.add(_action(1, action_id="a"))
-        await self.store.add(_action(2, action_id="b"))
-        await self.store.clear(1)
+        await self.store.add(_action("1", action_id="a"))
+        await self.store.add(_action("2", action_id="b"))
+        await self.store.clear("1")
         self.assertEqual([action.id for action in await (await self._new_store()).list_all()], ["b"])
-        await self.store.clear(999)
+        await self.store.clear("999")
 
-    async def test_list_all_sorted_across_chats(self) -> None:
-        await self.store.add(_action(2, action_id="b", run_at=NOW))
-        await self.store.add(_action(1, action_id="c", run_at=NOW + timedelta(hours=1)))
-        await self.store.add(_action(1, action_id="a", run_at=NOW))
+    async def test_list_all_sorted_across_scopes_lexicographically(self) -> None:
+        await self.store.add(_action("42", action_id="b", run_at=NOW))
+        await self.store.add(_action("7", action_id="c", run_at=NOW + timedelta(hours=1)))
+        await self.store.add(_action("7", action_id="a", run_at=NOW))
+        # Scopes sort lexicographically ("42" before "7"), then by run time.
         self.assertEqual(
             [action.id for action in await self.store.list_all()],
-            ["a", "c", "b"],
+            ["b", "a", "c"],
         )
 
+    async def test_list_all_orders_equal_times_lexicographically_by_scope(self) -> None:
+        await self.store.add(_action("7", action_id="seven", run_at=NOW))
+        await self.store.add(_action("42", action_id="forty-two", run_at=NOW))
+
+        self.assertEqual(
+            [action.id for action in await self.store.list_all()],
+            ["forty-two", "seven"],
+        )
+
+    async def test_string_scopes_persist_and_stay_isolated(self) -> None:
+        await self.store.add(_action("C012345", action_id="a"))
+        await self.store.add(_action("C999", action_id="b"))
+
+        fresh = await self._new_store()
+        self.assertEqual([action.id for action in await fresh.list("C012345")], ["a"])
+        self.assertEqual([action.id for action in await fresh.list("C999")], ["b"])
+        self.assertEqual([action.id for action in await fresh.list_all()], ["a", "b"])
+        self.assertIsNone(await fresh.claim_one("C012345", "b", NOW))
+        self.assertTrue(await fresh.delete("C012345", "a"))
+        self.assertEqual([action.id for action in await fresh.list_all()], ["b"])
+
+    async def test_claim_due_orders_equal_times_lexicographically_by_scope(self) -> None:
+        await self.store.add(_action("7", action_id="seven", run_at=NOW - timedelta(minutes=1)))
+        await self.store.add(_action("42", action_id="forty-two", run_at=NOW - timedelta(minutes=1)))
+
+        claimed = await self.store.claim_due(NOW)
+
+        self.assertEqual([action.id for action in claimed], ["forty-two", "seven"])
+
     async def test_no_temporary_files_left_behind(self) -> None:
-        await self.store.add(_action(1, action_id="a"))
-        await self.store.delete(1, "a")
+        await self.store.add(_action("1", action_id="a"))
+        await self.store.delete("1", "a")
         leftovers = [path for path in self.store.path.parent.iterdir() if path.suffix == ".tmp"]
         self.assertEqual(leftovers, [])
 
     async def test_unknown_delivery_and_failure_are_no_ops(self) -> None:
-        ghost = _action(1, action_id="ghost")
+        ghost = _action("1", action_id="ghost")
         await self.store.mark_delivered(ghost, NOW)
         await self.store.record_failure(ghost, "boom", NOW)
         self.assertEqual(await self.store.list_all(), [])

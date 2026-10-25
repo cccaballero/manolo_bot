@@ -30,6 +30,7 @@ class TestSchedulerWiring(unittest.TestCase):
         self.assertNotIn("build_active_schedules_block", main)
         self.assertIn('Command("flushschedules")', main)
         self.assertIn("clear_actions", main)
+        self.assertIn("int(action.chat_id)", main)
         self.assertEqual(main.count("scheduler=_scheduler_service"), 2)
 
     def test_llm_branch_does_not_receive_a_scheduler(self):
@@ -45,6 +46,8 @@ class TestSchedulerWiring(unittest.TestCase):
         self.assertIn("as_instructions", agent)
         self.assertIn("active_instructions", agent)
         self.assertIn("SCHEDULED_TRIGGER_PREFIX", agent)
+        self.assertIn("schedule_scope", agent)
+        self.assertIn("schedule_scope", deep_agent)
 
     def test_config_exposes_scheduler_fields(self):
         config = source("manolo_bot/config.py")
