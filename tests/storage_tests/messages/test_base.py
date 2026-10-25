@@ -2,7 +2,7 @@ import unittest
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from manolo_bot.storage.messages.base import SUMMARY_PREFIX
+from manolo_bot.storage.messages.base import SUMMARY_PREFIX, get_messages_key
 from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
 
@@ -96,6 +96,101 @@ class TestMessagesSummary(unittest.IsolatedAsyncioTestCase):
         self.storage.delete_message(1)
         self.assertEqual(self.storage.get_summary(), "A summary")
         self.assertEqual([m.content for m in self.storage.messages[1:]], ["m1", "m2", "m3", "m4"])
+
+
+class TestMessagesStorageKeys(unittest.IsolatedAsyncioTestCase):
+    """Storage keys are opaque strings; a numeric id and its string form match.
+
+    ``_chats`` is a process-global that survives between tests, so every test
+    here uses its own bot UUID and chat key.
+    """
+
+    def setUp(self):
+        self._storages: list[MemoryMessagesStorage] = []
+
+    async def asyncTearDown(self):
+        for storage in self._storages:
+            await storage.clear_messages()
+
+    def _storage(self, bot_uuid: str, chat_id: str | int) -> MemoryMessagesStorage:
+        storage = MemoryMessagesStorage(bot_uuid=bot_uuid, chat_id=chat_id)
+        self._storages.append(storage)
+        return storage
+
+    def test_blank_or_missing_key_raises(self):
+        for value in (None, "", "   "):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    MemoryMessagesStorage(bot_uuid="test-bot-blank-key", chat_id=value)
+
+    def test_key_is_normalized_on_construction(self):
+        storage = MemoryMessagesStorage(bot_uuid="test-bot-normalized-key", chat_id=" 424243 ")
+        self.assertEqual(storage.chat_id, "424243")
+        self.assertIsInstance(storage.chat_id, str)
+
+    async def test_numeric_and_string_keys_share_the_same_history(self):
+        as_int = self._storage("test-bot-numeric-key", 991001)
+        as_str = self._storage("test-bot-numeric-key", "991001")
+        self.assertEqual(as_str.chat_id, as_int.chat_id)
+
+        as_int.add_message(HumanMessage(content="written through the int key"))
+        await as_int.commit()
+
+        await as_str.refresh_messages()
+        self.assertEqual([m.content for m in as_str.messages], ["written through the int key"])
+        self.assertEqual(as_str.messages, as_int.messages)
+
+    async def test_opaque_key_round_trip_commit_refresh_and_clear(self):
+        key = "dashboard:user:agent:uuid"
+        writer = self._storage("test-bot-opaque-key", key)
+        writer.add_message(HumanMessage(content="opaque key message"))
+        await writer.commit()
+
+        reader = self._storage("test-bot-opaque-key", key)
+        await reader.refresh_messages()
+        self.assertEqual([m.content for m in reader.messages], ["opaque key message"])
+
+        await reader.clear_messages()
+        await writer.refresh_messages()
+        self.assertEqual(writer.messages, [])
+
+    async def test_different_bots_with_the_same_key_do_not_share_history(self):
+        key = "shared-chat-key"
+        first = self._storage("test-bot-isolation-a", key)
+        second = self._storage("test-bot-isolation-b", key)
+
+        first.add_message(HumanMessage(content="from bot a"))
+        second.add_message(HumanMessage(content="from bot b"))
+        await first.commit()
+        await second.commit()
+
+        await first.refresh_messages()
+        await second.refresh_messages()
+        self.assertEqual([m.content for m in first.messages], ["from bot a"])
+        self.assertEqual([m.content for m in second.messages], ["from bot b"])
+
+        # Clearing one bot's history leaves the other bot's history intact.
+        await first.clear_messages()
+        await second.refresh_messages()
+        self.assertEqual([m.content for m in second.messages], ["from bot b"])
+
+
+class TestGetMessagesKey(unittest.TestCase):
+    def test_numeric_and_string_chat_ids_address_the_same_key(self):
+        self.assertEqual(get_messages_key("bot", 42), get_messages_key("bot", "42"))
+        self.assertEqual(get_messages_key("bot", 42), "bot:42")
+
+    def test_opaque_chat_key_is_preserved(self):
+        self.assertEqual(get_messages_key("bot", "C012345"), "bot:C012345")
+
+    def test_colon_key_is_escaped(self):
+        self.assertEqual(get_messages_key("bot", "documents:42"), "bot:documents%3A42")
+
+    def test_blank_keys_raise(self):
+        for value in (None, "", "   "):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    get_messages_key("bot", value)
 
 
 if __name__ == "__main__":

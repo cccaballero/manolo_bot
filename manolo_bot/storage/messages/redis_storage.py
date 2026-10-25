@@ -45,13 +45,14 @@ class RedisMessagesStorage(BaseMessagesStorage):
     Redis-based implementation of message storage.
     """
 
-    def __init__(self, db: RedisDBHelper, bot_uuid: str, chat_id: int) -> None:
+    def __init__(self, db: RedisDBHelper, bot_uuid: str, chat_id: str | int) -> None:
         """
         Initializes the Redis messages storage.
 
         :param db: The RedisDBHelper instance.
         :param bot_uuid: The UUID of the bot.
-        :param chat_id: The ID of the chat.
+        :param chat_id: The storage key of the conversation (an opaque
+            non-empty string; numeric ids normalize to their decimal form).
         """
         super().__init__(bot_uuid, chat_id)
         self.client = db.client

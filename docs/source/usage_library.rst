@@ -56,6 +56,16 @@ Storage
 
 The `storage` component is responsible for persisting conversation history. `manolo-bot` uses a "per-chat" storage model. Each user or conversation should have its own storage instance identified by a `chat_id`.
 
+The chat key is an opaque, non-empty string: it identifies a conversation, not necessarily a
+Telegram chat. Storage constructors and methods accept ``str | int`` — ``42`` and ``"42"``
+address the same conversation — and expose the canonical string as ``messages_storage.chat_id``.
+Existing numeric Telegram ids keep their meaning, so no migration is needed.
+
+Path-based backends — extracted document storage and the ``local_fs`` deep-agent workspace
+and memory — use the key as a directory name when it matches ``[a-z0-9_-]{1,64}``, and a
+stable ``h.<sha256[:40]>`` directory otherwise, including Windows reserved device names such
+as ``con`` or ``nul``. Existing numeric chat directories therefore keep working.
+
 * **MemoryMessagesStorage**: Stores messages in RAM. Useful for testing or simple CLI tools. History is lost when the process restarts.
 * **RedisMessagesStorage**: Stores messages in a Redis database. Recommended for production and persistent history.
 
@@ -63,7 +73,7 @@ The `storage` component is responsible for persisting conversation history. `man
 
    from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
-   # chat_id is a unique identifier for the current conversation (e.g., a user ID)
+   # chat_id is any non-empty conversation key (e.g. a numeric user ID or "my-bot:shared")
    storage = MemoryMessagesStorage(bot_uuid="my-unique-bot-id", chat_id=12345)
 
 History policy (what gets remembered)
@@ -754,7 +764,8 @@ metadata and also used for ``await scheduler.active_instructions(...)``; with th
 both keeps the tools and the active-schedules prompt block in agreement.
 
 This separation lets a consumer keep one conversation storage key while scheduling per real
-chat — build one agent per chat (or per scope) over the same storage key:
+chat — build one agent per chat (or per scope) over the same storage key. The storage key can be
+any non-empty string; it does not need to be numeric:
 
 .. code-block:: python
 
@@ -768,7 +779,11 @@ chat — build one agent per chat (or per scope) over the same storage key:
        schedule_scope="C012345",
    )
 
-The Telegram app never sets ``schedule_scope``, so it keeps using the numeric chat id.
+The Telegram app never sets ``schedule_scope``, so it keeps using the Telegram chat id.
+
+Storage keys are opaque as well — ``messages_storage`` accepts ``str | int``, normalizing
+numeric ids to their decimal form — so the scope and the storage key are independent opaque
+strings (issue #101).
 
 A scheduled prompt can ask the agent to stay silent when a condition is not met by replying
 ``NO_ANSWER``. The agent turn still runs and is persisted, but no chat message is sent — useful

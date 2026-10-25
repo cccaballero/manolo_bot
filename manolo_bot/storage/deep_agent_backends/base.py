@@ -3,6 +3,8 @@ import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from manolo_bot.storage.keys import normalize_storage_key
+
 if TYPE_CHECKING:
     from deepagents.backends.protocol import BackendProtocol
 
@@ -22,11 +24,15 @@ class BaseDeepAgentBackend(abc.ABC):
 
     Handles the bot_uuid and chat_id scoping, delegating file operations
     to the underlying deepagents backend (StateBackend, FilesystemBackend, etc.).
+
+    ``chat_id`` accepts the intended storage key — a Telegram int or any opaque
+    non-empty string key — and is normalized to a string via
+    :func:`normalize_storage_key`, so ``42`` and ``"42"`` scope the same state.
     """
 
-    def __init__(self, bot_uuid: str, chat_id: int) -> None:
+    def __init__(self, bot_uuid: str, chat_id: str | int) -> None:
         self.bot_uuid = bot_uuid
-        self.chat_id = chat_id
+        self.chat_id = normalize_storage_key(chat_id)
         self._backend = self._build_backend()
 
     @abc.abstractmethod

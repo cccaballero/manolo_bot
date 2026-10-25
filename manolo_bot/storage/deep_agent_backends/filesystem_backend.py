@@ -4,6 +4,7 @@ import shutil
 from deepagents.backends.filesystem import FilesystemBackend
 
 from manolo_bot.storage.deep_agent_backends.base import _BOT_UUID_PATTERN, BaseDeepAgentBackend
+from manolo_bot.storage.keys import storage_path_segment
 
 
 class FilesystemDeepAgentBackend(BaseDeepAgentBackend):
@@ -12,6 +13,11 @@ class FilesystemDeepAgentBackend(BaseDeepAgentBackend):
 
     Builds a per-chat filesystem path from ``bot_uuid`` and ``chat_id``,
     mirroring the pattern used by :class:`FileDocumentsStorage`.
+
+    ``chat_id`` is the storage key: a Telegram int or any opaque non-empty
+    string. It is normalized (``42`` and ``"42"`` are the same chat) and mapped
+    to a single safe path segment by :func:`storage_path_segment` — existing
+    numeric directories keep their names, other keys become ``h.<sha256>``.
 
     Security model — defense in depth, two layers:
 
@@ -34,7 +40,7 @@ class FilesystemDeepAgentBackend(BaseDeepAgentBackend):
     (e.g. ``~/.local/share/manolo_bot/workspace`` with mode ``0700``).
     """
 
-    def __init__(self, bot_uuid: str, chat_id: int, workspace_path: str, virtual_mode: bool = True) -> None:
+    def __init__(self, bot_uuid: str, chat_id: str | int, workspace_path: str, virtual_mode: bool = True) -> None:
         # Layer 1: input validation.
         if not isinstance(bot_uuid, str) or not _BOT_UUID_PATTERN.fullmatch(bot_uuid):
             raise ValueError(
@@ -59,7 +65,7 @@ class FilesystemDeepAgentBackend(BaseDeepAgentBackend):
         pointing outside is caught here even though Layer 1 (which only
         inspects ``bot_uuid``) would have let it through.
         """
-        chat_path = os.path.join(self._workspace_path, self.bot_uuid, str(self.chat_id))
+        chat_path = os.path.join(self._workspace_path, self.bot_uuid, storage_path_segment(self.chat_id))
         resolved_workspace = os.path.realpath(self._workspace_path)
         resolved_chat = os.path.realpath(chat_path)
         try:

@@ -6,7 +6,9 @@ from manolo_bot.storage.deep_agent_backends.base import BaseDeepAgentBackend
 
 # Keyed by (bot_uuid, chat_id) to avoid cross-bot leakage when a single
 # process serves multiple bots. The chat_id alone is not unique across bots.
-_instances: dict[tuple[str, int], StateBackend] = {}
+# chat_id is the normalized storage key (an opaque string), so an int 42 and
+# the string "42" share one StateBackend.
+_instances: dict[tuple[str, str], StateBackend] = {}
 _instances_lock = asyncio.Lock()
 
 
@@ -20,7 +22,7 @@ class MemoryDeepAgentBackend(BaseDeepAgentBackend):
     """
 
     @staticmethod
-    def _key(bot_uuid: str, chat_id: int) -> tuple[str, int]:
+    def _key(bot_uuid: str, chat_id: str) -> tuple[str, str]:
         return (bot_uuid, chat_id)
 
     def _build_backend(self) -> StateBackend:

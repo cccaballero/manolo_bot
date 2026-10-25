@@ -215,7 +215,7 @@ class LLMBot:
         instructions[0].content = instructions_content
         return instructions
 
-    def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
+    def _get_langchain_config(self, chat_id: str | int) -> RunnableConfig:
         """Helper to create LangChain config with metadata and tags."""
         bot_uuid = self.bot_config.bot_uuid
         user_id = self.bot_config.user_id
@@ -569,11 +569,11 @@ class LLMBot:
             await self.documents_storage.clear(self.messages_storage.chat_id)
         logging.debug(f"Chat context and documents cleaned for chat {self.messages_storage.chat_id}")
 
-    async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+    async def answer_message(self, chat_id: str | int, message: str) -> BaseMessage:
         """
         Processes a text message and returns the LLM's response.
 
-        :param chat_id: The ID of the chat.
+        :param chat_id: Chat or storage key.
         :param message: The text of the message to process.
         :return: The response message from the LLM.
         """
@@ -590,10 +590,10 @@ class LLMBot:
             ai_msg = await self.llm.ainvoke(self.system_instructions + self.messages_storage.messages, config=config)
         return ai_msg
 
-    async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
+    async def answer_image_message(self, chat_id: str | int, text: str, image: str) -> BaseMessage:
         """
         Answer an image message.
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param text: Text to answer
         :param image: Image to answer
         :return: Response
@@ -632,10 +632,10 @@ class LLMBot:
         logging.debug(f"Image message response: {response}")
         return response
 
-    async def answer_voice_message(self, chat_id: int, text: str, audio: str):
+    async def answer_voice_message(self, chat_id: str | int, text: str, audio: str):
         """
         Answer a voice message.
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param audio: Voice message audio
         """
         logging.debug(f"Voice message: {audio}")
@@ -681,11 +681,13 @@ class LLMBot:
         logging.debug(f"Voice message response: {response}")
         return response
 
-    async def _process_and_store_document(self, chat_id: int, document_url: str, filename: str) -> tuple[str, str]:
+    async def _process_and_store_document(
+        self, chat_id: str | int, document_url: str, filename: str
+    ) -> tuple[str, str]:
         """
         Downloads, processes, and stores a document.
 
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param document_url: URL to download the document
         :param filename: Original filename
         :return: A tuple of (doc_key, extracted_text)
@@ -715,11 +717,13 @@ class LLMBot:
 
         return doc_key, extracted_text
 
-    async def answer_document_message(self, chat_id: int, text: str, document_url: str, filename: str) -> BaseMessage:
+    async def answer_document_message(
+        self, chat_id: str | int, text: str, document_url: str, filename: str
+    ) -> BaseMessage:
         """
         Answer a document message.
 
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param text: Text to answer (user prompt/caption)
         :param document_url: URL to download the document
         :param filename: Original filename
@@ -788,7 +792,7 @@ class LLMBot:
         self,
         response: BaseMessage,
         message_text: str,
-        chat_id: int,
+        chat_id: str | int,
         *,
         silent_on_no_answer: bool = False,
     ) -> dict | None:
@@ -796,7 +800,7 @@ class LLMBot:
         Postprocess the response from the LLM.
         :param response: Response from the LLM
         :param message_text: Text of the user message
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param silent_on_no_answer: When True, a NO_ANSWER response returns None without persisting it
         return: Final response data
         """
@@ -1029,13 +1033,15 @@ class LLMBot:
                     continue
             return total
 
-    async def generate_feedback_message(self, prompt: str, max_length: int = 200, chat_id: int | None = None) -> str:
+    async def generate_feedback_message(
+        self, prompt: str, max_length: int = 200, chat_id: str | int | None = None
+    ) -> str:
         """
         Generate a feedback message using the LLM.
 
         :param prompt: Prompt to generate the feedback message
         :param max_length: Maximum length of the feedback message
-        :param chat_id: Optional chat ID for metadata
+        :param chat_id: Optional chat or storage key for metadata
         :return: Generated feedback message
         """
         logging.debug("Generating feedback message")
