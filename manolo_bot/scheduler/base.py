@@ -65,17 +65,19 @@ def ensure_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def normalize_scope(value: str | int) -> str:
+def normalize_scope(value: str | int | None) -> str:
     """Return the scheduler scope token for ``value``.
 
     Scopes are opaque strings: a numeric chat id normalizes to its decimal
-    representation so ``42`` and ``"42"`` address the same records. ``None``
-    and blank values are rejected because they cannot identify a scope.
+    representation so ``42`` and ``"42"`` address the same records, and
+    surrounding whitespace is stripped so ``" 42 "`` addresses them too.
+    ``None`` and blank values are rejected because they cannot identify a
+    scope.
     """
     if value is None:
         raise ValueError("Scheduler scope must not be empty.")
-    scope = str(value)
-    if not scope.strip():
+    scope = str(value).strip()
+    if not scope:
         raise ValueError("Scheduler scope must not be empty.")
     return scope
 

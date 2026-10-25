@@ -34,6 +34,7 @@ from manolo_bot.telegram.utils import (
     is_image,
     is_reply,
     is_voice,
+    parse_telegram_chat_id,
     send_final_response,
     send_typing_action,
     simulate_typing,
@@ -606,8 +607,12 @@ async def _deliver_scheduled_action(action: "ScheduledAction") -> None:
     """
     # Telegram chat ids are numeric; the scheduler scope is opaque. Coerce here
     # so instance_llm_bot, _chat_lock, message storage and aiogram all share the
-    # same int namespace as normal messages.
-    chat_id = int(action.chat_id)
+    # same int namespace as normal messages. A non-numeric scope is a wiring
+    # error, so surface it as an actionable delivery failure.
+    try:
+        chat_id = parse_telegram_chat_id(action.chat_id)
+    except ValueError as exc:
+        raise RuntimeError(f"Scheduled action {action.id} cannot be delivered: {exc}") from exc
     if config.allowed_chat_ids and str(chat_id) not in config.allowed_chat_ids:
         # The action is already claimed; returning would record a successful
         # delivery. Raise so the service records a failure instead.

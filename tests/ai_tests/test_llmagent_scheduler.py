@@ -266,6 +266,17 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(agent._schedule_scope)
         self.assertNotIn("schedule_scope", config["metadata"])
 
+    def test_padded_schedule_scope_is_canonicalized(self) -> None:
+        # Arrange
+        agent = _make_agent(schedule_scope="  C012345\t")
+
+        # Act
+        config = agent._get_langchain_config(99)
+
+        # Assert: the padding never becomes part of the scheduler namespace.
+        self.assertEqual(agent._schedule_scope, "C012345")
+        self.assertEqual(config["metadata"]["schedule_scope"], "C012345")
+
     async def test_blank_schedule_scope_falls_back_during_composition(self) -> None:
         # Arrange
         scheduler = FakeScheduler([])

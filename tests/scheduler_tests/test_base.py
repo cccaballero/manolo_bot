@@ -100,6 +100,10 @@ class TestScheduledActionScope(unittest.TestCase):
         payload["chat_id"] = "C012345"
         self.assertEqual(ScheduledAction.from_dict(payload).chat_id, "C012345")
 
+    def test_padded_scopes_are_canonicalized(self) -> None:
+        self.assertEqual(make_action(chat_id=" 42 ").chat_id, "42")
+        self.assertEqual(make_action(chat_id="\tC012345\n").chat_id, "C012345")
+
     def test_empty_scopes_are_rejected(self) -> None:
         for value in (None, "", "   ", "\n\t "):
             with self.subTest(value=value):
@@ -115,6 +119,11 @@ class TestNormalizeScope(unittest.TestCase):
     def test_opaque_values_are_preserved(self) -> None:
         self.assertEqual(normalize_scope("C012345"), "C012345")
         self.assertEqual(normalize_scope("dashboard:user:agent:uuid"), "dashboard:user:agent:uuid")
+
+    def test_padded_values_are_stripped(self) -> None:
+        self.assertEqual(normalize_scope(" 42 "), "42")
+        self.assertEqual(normalize_scope(" 42 "), normalize_scope(42))
+        self.assertEqual(normalize_scope("\tC012345\n"), "C012345")
 
     def test_blank_values_raise(self) -> None:
         for value in (None, "", "   "):

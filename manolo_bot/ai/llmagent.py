@@ -85,8 +85,10 @@ class LLMAgent(LLMBot):
         if schedule_scope is None:
             self._schedule_scope: str | None = None
         else:
-            normalized_scope = str(schedule_scope)
-            self._schedule_scope = normalized_scope if normalized_scope.strip() else None
+            # Same canonical form as normalize_scope() in the scheduler: a
+            # padded value must not become a distinct scope.
+            normalized_scope = str(schedule_scope).strip()
+            self._schedule_scope = normalized_scope or None
         # Keep the caller's untouched instructions so feature prompts can be
         # recomposed without duplicating (e.g. after a refresh).
         self._base_system_instructions = list(system_instructions)

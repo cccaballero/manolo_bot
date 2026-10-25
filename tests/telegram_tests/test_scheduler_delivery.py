@@ -6,11 +6,29 @@ import unittest
 from unittest.mock import AsyncMock
 
 from manolo_bot.telegram.utils import (
+    parse_telegram_chat_id,
     send_final_response,
     send_photo_to_chat,
     send_text_to_chat,
     strip_thinking,
 )
+
+
+class TestParseTelegramChatId(unittest.TestCase):
+    def test_numeric_scope_becomes_an_int(self) -> None:
+        self.assertEqual(parse_telegram_chat_id("42"), 42)
+        self.assertEqual(parse_telegram_chat_id("-1001234567890"), -1001234567890)
+
+    def test_padded_scope_is_accepted(self) -> None:
+        self.assertEqual(parse_telegram_chat_id(" 42 "), 42)
+
+    def test_opaque_scope_reports_a_wiring_error(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            parse_telegram_chat_id("C012345")
+
+        message = str(ctx.exception)
+        self.assertIn("'C012345'", message)
+        self.assertIn("requires numeric scopes", message)
 
 
 class TestStripThinking(unittest.TestCase):

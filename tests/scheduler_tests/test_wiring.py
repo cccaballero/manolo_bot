@@ -30,7 +30,7 @@ class TestSchedulerWiring(unittest.TestCase):
         self.assertNotIn("build_active_schedules_block", main)
         self.assertIn('Command("flushschedules")', main)
         self.assertIn("clear_actions", main)
-        self.assertIn("int(action.chat_id)", main)
+        self.assertIn("parse_telegram_chat_id(action.chat_id)", main)
         self.assertEqual(main.count("scheduler=_scheduler_service"), 2)
 
     def test_llm_branch_does_not_receive_a_scheduler(self):
