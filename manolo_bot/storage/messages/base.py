@@ -12,16 +12,23 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from manolo_bot.storage.keys import normalize_storage_key
+
 #: Marker prefix that distinguishes the auto-generated conversation summary
 #: (stored as a leading SystemMessage) from any other system message.
 SUMMARY_PREFIX = "CONVERSATION SUMMARY: "
 
 
-def get_messages_key(bot_uuid: str, chat_id: int) -> str:
+def get_messages_key(bot_uuid: str, chat_id: str | int) -> str:
     """
     Generates a key for storing messages in a database based on bot UUID and chat ID.
+
+    The key is composed of the bot UUID and the canonical form of the chat key,
+    which is an opaque non-empty string: a numeric Telegram chat id normalizes
+    to its decimal representation, so ``42`` and ``"42"`` address the same
+    history.
     """
-    return f"{bot_uuid}:{chat_id}"
+    return f"{bot_uuid}:{normalize_storage_key(chat_id)}"
 
 
 def convert_json_to_message(json_message: str) -> BaseMessage:
@@ -151,9 +158,18 @@ class BaseMessagesStorage(abc.ABC):
     Provides the interface for persisting and retrieving chat messages.
     """
 
-    def __init__(self, bot_uuid: str, chat_id: int) -> None:
+    def __init__(self, bot_uuid: str, chat_id: str | int) -> None:
+        """
+        Initializes the messages storage for one conversation.
+
+        :param bot_uuid: The UUID of the bot.
+        :param chat_id: The storage key of the conversation. It is an opaque
+            non-empty string; a numeric Telegram chat id normalizes to its
+            decimal form, so ``42`` and ``"42"`` select the same history.
+        :raises ValueError: If the key is ``None`` or blank.
+        """
         self.bot_uuid = bot_uuid
-        self.chat_id = chat_id
+        self.chat_id = normalize_storage_key(chat_id)
         self._messages: list[StorageMessage] = []
 
     @property

@@ -111,7 +111,7 @@ class LLMAgent(LLMBot):
             self.messages_storage.add_message(m)
         return selected[-1]
 
-    def _get_langchain_config(self, chat_id: int) -> RunnableConfig:
+    def _get_langchain_config(self, chat_id: str | int) -> RunnableConfig:
         """Add the opaque scheduler scope to the config metadata when set.
 
         Scheduler tools resolve their scope from ``metadata["schedule_scope"]``
@@ -223,7 +223,7 @@ class LLMAgent(LLMBot):
     #     logging.debug(f"Generated feedback message: {feedback_message}")
     #     return feedback_message
 
-    async def answer_message(self, chat_id: int, message: str) -> BaseMessage:
+    async def answer_message(self, chat_id: str | int, message: str) -> BaseMessage:
         self.messages_storage.add_message(HumanMessage(content=message))
         await self.truncate_chat_context()
 
@@ -237,7 +237,9 @@ class LLMAgent(LLMBot):
         full = result["messages"]
         return self._stage_agent_trace(full, sent_len)
 
-    async def answer_scheduled_action(self, chat_id: int, prompt: str, action_id: str | None = None) -> BaseMessage:
+    async def answer_scheduled_action(
+        self, chat_id: str | int, prompt: str, action_id: str | None = None
+    ) -> BaseMessage:
         """Run a fired scheduled action as an agent turn in ``chat_id``.
 
         The prompt is prefixed with :data:`SCHEDULED_TRIGGER_PREFIX` so the
@@ -251,10 +253,10 @@ class LLMAgent(LLMBot):
             marker = f"{marker}id={action_id} "
         return await self.answer_message(chat_id, f"{marker}{prompt}")
 
-    async def answer_image_message(self, chat_id: int, text: str, image: str) -> BaseMessage:
+    async def answer_image_message(self, chat_id: str | int, text: str, image: str) -> BaseMessage:
         """
         Answer an image message.
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param text: Text to answer
         :param image: Image to answer
         :return: Response
@@ -300,10 +302,10 @@ class LLMAgent(LLMBot):
         logging.debug(f"Image message response: {response}")
         return response
 
-    async def answer_voice_message(self, chat_id: int, text: str, audio: str) -> BaseMessage:
+    async def answer_voice_message(self, chat_id: str | int, text: str, audio: str) -> BaseMessage:
         """
         Answer a voice message.
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param text: Text to answer
         :param audio: Audio to answer
         :return: Response
@@ -353,11 +355,13 @@ class LLMAgent(LLMBot):
         logging.debug(f"Voice message response: {response}")
         return response
 
-    async def answer_document_message(self, chat_id: int, text: str, document_url: str, filename: str) -> BaseMessage:
+    async def answer_document_message(
+        self, chat_id: str | int, text: str, document_url: str, filename: str
+    ) -> BaseMessage:
         """
         Answer a document message using the agent.
 
-        :param chat_id: Chat ID
+        :param chat_id: Chat or storage key
         :param text: Text to answer
         :param document_url: Document URL
         :param filename: Original filename

@@ -49,6 +49,7 @@ from langgraph.store.base import BaseStore
 from langgraph.store.memory import InMemoryStore
 
 from manolo_bot.storage.deep_agent_backends.base import _BOT_UUID_PATTERN, BaseMemoryBackend
+from manolo_bot.storage.keys import normalize_storage_key, storage_path_segment
 
 # Seeded into every chat's memory file. Must be NON-EMPTY plain markdown:
 # deepagents' MemoryMiddleware._format_agent_memory skips empty sources and
@@ -79,9 +80,12 @@ class MemoryFilesystemDeepAgentBackend(BaseMemoryBackend):
       Layer 1.
 
     :param bot_uuid: Bot identifier (validated against ``[A-Za-z0-9_-]+``).
-    :param chat_id: Chat identifier; scopes the memory directory.
+    :param chat_id: Storage key scoping the memory directory — a Telegram int
+        or any opaque non-empty string. It is normalized (``42`` and ``"42"``
+        are the same chat) and mapped to a single safe path segment, so
+        existing numeric directories are reused as-is.
     :param memory_root: Absolute root directory under which each chat's
-        memory lives at ``memory_root/bot_uuid/chat_id``.
+        memory lives at ``memory_root/bot_uuid/<safe chat segment>``.
     :param store: Optional langgraph :class:`BaseStore` forwarded to
         ``create_deep_agent(store=...)``. Defaults to a process-local
         :class:`InMemoryStore` created at construction time — the default
@@ -105,7 +109,7 @@ class MemoryFilesystemDeepAgentBackend(BaseMemoryBackend):
             )
     """
 
-    def __init__(self, bot_uuid: str, chat_id: int, memory_root: str, store: BaseStore | None = None) -> None:
+    def __init__(self, bot_uuid: str, chat_id: str | int, memory_root: str, store: BaseStore | None = None) -> None:
         # Layer 1: input validation (mirrors FilesystemDeepAgentBackend).
         if not isinstance(bot_uuid, str) or not _BOT_UUID_PATTERN.fullmatch(bot_uuid):
             raise ValueError(
@@ -115,7 +119,9 @@ class MemoryFilesystemDeepAgentBackend(BaseMemoryBackend):
         if not isinstance(memory_root, str) or not memory_root or not os.path.isabs(memory_root):
             raise ValueError(f"memory_root must be a non-empty absolute path; got {memory_root!r}.")
         self.bot_uuid = bot_uuid
-        self.chat_id = chat_id
+        # This class does not call super().__init__(); normalize here so the
+        # key is opaque-string based, same contract as BaseDeepAgentBackend.
+        self.chat_id = normalize_storage_key(chat_id)
         self._memory_root = memory_root
         # The default store lives HERE (storage module), not in LLMDeepAgent —
         # the agent never constructs implicit defaults.
@@ -146,7 +152,7 @@ class MemoryFilesystemDeepAgentBackend(BaseMemoryBackend):
         caught here even though Layer 1 (which only inspects ``bot_uuid``)
         would have let it through.
         """
-        memory_path = os.path.join(self._memory_root, self.bot_uuid, str(self.chat_id))
+        memory_path = os.path.join(self._memory_root, self.bot_uuid, storage_path_segment(self.chat_id))
         resolved_root = os.path.realpath(self._memory_root)
         resolved_memory = os.path.realpath(memory_path)
         try:

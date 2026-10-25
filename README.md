@@ -205,14 +205,16 @@ them after `/flushcontext` (which clears conversation state, not schedules). Whe
 fires, its id is included in the trigger marker, so the agent can cancel that exact action
 without listing first. `/flushschedules` removes all schedules for the chat.
 
-The Telegram app uses the numeric chat id as the scope. Library consumers can decouple the
+The Telegram app uses the chat key as the scope. Library consumers can decouple the
 scope from the conversation storage key with `LLMAgent(..., schedule_scope=...)` (also accepted
 by `LLMDeepAgent`): the scheduler tools and the active-schedules prompt block then use that
 opaque token, while history stays under `messages_storage.chat_id`. Any non-empty string works,
 e.g. `"42"`, `"C012345"` or `"dashboard:{user}:{agent}:{uuid}"`. Default `None` keeps the current
-per-chat behavior.
+per-chat behavior. Storage keys are opaque too: `messages_storage` accepts `str | int` (`42` and
+`"42"` are the same key), so the scope and the storage key stay independent.
 
 ```python
+# chat_id is any non-empty storage key, not necessarily numeric
 storage = MemoryMessagesStorage(bot_uuid="my-bot", chat_id="my-bot:shared")
 agent = LLMAgent(
     ...,
@@ -382,6 +384,17 @@ search capabilities.
 
 `REDIS_URL`: The Redis URL for storage when `STORAGE_TYPE` is set to redis. Default is `redis://localhost:6379/0`.
 
+Conversation state is keyed by `(bot_uuid, chat_id)`. The chat key is an opaque non-empty string:
+storage constructors and methods accept `str | int` (`42` and `"42"` address the same conversation)
+and always expose the canonical string through `messages_storage.chat_id`. Existing numeric
+Telegram ids keep their meaning, so no migration is needed.
+
+Path-based backends — extracted document storage (`DOCUMENT_STORAGE_PATH`) and the `local_fs`
+deep-agent workspace and memory (`DEEP_AGENT_WORKSPACE_PATH`, `DEEP_AGENT_MEMORY_PATH`) — use the
+key as a directory name when it matches `[a-z0-9_-]{1,64}`, and a stable `h.<sha256[:40]>`
+directory otherwise (e.g. for `chat_id="my-bot:shared"`). Existing numeric directories therefore
+keep working.
+
 ### MCP (Model Context Protocol) Support
 
 manolo_bot supports the [Model Context Protocol](https://modelcontextprotocol.io/) for connecting to external tool
@@ -496,6 +509,13 @@ uv run python -m unittest discover tests
 
 `manolo-bot` can also be used as a library to build your own AI assistants. It provides a clean abstraction for LLM
 providers, message storage, and agentic capabilities.
+
+Conversations are keyed by an opaque, non-empty storage key — not necessarily a Telegram chat id.
+Storage constructors and `answer_*` methods accept `str | int`: numeric ids normalize to their decimal
+form, so `42` and `"42"` are the same key, and a key may equally be `"C012345"` (Slack) or
+`"dashboard:{user}:{agent}:{uuid}"`. File-based document storage and the deep-agent `local_fs`
+workspace/memory use the key verbatim as a directory when it matches `[a-z0-9_-]{1,64}` (existing
+numeric directories unchanged) and a stable `h.<sha256>` directory name otherwise.
 
 ### Using LLMAgent (Recommended)
 

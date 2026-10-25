@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -12,6 +13,18 @@ from manolo_bot.storage.deep_agent_backends.skills_filesystem_backend import (
     SkillsFilesystemDeepAgentBackend,
 )
 
+#: Safe-segment mapping applied to non-trivial storage keys (see
+#: ``manolo_bot.storage.keys.storage_path_segment``).
+_HASHED_SEGMENT = re.compile(r"^h\.[0-9a-f]{40}$")
+
+
+def _assert_under(case: unittest.TestCase, path: str, root: str) -> None:
+    """Assert ``path`` resolves strictly inside ``root`` (containment check)."""
+    resolved_root = os.path.realpath(root)
+    resolved_path = os.path.realpath(path)
+    case.assertEqual(os.path.commonpath([resolved_root, resolved_path]), resolved_root)
+    case.assertNotEqual(resolved_path, resolved_root)
+
 
 class TestMemoryDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -20,7 +33,7 @@ class TestMemoryDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
     async def test_initialization(self):
         backend = MemoryDeepAgentBackend(self.bot_uuid, 12345)
         self.assertEqual(backend.bot_uuid, self.bot_uuid)
-        self.assertEqual(backend.chat_id, 12345)
+        self.assertEqual(backend.chat_id, "12345")
 
     async def test_same_chat_id_shares_backend(self):
         b1 = MemoryDeepAgentBackend(self.bot_uuid, 12345)
@@ -60,6 +73,27 @@ class TestMemoryDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         await backend.clear()  # no prior _build_backend call
         await backend.clear()  # twice, still safe
 
+    async def test_int_and_str_key_share_backend(self):
+        """Storage keys are opaque: int 42 and string "42" address the same state."""
+        from deepagents.backends import StateBackend
+
+        b_int = MemoryDeepAgentBackend("opaque-bot", 424242)
+        b_str = MemoryDeepAgentBackend("opaque-bot", "424242")
+        self.assertEqual(b_int.chat_id, b_str.chat_id)
+        self.assertIs(b_int.backend, b_str.backend)
+        self.assertIsInstance(b_int.backend, StateBackend)
+        # Clearing via one form clears the shared instance.
+        await b_str.clear()
+        recreated = MemoryDeepAgentBackend("opaque-bot", 424242)
+        self.assertIsNot(recreated.backend, b_int.backend)
+
+    def test_blank_or_missing_key_raises_value_error(self):
+        """A blank key cannot identify a conversation and is rejected."""
+        for key in (None, "", "   "):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    MemoryDeepAgentBackend(self.bot_uuid, key)  # type: ignore[arg-type]
+
     async def test_backend_is_state_backend(self):
         from deepagents.backends import StateBackend
 
@@ -79,7 +113,7 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
     async def test_initialization(self):
         backend = FilesystemDeepAgentBackend(self.bot_uuid, 12345, self.workspace)
         self.assertEqual(backend.bot_uuid, self.bot_uuid)
-        self.assertEqual(backend.chat_id, 12345)
+        self.assertEqual(backend.chat_id, "12345")
 
     async def test_path_contains_bot_uuid_and_chat_id(self):
         backend = FilesystemDeepAgentBackend(self.bot_uuid, 12345, self.workspace)
@@ -186,7 +220,7 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         workspace_path construct successfully."""
         backend = FilesystemDeepAgentBackend("valid-bot_123", 456, self.workspace)
         self.assertEqual(backend.bot_uuid, "valid-bot_123")
-        self.assertEqual(backend.chat_id, 456)
+        self.assertEqual(backend.chat_id, "456")
 
     async def test_layer2_refuses_symlink_escape_at_construction(self):
         """Layer 2 (defense in depth): if the workspace contains a symlink
@@ -222,6 +256,57 @@ class TestFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         finally:
             shutil.rmtree(workspace)
 
+    async def test_int_and_str_key_same_chat_directory(self):
+        """Storage keys are opaque: constructing with 42 then "42" resolves to
+        the same directory (no duplicate dirs, no migration)."""
+        b_int = FilesystemDeepAgentBackend(self.bot_uuid, 42, self.workspace)
+        b_str = FilesystemDeepAgentBackend(self.bot_uuid, "42", self.workspace)
+        self.assertEqual(b_int.chat_id, b_str.chat_id)
+        path_int = b_int._safe_chat_path()
+        self.assertEqual(path_int, b_str._safe_chat_path())
+        self.assertEqual(str(b_int.backend.cwd.resolve()), str(b_str.backend.cwd.resolve()))
+        # Safe keys keep their existing numeric directory name.
+        self.assertEqual(os.path.basename(path_int), "42")
+
+    async def test_opaque_key_gets_hashed_directory(self):
+        """A non-numeric key ("C012345") gets a hashed single-segment directory
+        under the workspace root and still passes the containment check."""
+        backend = FilesystemDeepAgentBackend(self.bot_uuid, "C012345", self.workspace)
+        self.assertEqual(backend.chat_id, "C012345")
+        chat_path = backend._safe_chat_path()
+        self.assertEqual(os.path.dirname(chat_path), os.path.realpath(os.path.join(self.workspace, self.bot_uuid)))
+        self.assertRegex(os.path.basename(chat_path), _HASHED_SEGMENT)
+        _assert_under(self, chat_path, self.workspace)
+        self.assertEqual(str(backend.backend.cwd.resolve()), chat_path)
+
+    async def test_traversal_key_does_not_escape_workspace(self):
+        """A traversal-looking key must not escape the workspace: it is hashed
+        into a single segment, so neither construction nor ``clear()`` can
+        touch directories outside the root."""
+        outside_base = tempfile.mkdtemp(prefix="manolo_bot_test_outside_")
+        victim = os.path.join(outside_base, "victim_dir")
+        os.makedirs(victim)
+        victim_file = os.path.join(victim, "important.txt")
+        with open(victim_file, "w") as f:
+            f.write("do-not-delete")
+        try:
+            backend = FilesystemDeepAgentBackend(self.bot_uuid, "../../escape", self.workspace)
+            chat_path = backend._safe_chat_path()
+            _assert_under(self, chat_path, self.workspace)
+            self.assertRegex(os.path.basename(chat_path), _HASHED_SEGMENT)
+            await backend.clear()
+            # The victim outside the workspace is untouched.
+            self.assertTrue(os.path.exists(victim_file))
+        finally:
+            shutil.rmtree(outside_base)
+
+    def test_blank_or_missing_key_raises_value_error(self):
+        """A blank key cannot identify a conversation and is rejected."""
+        for key in (None, "", "   "):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    FilesystemDeepAgentBackend(self.bot_uuid, key, self.workspace)  # type: ignore[arg-type]
+
 
 class TestMemoryFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -245,7 +330,7 @@ class TestMemoryFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
 
         backend = self._make()
         self.assertEqual(backend.bot_uuid, self.bot_uuid)
-        self.assertEqual(backend.chat_id, 12345)
+        self.assertEqual(backend.chat_id, "12345")
         self.assertIsInstance(backend.backend, FilesystemBackend)
         # Middleware-facing backend: virtual_mode=False so MemoryMiddleware's
         # raw absolute source paths pass through unchanged.
@@ -354,6 +439,44 @@ class TestMemoryFilesystemDeepAgentBackend(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError) as cm:
             self._make(bot_uuid="../etc")
         self.assertIn("bot_uuid", str(cm.exception))
+
+    async def test_int_and_str_key_same_memory_dir(self):
+        """Storage keys are opaque: 42 and "42" resolve to the same memory dir."""
+        b_int = self._make(chat_id=424242)
+        b_str = self._make(chat_id="424242")
+        self.assertEqual(b_int.chat_id, b_str.chat_id)
+        self.assertEqual(b_int.source, b_str.source)
+        self.assertEqual(os.path.basename(os.path.dirname(b_int.source)), "424242")
+
+    async def test_opaque_key_gets_hashed_memory_dir(self):
+        """A non-numeric key gets a hashed single-segment memory dir under the
+        root, seeded and contained."""
+        backend = self._make(chat_id="C012345")
+        chat_dir = os.path.dirname(backend.source)
+        self.assertEqual(os.path.dirname(chat_dir), os.path.realpath(os.path.join(self.memory_root, self.bot_uuid)))
+        self.assertRegex(os.path.basename(chat_dir), _HASHED_SEGMENT)
+        _assert_under(self, chat_dir, self.memory_root)
+        self.assertTrue(os.path.exists(backend.source))
+
+    async def test_traversal_key_does_not_escape_memory_root(self):
+        """A traversal-looking key is hashed, so memory stays under the root and
+        ``clear()`` only deletes that segment."""
+        backend = self._make(chat_id="../../escape")
+        chat_dir = os.path.dirname(backend.source)
+        _assert_under(self, chat_dir, self.memory_root)
+        self.assertRegex(os.path.basename(chat_dir), _HASHED_SEGMENT)
+        self.assertTrue(os.path.exists(backend.source))
+        await backend.clear()
+        self.assertFalse(os.path.exists(chat_dir))
+        # The root itself (and siblings) survive.
+        self.assertTrue(os.path.isdir(self.memory_root))
+
+    def test_blank_or_missing_key_raises_value_error(self):
+        """A blank key cannot identify a conversation and is rejected."""
+        for key in (None, "", "   "):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    self._make(chat_id=key)
 
     def test_bot_uuid_with_slash_raises_at_construction(self):
         """Layer 1: bot_uuid containing '/' is rejected."""
