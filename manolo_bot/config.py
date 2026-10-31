@@ -43,8 +43,13 @@ class Config(EnvModel):
     # Agent history persistence policy, parsed at the env boundary (Telegram
     # adapter only; library callers pass policy instances directly).
     agent_history_policy = StringField(
-        "AGENT_HISTORY_POLICY", default="final-only", allowed_values=["final-only", "full-trace"]
+        "AGENT_HISTORY_POLICY",
+        default="final-only",
+        allowed_values=["final-only", "full-trace", "compact-trace"],
     )
+    # Tail-size threshold for the compact policy (chars, content proxy).
+    # Ignored by the other policies.
+    agent_history_max_chars = IntegerField("AGENT_HISTORY_MAX_CHARS", default=3000)
     allow_private_chats = BooleanField("ALLOW_PRIVATE_CHATS", default=True)
 
     @property

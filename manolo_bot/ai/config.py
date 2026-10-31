@@ -37,12 +37,15 @@ class BotConfig:
     is_group_assistant: bool = False
     agent_mode: bool = False
 
-    # Agent history persistence policy ("final-only" | "full-trace"). Thin
-    # Telegram-side plumbing: main.py maps this string to a policy instance.
+    # Agent history persistence policy ("final-only" | "full-trace" |
+    # "compact-trace"). Thin Telegram-side plumbing: main.py maps this string
+    # to a policy instance.
     # NOTE: the policy lives INSIDE the truncated queue, so "full-trace" does
     # not make tool traces durable against truncation (that needs an
     # outside-queue sidecar). Kept open to a future pinned/never-truncate class.
     history_policy: str = "final-only"
+    # Tail-size threshold (chars) for "compact-trace"; ignored otherwise.
+    history_max_chars: int = 3000
 
     # Web content retrieval configuration
     web_content_request_timeout: int = 10

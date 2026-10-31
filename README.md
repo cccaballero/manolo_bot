@@ -345,9 +345,15 @@ summarization fails), the bot falls back to dropping the oldest messages.
 #### Agent history policy
 
 `AGENT_HISTORY_POLICY`: Which messages from the agent's tool loop are persisted to chat history
-(`final-only`, `full-trace`). Default is `final-only`, which stores only the final answer.
+(`final-only`, `full-trace`, `compact-trace`). Default is `final-only`, which stores only the final answer.
 `full-trace` also stores intermediate tool calls and results, at the cost of higher token usage.
-Applies to `agent` and `deep_agent` modes.
+`compact-trace` keeps the full trace only while the turn stays small; above `AGENT_HISTORY_MAX_CHARS`
+it stores a deterministic one-line-per-tool-call ledger plus the final answer. Applies to `agent` and
+`deep_agent` modes.
+
+`AGENT_HISTORY_MAX_CHARS`: Tail-size threshold in characters for `compact-trace` (default: `3000`).
+Ignored by the other policies. The threshold counts message content only (a provider-independent proxy,
+not an exact token count).
 
 #### Web Content Retrieval Configuration
 

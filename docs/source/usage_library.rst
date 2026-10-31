@@ -85,15 +85,27 @@ Pass ``history_policy=FullTracePolicy()`` to also keep intermediate tool calls a
 useful for debugging or multi-step continuity, at the cost of higher token usage. Truncation
 always drops ``AI → Tool`` blocks atomically, so replayed history stays valid for the next turn.
 
+``CompactTracePolicy`` is the bounded middle ground: while the turn tail stays under
+``max_tail_chars`` (a provider-independent content-length proxy) it passes the trace through
+verbatim like ``FullTracePolicy``. Above the threshold it persists exactly two messages: a
+plain ``AIMessage`` ledger with one line per tool call (``name(args) -> outcome, N chars``,
+outputs capped at ``per_tool_chars``, multimodal outputs replaced by placeholders) and a
+``FinalOnlyPolicy``-style final answer. Ledger lines carry no ``tool_calls``, so persisted
+history remains pair-atomic. The ledger is itself capped at ``max_tail_chars``; extra calls
+are summarised as ``... (N more tool calls omitted)``.
+
 .. code-block:: python
 
-   from manolo_bot.ai.history_policy import FullTracePolicy
+   from manolo_bot.ai.history_policy import CompactTracePolicy, FullTracePolicy
    from manolo_bot.ai.llmagent import LLMAgent
 
    agent = LLMAgent(
        ...,
-       history_policy=FullTracePolicy(),
+       history_policy=CompactTracePolicy(max_tail_chars=3000, per_tool_chars=500),
    )
+
+   # Full verbatim trace instead:
+   agent = LLMAgent(..., history_policy=FullTracePolicy())
 
 To define your own strategy, subclass ``BaseHistoryPolicy`` and implement ``select(tail)``,
 which receives only the new messages produced by the turn and returns the subset to persist.

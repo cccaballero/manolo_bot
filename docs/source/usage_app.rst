@@ -304,6 +304,11 @@ Fine-tune the bot's performance and logging.
 * `ENABLE_CONTEXT_SUMMARIZATION`: When the context limit is reached, summarize the oldest messages instead of dropping them (default: `True`).
 * `SUMMARY_MAX_TOKENS`: Maximum number of tokens allowed for the generated summary (default: `512`).
 * `SUMMARY_KEEP_MESSAGES`: Number of most recent messages to keep intact when summarizing (default: `6`).
+* `AGENT_HISTORY_POLICY`: Which messages from the agent's tool loop are persisted to chat history (`final-only`, `full-trace`, `compact-trace`; default: `final-only`). Applies to `agent` and `deep_agent` modes.
+    * `final-only`: Only the final answer is stored.
+    * `full-trace`: Intermediate tool calls and results are stored verbatim, at the cost of higher token usage.
+    * `compact-trace`: Stores the full trace while the turn stays under `AGENT_HISTORY_MAX_CHARS`; above that it stores a deterministic one-line-per-tool-call ledger plus the final answer.
+* `AGENT_HISTORY_MAX_CHARS`: Tail-size threshold in characters for `compact-trace` (default: `3000`). It counts message content only, so it is a provider-independent proxy rather than an exact token count.
 * `WEB_CONTENT_REQUEST_TIMEOUT_SECONDS`: Timeout for tools that fetch web content (default: `10`).
 * `RATE_LIMITER_REQUESTS_PER_SECOND`: Max requests per second (default: `0.25`).
 * `RATE_LIMITER_CHECK_EVERY_N_SECONDS`: Interval between rate limit checks (default: `0.1`).

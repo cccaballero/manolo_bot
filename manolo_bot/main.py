@@ -11,7 +11,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 
 from manolo_bot.ai.config import BotConfig, EmbeddingsConfig, LLMConfig
-from manolo_bot.ai.history_policy import BaseHistoryPolicy, FinalOnlyPolicy, FullTracePolicy
+from manolo_bot.ai.history_policy import BaseHistoryPolicy, CompactTracePolicy, FinalOnlyPolicy, FullTracePolicy
 from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.ai.llmbot import LLMBot, LLMBuilder
 from manolo_bot.ai.llmdeepagent import LLMDeepAgent
@@ -219,6 +219,7 @@ bot_config = BotConfig(
     max_document_size=config.max_document_size,
     max_voice_size=config.max_voice_size,
     history_policy=config.agent_history_policy,
+    history_max_chars=config.agent_history_max_chars,
 )
 
 
@@ -259,6 +260,8 @@ def _resolve_history_policy() -> BaseHistoryPolicy:
     """
     if bot_config.history_policy == "full-trace":
         return FullTracePolicy()
+    if bot_config.history_policy == "compact-trace":
+        return CompactTracePolicy(max_tail_chars=bot_config.history_max_chars)
     return FinalOnlyPolicy()
 
 
