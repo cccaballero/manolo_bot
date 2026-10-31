@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import aiohttp
 from ddgs import DDGS
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.runnables import RunnableConfig
@@ -98,6 +99,64 @@ def _truncate_content(content: str, max_chars: int, notice: str) -> str:
     if len(content) <= max_chars:
         return content
     return content[:max_chars] + notice
+
+
+# Apify is another optional transcript backend: the johnvc/YoutubeTranscripts
+# Actor reads the captions from Apify's servers, so it also works when YouTube
+# blocks the bot's IP. Like Tavily it means "prefer Apify", never "Apify only".
+_APIFY_TRANSCRIPTS_URL = "https://api.apify.com/v2/acts/johnvc~YoutubeTranscripts/run-sync-get-dataset-items"
+_APIFY_TRANSCRIPTS_TIMEOUT_SECONDS = 120
+
+
+def _format_timestamp(seconds: float) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
+
+
+async def _apify_transcript_row(session: aiohttp.ClientSession, run_input: dict, api_token: str) -> dict:
+    async with session.post(
+        _APIFY_TRANSCRIPTS_URL, json=run_input, headers={"Authorization": f"Bearer {api_token}"}
+    ) as response:
+        response.raise_for_status()
+        rows = await response.json(content_type=None)
+    return rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else {}
+
+
+async def _apify_youtube_transcript(url: str, api_token: str) -> tuple[str | None, str]:
+    """Fetch the transcript of ``url`` through the johnvc/YoutubeTranscripts Apify Actor.
+
+    Returns ``(text, reason)`` like ``_tavily_extract``. ``text`` has one
+    ``[mm:ss] text`` line per caption segment, or is ``None`` when the Actor
+    could not serve a transcript (HTTP error, timeout, video without captions)
+    and the caller should use the direct path instead. ``reason`` is a short,
+    log-safe explanation; the API token is never included.
+    """
+    run_input: dict = {"youtube_url": url, "include_metadata": False}
+    try:
+        timeout = aiohttp.ClientTimeout(total=_APIFY_TRANSCRIPTS_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            row = await _apify_transcript_row(session, run_input, api_token)
+            # The Actor only returns the requested languages (English by
+            # default). Like the direct path, take the first track on offer.
+            available = row.get("available_transcripts") or []
+            if not row.get("success") and available:
+                run_input["languages"] = [available[0]["language_code"]]
+                row = await _apify_transcript_row(session, run_input, api_token)
+    except Exception as e:
+        return None, f"request failed ({type(e).__name__}: {e})"
+
+    if not row.get("success"):
+        return None, f"returned no transcript ({row.get('error_message') or 'empty result'})"
+
+    lines = []
+    for segment in row.get("timestamped") or []:
+        text = " ".join(str(segment.get("text") or "").split())
+        if text:
+            lines.append(f"[{_format_timestamp(segment.get('start') or 0)}] {text}")
+    if not lines:
+        return None, "returned an empty transcript"
+    return "\n".join(lines), ""
 
 
 class WebContentInput(BaseModel):
@@ -193,6 +252,8 @@ class YouTubeTranscriptTool(BaseTool):
     context_max_tokens: int = 6000
     tavily_api_key: str = ""
     use_tavily: bool = False
+    apify_api_token: str = ""
+    use_apify: bool = False
 
     def _run(self, url: str) -> str:
         # Synchronous implementation if needed
@@ -207,6 +268,13 @@ class YouTubeTranscriptTool(BaseTool):
             if content is not None:
                 reason = "extracted content has no [mm:ss] transcript markers"
             logging.warning(f"Tavily Extract did not serve the transcript for {url} ({reason}); falling back")
+
+        if self.use_apify and self.apify_api_token:
+            content, reason = await _apify_youtube_transcript(url, self.apify_api_token)
+            if content is not None:
+                logging.info(f"Apify served YouTube transcript for {url}")
+                return self._truncate(content)
+            logging.warning(f"Apify did not serve the transcript for {url} ({reason}); falling back")
 
         try:
             logging.debug(f"Serving YouTube transcript for {url} via YouTubeTranscriptApi (direct path)")
@@ -390,6 +458,11 @@ def get_tools(
                 "Tavily Extract is enabled but no Tavily API key is configured "
                 "(TAVILY_API_KEY); using the direct fetch paths."
             )
+        if bot_config.can_use_apify_for_youtube and not bot_config.apify_api_token:
+            logging.warning(
+                "Apify is enabled for YouTube transcripts but no Apify API token is configured "
+                "(APIFY_API_TOKEN); using the direct fetch path."
+            )
 
         web_tool: BaseTool = WebContentTool(
             context_max_tokens=bot_config.context_max_tokens,
@@ -400,6 +473,8 @@ def get_tools(
             context_max_tokens=bot_config.context_max_tokens,
             tavily_api_key=tavily_api_key,
             use_tavily=use_tavily_extract_for_youtube,
+            apify_api_token=bot_config.apify_api_token,
+            use_apify=bot_config.can_use_apify_for_youtube,
         )
     else:
         web_tool = WebContentTool()

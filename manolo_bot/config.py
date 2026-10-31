@@ -166,6 +166,10 @@ class Config(EnvModel):
     use_tavily_extract_for_youtube = BooleanField("USE_TAVILY_EXTRACT_FOR_YOUTUBE", default=False)
     # One key for both Tavily features (search + extract).
     tavily_api_key = StringField("TAVILY_API_KEY", default="")
+    # Apify: optional YouTube transcripts through the johnvc/YoutubeTranscripts
+    # Actor. Falls back to the direct implementation on failure or without a token.
+    use_apify_for_youtube = BooleanField("USE_APIFY_FOR_YOUTUBE", default=False)
+    apify_api_token = StringField("APIFY_API_TOKEN", default="")
 
     storage_type = StringField("STORAGE_TYPE", default="memory", allowed_values=["memory", "redis"])
     redis_url = StringField("REDIS_URL", default="redis://localhost:6379/0")
