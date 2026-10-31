@@ -209,6 +209,10 @@ bot_config = BotConfig(
     enable_mcp=config.enable_mcp,
     mcp_servers_config=config.mcp_servers_config,
     can_use_tavily_search=config.use_tavily_search,
+    can_use_tavily_extract=config.use_tavily_extract,
+    can_use_tavily_extract_for_youtube=config.use_tavily_extract_for_youtube,
+    # Single resolved key for every Tavily feature (search + extract).
+    tavily_api_key=config.tavily_api_key,
     sdapi_url=config.sdapi_url,
     sdapi_params=config.sdapi_params,
     sdapi_negative_prompt=config.sdapi_negative_prompt,

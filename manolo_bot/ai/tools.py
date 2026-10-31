@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-import os
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -10,7 +10,7 @@ from ddgs import DDGS
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
-from langchain_tavily import TavilySearch
+from langchain_tavily import TavilyExtract, TavilySearch
 from pydantic import BaseModel, Field
 from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
 
@@ -50,30 +50,126 @@ def get_current_time(timezone_name: str) -> TimeResult:
     )
 
 
-@tool
-async def get_website_content(url: str) -> str:
+# Tavily Extract is optional for both fetching tools below. It fetches and
+# extracts server-side, so it works when the bot's IP is blocked by the target
+# (403 / YouTube IpBlocked) and handles binary documents (PDF, ...) that the
+# HTML-only WebBaseLoader path cannot. The direct implementations stay as the
+# fallback: these flags mean "prefer Tavily", never "Tavily only".
+_TAVILY_EXTRACT_TIMEOUT_SECONDS = 30
+# YouTube extracts carry the transcript as "[mm:ss] text" lines. A video
+# without captions yields only title/channel/description, which must not be
+# presented to the model as a transcript.
+_YOUTUBE_TIMESTAMP_RE = re.compile(r"\[\d{1,2}:\d{2}(?::\d{2})?\]")
+
+
+async def _tavily_extract(url: str, api_key: str) -> tuple[str | None, str]:
+    """Extract text from ``url`` through Tavily Extract.
+
+    Returns ``(text, reason)``. ``text`` is ``None`` when Tavily could not
+    serve the request (failed result, HTTP error, timeout or any other
+    exception) and the caller should use the direct path instead. ``reason``
+    is a short, log-safe explanation; the API key is never included.
+    """
+    try:
+        extractor = TavilyExtract(tavily_api_key=api_key, format="text", extract_depth="basic")
+        raw = await asyncio.wait_for(extractor.ainvoke({"urls": [url]}), timeout=_TAVILY_EXTRACT_TIMEOUT_SECONDS)
+    except Exception as e:
+        return None, f"request failed ({type(e).__name__}: {e})"
+
+    # TavilyExtract returns {"error": exc} for unexpected failures and a plain
+    # string when the tool-level ToolException is handled.
+    if not isinstance(raw, dict):
+        return None, f"returned an error: {raw}"
+    if raw.get("error"):
+        return None, f"returned an error: {raw['error']}"
+
+    results = raw.get("results") or []
+    if not results:
+        failed = raw.get("failed_results") or []
+        return None, f"returned no results (failed_results={failed})"
+
+    content = (results[0].get("raw_content") or "").strip()
+    if not content:
+        return None, "returned empty content"
+    return content, ""
+
+
+def _truncate_content(content: str, max_chars: int, notice: str) -> str:
+    if len(content) <= max_chars:
+        return content
+    return content[:max_chars] + notice
+
+
+class WebContentInput(BaseModel):
+    url: str = Field(description="The URL of the website or document to fetch")
+
+
+class WebContentTool(BaseTool):
     """
     Tool for obtaining the content of a website.
     Can be used to resume the content of a webpage or online article or give your opinion about it.
     In general, can be used to obtain the content of a web when necessary.
     """
-    try:
-        logging.debug(f"Obtaining web content for {url}")
-        loader = WebBaseLoader(web_path=url)
 
-        # alazy_load returns an async iterator of Document objects
-        docs = []
-        async for doc in loader.alazy_load():
-            docs.append(doc)
+    name: str = "get_website_content"
+    description: str = (
+        "Tool for obtaining the content of a website. "
+        "Can be used to resume the content of a webpage or online article or give your opinion about it. "
+        "In general, can be used to obtain the content of a web when necessary."
+    )
+    args_schema: type[BaseModel] = WebContentInput
+    context_max_tokens: int = 6000
+    tavily_api_key: str = ""
+    use_tavily: bool = False
 
-        # Combine content from all loaded documents
-        content = " ".join([doc.page_content for doc in docs])
-        return content.strip()
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # URL document support (PDF, ...) only exists through Tavily Extract;
+        # advertising it on the direct path makes the model retry files that
+        # WebBaseLoader cannot read.
+        if self.use_tavily and self.tavily_api_key:
+            self.description = f"{self.description} Also works for documents served from a URL, such as PDFs."
 
-    except Exception as e:
-        logging.error(f"Error connecting to web content for {url}")
-        logging.exception(e)
-        return f"Failed to get content of the website {url}. Please try again later or try a different URL."
+    def _run(self, url: str) -> str:
+        # Synchronous implementation if needed
+        raise NotImplementedError("Use _arun instead")
+
+    async def _arun(self, url: str) -> str:
+        if self.use_tavily and self.tavily_api_key:
+            content, reason = await _tavily_extract(url, self.tavily_api_key)
+            if content is not None:
+                logging.info(f"Tavily Extract served web content for {url}")
+                return _truncate_content(
+                    content,
+                    self.context_max_tokens * 4,
+                    "... [Content truncated due to length]",
+                )
+            logging.warning(f"Tavily Extract failed for {url} ({reason}); falling back to direct fetch")
+
+        return await self._fetch_direct(url)
+
+    async def _fetch_direct(self, url: str) -> str:
+        try:
+            logging.debug(f"Serving web content for {url} via WebBaseLoader (direct path)")
+            loader = WebBaseLoader(web_path=url)
+
+            # alazy_load returns an async iterator of Document objects
+            docs = []
+            async for doc in loader.alazy_load():
+                docs.append(doc)
+
+            # Combine content from all loaded documents
+            content = " ".join([doc.page_content for doc in docs])
+            return _truncate_content(
+                content.strip(),
+                self.context_max_tokens * 4,
+                "... [Content truncated due to length]",
+            )
+
+        except Exception as e:
+            logging.error(f"Error connecting to web content for {url}")
+            logging.exception(e)
+            return f"Failed to get content of the website {url}. Please try again later or try a different URL."
 
 
 class YouTubeTranscriptInput(BaseModel):
@@ -95,14 +191,25 @@ class YouTubeTranscriptTool(BaseTool):
     )
     args_schema: type[BaseModel] = YouTubeTranscriptInput
     context_max_tokens: int = 6000
+    tavily_api_key: str = ""
+    use_tavily: bool = False
 
     def _run(self, url: str) -> str:
         # Synchronous implementation if needed
         raise NotImplementedError("Use _arun instead")
 
     async def _arun(self, url: str) -> str:
+        if self.use_tavily and self.tavily_api_key:
+            content, reason = await _tavily_extract(url, self.tavily_api_key)
+            if content is not None and _YOUTUBE_TIMESTAMP_RE.search(content):
+                logging.info(f"Tavily Extract served YouTube transcript for {url}")
+                return self._truncate(content)
+            if content is not None:
+                reason = "extracted content has no [mm:ss] transcript markers"
+            logging.warning(f"Tavily Extract did not serve the transcript for {url} ({reason}); falling back")
+
         try:
-            logging.debug(f"Obtaining YouTube transcript for {url}")
+            logging.debug(f"Serving YouTube transcript for {url} via YouTubeTranscriptApi (direct path)")
             video_id = extract_youtube_video_id(url)
 
             if not video_id:
@@ -112,8 +219,6 @@ class YouTubeTranscriptTool(BaseTool):
                 )
 
             # YouTubeTranscriptApi is synchronous, but we can wrap it in asyncio
-            import asyncio
-
             youtube_transcript = YouTubeTranscriptApi()
 
             # Run the synchronous API call in executor to avoid blocking
@@ -133,15 +238,7 @@ class YouTubeTranscriptTool(BaseTool):
 
             # Combine all transcript segments into a single text
             full_transcript = " ".join(segment.text for segment in transcript_segments)
-
-            # Truncate if too long (to avoid token limits)
-            # Rough estimate of chars per token
-            max_chars = self.context_max_tokens * 4
-
-            if len(full_transcript) > max_chars:
-                full_transcript = full_transcript[:max_chars] + "... [Transcript truncated due to length]"
-
-            return full_transcript.strip()
+            return self._truncate(full_transcript.strip())
         except TranscriptsDisabled:
             logging.error(f"Transcripts are disabled for YouTube video: {url}")
             return f"Transcripts are disabled for this YouTube video: {url}"
@@ -149,17 +246,11 @@ class YouTubeTranscriptTool(BaseTool):
             logging.error(f"Error fetching YouTube transcript: {str(e)}")
             return f"Failed to get the transcript for the YouTube video. Error: {str(e)}"
 
-
-@tool
-async def get_youtube_transcript(url: str) -> str:
-    """
-    Tool for fetching and analyzing YouTube video transcripts.
-    Can be used to understand and discuss the content of YouTube videos without watching them.
-    Supports various YouTube URL formats (standard, shortened, shorts).
-    """
-    # Thin wrapper preserving the default limit (6000 tokens) for backward compatibility.
-    # Configured use should instantiate YouTubeTranscriptTool with bot_config.context_max_tokens.
-    return await YouTubeTranscriptTool()._arun(url)
+    def _truncate(self, transcript: str) -> str:
+        # Truncate if too long (to avoid token limits)
+        # Rough estimate of chars per token
+        max_chars = self.context_max_tokens * 4
+        return _truncate_content(transcript, max_chars, "... [Transcript truncated due to length]")
 
 
 def extract_youtube_video_id(url: str) -> str | None:
@@ -215,8 +306,6 @@ async def ddgs_search(query: str) -> list:
     Input should be a search query.
     """
     # DDGS doesn't provide async API, use run_in_executor
-    import asyncio
-
     loop = asyncio.get_event_loop()
 
     def search() -> list:
@@ -284,22 +373,41 @@ class ReadDocumentTool(BaseTool):
 def get_tools(
     bot_config: BotConfig | None = None, document_storage: BaseDocumentStorage | None = None
 ) -> list[BaseTool]:
-    TAVILY_SEARCH_KEY = os.environ.get("TAVILY_SEARCH_KEY")
-    if (bot_config and bot_config.can_use_tavily_search) and TAVILY_SEARCH_KEY:
+    tavily_api_key = bot_config.tavily_api_key if bot_config else ""
+
+    if (bot_config and bot_config.can_use_tavily_search) and tavily_api_key:
         logging.debug("Using Tavily search")
-        search_tool = TavilySearch(tavily_api_key=TAVILY_SEARCH_KEY, max_results=5)
+        search_tool = TavilySearch(tavily_api_key=tavily_api_key, max_results=5)
     else:
         logging.debug("Using ddgs search")
         search_tool = ddgs_search
 
     if bot_config:
-        youtube_tool: BaseTool = YouTubeTranscriptTool(context_max_tokens=bot_config.context_max_tokens)
+        use_tavily_extract = bot_config.can_use_tavily_extract
+        use_tavily_extract_for_youtube = bot_config.can_use_tavily_extract_for_youtube
+        if (use_tavily_extract or use_tavily_extract_for_youtube) and not tavily_api_key:
+            logging.warning(
+                "Tavily Extract is enabled but no Tavily API key is configured "
+                "(TAVILY_API_KEY); using the direct fetch paths."
+            )
+
+        web_tool: BaseTool = WebContentTool(
+            context_max_tokens=bot_config.context_max_tokens,
+            tavily_api_key=tavily_api_key,
+            use_tavily=use_tavily_extract,
+        )
+        youtube_tool: BaseTool = YouTubeTranscriptTool(
+            context_max_tokens=bot_config.context_max_tokens,
+            tavily_api_key=tavily_api_key,
+            use_tavily=use_tavily_extract_for_youtube,
+        )
     else:
-        youtube_tool = get_youtube_transcript
+        web_tool = WebContentTool()
+        youtube_tool = YouTubeTranscriptTool()
 
     tools: list = [
         get_current_time,
-        get_website_content,
+        web_tool,
         author,
         youtube_tool,
         search_tool,

@@ -55,6 +55,14 @@ class BotConfig:
 
     can_use_tavily_search: bool = False
 
+    # Tavily Extract: prefer server-side fetching for web content / URL
+    # documents and YouTube transcripts, falling back to the direct path on
+    # failure. ``tavily_api_key`` comes from the env boundary
+    # (TAVILY_API_KEY) and is shared with Tavily Search.
+    can_use_tavily_extract: bool = False
+    can_use_tavily_extract_for_youtube: bool = False
+    tavily_api_key: str = ""
+
     # Stable Diffusion configuration
     sdapi_url: str = ""
     sdapi_params: dict = field(default_factory=dict)
