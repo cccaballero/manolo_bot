@@ -18,17 +18,18 @@ class UnsupportedFileError(ValueError):
 
 class DocxParser(BaseBlobParser):
     """
-    Parser for DOCX files using python-docx.
+    Parser for DOCX files using docx2txt.
     Follows the LangChain BaseBlobParser interface.
-    We use this instead of MsWordParser to avoid the heavy 'unstructured' dependency.
+    Uses the same library as the RAG Docx2txtLoader so both paths extract text identically.
+    `docx2txt.process` accepts any file-like object (it hands it to zipfile.ZipFile),
+    so no temp-file round-trip is needed despite the Blob API being bytes-based.
     """
 
     def lazy_parse(self, blob: Blob) -> Iterator[Document]:
-        import docx
+        import docx2txt
 
         with blob.as_bytes_io() as file_like:
-            doc = docx.Document(file_like)
-            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+            text = docx2txt.process(file_like)
             yield Document(page_content=text, metadata={"source": blob.source})
 
 

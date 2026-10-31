@@ -1,10 +1,13 @@
 import io
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from langchain_core.documents import Document
 
 from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError, clean_text
+
+FIXTURE_DOCX = Path(__file__).resolve().parents[1] / "fixtures" / "sample.docx"
 
 
 class TestDocumentLoader(unittest.TestCase):
@@ -73,6 +76,16 @@ class TestDocumentLoader(unittest.TestCase):
         self.assertEqual(result, "DOCX Content")
         mock_lazy_parse.assert_called_once()
 
+    def test_extract_text_from_docx_real_fixture(self):
+        # docx2txt extracts body text plus tables, headers and footers.
+        with FIXTURE_DOCX.open("rb") as file_like:
+            result = self.loader.extract_text_from_docx(file_like)
+
+        self.assertIn("Unique token: token-docx-unified.", result)
+        self.assertIn("Table cell text", result)
+        self.assertIn("Fixture header", result)
+        self.assertIn("Fixture footer", result)
+
     def test_extract_text_dispatcher_txt(self):
         # Arrange
         content = b"Dispatcher test"
@@ -104,6 +117,13 @@ class TestDocumentLoader(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, "DOCX Dispatcher Content")
+
+    def test_extract_text_dispatcher_docx_real_bytes(self):
+        # The chat flow passes downloaded bytes, not a path: exercise the real parser.
+        result = self.loader.extract_text(FIXTURE_DOCX.read_bytes(), "sample.docx")
+
+        self.assertIn("Unique token: token-docx-unified.", result)
+        self.assertIn("Table cell text", result)
 
     def test_extract_text_unsupported_extension(self):
         with self.assertRaises(UnsupportedFileError):
