@@ -238,6 +238,14 @@ Tavily Extract fetches content server-side. It allows the agent to read document
 * `USE_TAVILY_EXTRACT_FOR_YOUTUBE`: Use Tavily Extract for `get_youtube_transcript`. Content without `[mm:ss]` markers is treated as "no transcript" and falls back to the direct API. Default is `False`.
 * `TAVILY_API_KEY`: Tavily API key shared by search and extract.
 
+Apify YouTube Transcripts (optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `johnvc/YoutubeTranscripts` Apify Actor fetches YouTube captions from Apify's servers, so transcripts keep working when YouTube blocks the bot's IP. The flag is opt-in and means *prefer Apify*: if the Actor returns no transcript, fails, times out or no token is configured, the direct API runs instead and a warning is logged. With Tavily Extract also enabled for YouTube, Tavily is tried first.
+
+* `USE_APIFY_FOR_YOUTUBE`: Use Apify for `get_youtube_transcript`. Default is `False`.
+* `APIFY_API_TOKEN`: Your Apify API token.
+
 Image and Voice
 ~~~~~~~~~~~~~~~
 

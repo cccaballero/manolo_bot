@@ -10,6 +10,7 @@ from manolo_bot.ai.tools import (
     TimeResult,
     WebContentTool,
     YouTubeTranscriptTool,
+    _apify_youtube_transcript,
     _tavily_extract,
     ddgs_search,
     extract_youtube_video_id,
@@ -761,6 +762,162 @@ class TestYouTubeTranscriptToolTavily(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result), 40 + len("... [Transcript truncated due to length]"))
 
 
+class TestApifyTranscriptHelper(unittest.IsolatedAsyncioTestCase):
+    """Tests for the johnvc/YoutubeTranscripts Apify helper."""
+
+    URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    @staticmethod
+    def _session(*rows_per_call, error=None):
+        session = MagicMock()
+        responses = []
+        for rows in rows_per_call:
+            response = MagicMock()
+            response.json = AsyncMock(return_value=rows)
+            response.raise_for_status = MagicMock(side_effect=error)
+            post = MagicMock()
+            post.__aenter__.return_value = response
+            responses.append(post)
+        session.post = MagicMock(side_effect=responses)
+        session_cm = MagicMock()
+        session_cm.__aenter__.return_value = session
+        return session_cm, session
+
+    @patch("manolo_bot.ai.tools.aiohttp.ClientSession")
+    async def test_returns_timestamped_lines(self, mock_session_cls):
+        session_cm, session = self._session(
+            [
+                {
+                    "success": True,
+                    "timestamped": [
+                        {"text": "Never gonna\ngive you up", "start": 43.2, "duration": 2.1},
+                        {"text": "", "start": 45.3, "duration": 1.0},
+                        {"text": "late line", "start": 3725.0, "duration": 1.0},
+                    ],
+                }
+            ]
+        )
+        mock_session_cls.return_value = session_cm
+
+        content, reason = await _apify_youtube_transcript(self.URL, "test-token")
+
+        self.assertEqual(content, "[00:43] Never gonna give you up\n[1:02:05] late line")
+        self.assertEqual(reason, "")
+        kwargs = session.post.call_args.kwargs
+        self.assertEqual(kwargs["json"], {"youtube_url": self.URL, "include_metadata": False})
+        self.assertEqual(kwargs["headers"], {"Authorization": "Bearer test-token"})
+
+    @patch("manolo_bot.ai.tools.aiohttp.ClientSession")
+    async def test_retries_with_the_first_available_language(self, mock_session_cls):
+        no_english = {
+            "success": False,
+            "error": True,
+            "error_type": "NoTranscriptFound",
+            "available_transcripts": [{"language_code": "ru"}, {"language_code": "uk"}],
+        }
+        russian = {"success": True, "timestamped": [{"text": "privet", "start": 1.0, "duration": 1.0}]}
+        session_cm, session = self._session([no_english], [russian])
+        mock_session_cls.return_value = session_cm
+
+        content, _ = await _apify_youtube_transcript(self.URL, "test-token")
+
+        self.assertEqual(content, "[00:01] privet")
+        self.assertEqual(session.post.call_count, 2)
+        self.assertEqual(session.post.call_args.kwargs["json"]["languages"], ["ru"])
+
+    @patch("manolo_bot.ai.tools.aiohttp.ClientSession")
+    async def test_returns_none_without_captions(self, mock_session_cls):
+        row = {"success": False, "error": True, "error_message": "No captions are available for this video"}
+        session_cm, session = self._session([row])
+        mock_session_cls.return_value = session_cm
+
+        content, reason = await _apify_youtube_transcript(self.URL, "test-token")
+
+        self.assertIsNone(content)
+        self.assertIn("No captions", reason)
+        session.post.assert_called_once()
+
+    @patch("manolo_bot.ai.tools.aiohttp.ClientSession")
+    async def test_returns_none_on_http_error(self, mock_session_cls):
+        session_cm, _ = self._session([], error=RuntimeError("401, message='Unauthorized'"))
+        mock_session_cls.return_value = session_cm
+
+        content, reason = await _apify_youtube_transcript(self.URL, "test-token")
+
+        self.assertIsNone(content)
+        self.assertIn("request failed", reason)
+        self.assertNotIn("test-token", reason)
+
+
+class TestYouTubeTranscriptToolApify(unittest.IsolatedAsyncioTestCase):
+    """Apify-first behaviour of get_youtube_transcript."""
+
+    URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._apify_youtube_transcript", new_callable=AsyncMock)
+    async def test_flag_off_never_calls_apify(self, mock_apify, mock_transcript_api):
+        transcript = unittest.mock.Mock()
+        transcript.fetch.return_value = [type("obj", (object,), {"text": "direct transcript"})]
+        mock_transcript_api.return_value.list.return_value = [transcript]
+
+        tool = YouTubeTranscriptTool(use_apify=False, apify_api_token="test-token")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("direct transcript", result)
+        mock_apify.assert_not_awaited()
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._apify_youtube_transcript", new_callable=AsyncMock)
+    async def test_flag_on_uses_apify_and_skips_direct_api(self, mock_apify, mock_transcript_api):
+        mock_apify.return_value = ("[00:00] intro\n[01:05] body", "")
+
+        tool = YouTubeTranscriptTool(use_apify=True, apify_api_token="test-token")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("[01:05] body", result)
+        mock_apify.assert_awaited_once_with(self.URL, "test-token")
+        mock_transcript_api.assert_not_called()
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._apify_youtube_transcript", new_callable=AsyncMock)
+    async def test_flag_on_falls_back_when_apify_fails(self, mock_apify, mock_transcript_api):
+        mock_apify.return_value = (None, "request failed")
+        transcript = unittest.mock.Mock()
+        transcript.fetch.return_value = [type("obj", (object,), {"text": "direct transcript"})]
+        mock_transcript_api.return_value.list.return_value = [transcript]
+
+        tool = YouTubeTranscriptTool(use_apify=True, apify_api_token="test-token")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("direct transcript", result)
+        mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
+
+    @patch("manolo_bot.ai.tools._apify_youtube_transcript", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_falls_through_tavily_to_apify(self, mock_extract, mock_apify):
+        mock_extract.return_value = (None, "tavily extract request failed")
+        mock_apify.return_value = ("[00:00] from apify", "")
+
+        tool = YouTubeTranscriptTool(
+            use_tavily=True, tavily_api_key="test-key", use_apify=True, apify_api_token="test-token"
+        )
+        result = await tool._arun(self.URL)
+
+        self.assertEqual(result, "[00:00] from apify")
+        mock_extract.assert_awaited_once()
+        mock_apify.assert_awaited_once()
+
+    @patch("manolo_bot.ai.tools._apify_youtube_transcript", new_callable=AsyncMock)
+    async def test_flag_on_truncates_transcript(self, mock_apify):
+        mock_apify.return_value = ("[00:00] " + "x" * 500, "")
+
+        tool = YouTubeTranscriptTool(use_apify=True, apify_api_token="test-token", context_max_tokens=10)
+        result = await tool._arun(self.URL)
+
+        self.assertEqual(len(result), 40 + len("... [Transcript truncated due to length]"))
+
+
 class TestGetToolsTavilyWiring(unittest.TestCase):
     """get_tools wires the resolved key and both opt-in flags onto the tools."""
 
@@ -771,6 +928,8 @@ class TestGetToolsTavilyWiring(unittest.TestCase):
             "can_use_tavily_extract": False,
             "can_use_tavily_extract_for_youtube": False,
             "tavily_api_key": "",
+            "can_use_apify_for_youtube": False,
+            "apify_api_token": "",
             "context_max_tokens": 100,
             "is_document_multimodal": False,
         }
@@ -822,3 +981,22 @@ class TestGetToolsTavilyWiring(unittest.TestCase):
         get_tools(config)
 
         mock_tavily_search.assert_called_once_with(tavily_api_key="test-key", max_results=5)
+
+    def test_wires_apify_flag_and_token(self):
+        config = self._config(can_use_apify_for_youtube=True, apify_api_token="test-token")
+
+        tools = get_tools(config)
+
+        youtube_tool = next(t for t in tools if t.name == "get_youtube_transcript")
+        self.assertTrue(youtube_tool.use_apify)
+        self.assertEqual(youtube_tool.apify_api_token, "test-token")
+
+    def test_warns_when_apify_token_missing(self):
+        config = self._config(can_use_apify_for_youtube=True)
+
+        with self.assertLogs(level="WARNING") as captured:
+            tools = get_tools(config)
+
+        self.assertTrue(any("no Apify API token" in line for line in captured.output))
+        youtube_tool = next(t for t in tools if t.name == "get_youtube_transcript")
+        self.assertEqual(youtube_tool.apify_api_token, "")

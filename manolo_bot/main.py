@@ -213,6 +213,8 @@ bot_config = BotConfig(
     can_use_tavily_extract_for_youtube=config.use_tavily_extract_for_youtube,
     # Single resolved key for every Tavily feature (search + extract).
     tavily_api_key=config.tavily_api_key,
+    can_use_apify_for_youtube=config.use_apify_for_youtube,
+    apify_api_token=config.apify_api_token,
     sdapi_url=config.sdapi_url,
     sdapi_params=config.sdapi_params,
     sdapi_negative_prompt=config.sdapi_negative_prompt,

@@ -63,6 +63,12 @@ class BotConfig:
     can_use_tavily_extract_for_youtube: bool = False
     tavily_api_key: str = ""
 
+    # Apify (johnvc/YoutubeTranscripts): prefer fetching YouTube transcripts
+    # through Apify, falling back to the direct path on failure.
+    # ``apify_api_token`` comes from the env boundary (APIFY_API_TOKEN).
+    can_use_apify_for_youtube: bool = False
+    apify_api_token: str = ""
+
     # Stable Diffusion configuration
     sdapi_url: str = ""
     sdapi_params: dict = field(default_factory=dict)

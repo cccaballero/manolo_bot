@@ -397,6 +397,19 @@ path.
 When using the library, set `tavily_api_key` together with `can_use_tavily_extract` /
 `can_use_tavily_extract_for_youtube` on `BotConfig`; the tools no longer read `TAVILY_*` environment variables directly.
 
+#### Apify YouTube transcripts (optional)
+
+The `johnvc/YoutubeTranscripts` Apify Actor fetches YouTube captions from Apify's servers, so `get_youtube_transcript`
+keeps working when YouTube blocks the bot's IP. The flag means **prefer Apify**: if the Actor returns no transcript,
+fails, times out or no token is configured, `YouTubeTranscriptApi` runs instead and a warning is logged. When Tavily
+Extract is also enabled for YouTube, Tavily is tried first.
+
+`USE_APIFY_FOR_YOUTUBE`: Use Apify for `get_youtube_transcript`. Default is False.
+
+`APIFY_API_TOKEN`: Your Apify API token. A flag with no token logs a warning and uses the direct path.
+
+When using the library, set `apify_api_token` together with `can_use_apify_for_youtube` on `BotConfig`.
+
 #### Storage Configuration
 
 `STORAGE_TYPE`: Sets the storage type for conversation context (memory, redis). Default is memory.
