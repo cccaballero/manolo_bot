@@ -30,7 +30,6 @@ source_suffix = {
 autodoc_mock_imports = [
     "redis",
     "pypdf",
-    "docx",
     "aiohttp",
     "google",
     "langchain",

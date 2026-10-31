@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
@@ -246,23 +245,18 @@ class TestFindRemoved(unittest.IsolatedAsyncioTestCase, LifecycleCase):
 
 
 class TestDocxIngest(unittest.IsolatedAsyncioTestCase, LifecycleCase):
-    @unittest.skipUnless(importlib.util.find_spec("docx") is not None, "python-docx not installed")
     async def test_real_docx_file_indexes(self) -> None:
         # Regression: .docx needs the docx2txt dependency via Docx2txtLoader.
+        # Uses the shared binary fixture so no python-docx dependency is needed.
+        path = Path(__file__).resolve().parents[1] / "fixtures" / "sample.docx"
         with tempfile.TemporaryDirectory() as tmp:
-            from docx import Document
-
-            path = Path(tmp) / "proposal.docx"
-            document = Document()
-            document.add_paragraph("JATS XML proposal. Unique token: token-docx.")
-            document.save(str(path))
             embeddings, _ = _counting_embeddings()
             backend = _make_backend("in_memory", tmp, embeddings)
             await backend.build_or_load()
             count = await backend.ingest([RAGSource(path=str(path))])
             self.assertGreater(count, 0)
-            texts = _texts(await backend.query("JATS", top_k=10))
-            self.assertIn("token-docx", texts)
+            texts = _texts(await backend.query("token-docx-unified", top_k=10))
+            self.assertIn("token-docx-unified", texts)
 
 
 if __name__ == "__main__":
