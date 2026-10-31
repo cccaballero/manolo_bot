@@ -376,7 +376,26 @@ search capabilities.
 
 `USE_TAVILY_SEARCH`: Enable Tavily Search (True, False). Default is False.
 
-`TAVILY_SEARCH_KEY`: Your Tavily API key. Required if `USE_TAVILY_SEARCH` is set to True.
+`TAVILY_API_KEY`: Your Tavily API key. Required if `USE_TAVILY_SEARCH` or either Tavily Extract flag is set to True.
+
+#### Tavily Extract (optional)
+
+Tavily Extract fetches and extracts content server-side. It lets the agent read documents behind a URL (PDFs, etc.)
+that the HTML-only loader cannot handle, and it keeps web/YouTube fetching working when the bot's own IP is blocked
+(datacenter/VPS IPs). The flags mean **prefer Tavily**: on a failed extraction, HTTP error, timeout or missing key the
+existing direct path runs instead, and a warning is logged.
+
+`USE_TAVILY_EXTRACT`: Use Tavily Extract for `get_website_content` (HTML pages and URL documents). Default is False.
+
+`USE_TAVILY_EXTRACT_FOR_YOUTUBE`: Use Tavily Extract for `get_youtube_transcript`. Extracted content without
+`[mm:ss]` markers is treated as "no transcript" and falls back to `YouTubeTranscriptApi`, so a caption-less video's
+description is never returned as a transcript. Default is False.
+
+`TAVILY_API_KEY`: Tavily API key shared by search and extract. A flag with no key logs a warning and uses the direct
+path.
+
+When using the library, set `tavily_api_key` together with `can_use_tavily_extract` /
+`can_use_tavily_extract_for_youtube` on `BotConfig`; the tools no longer read `TAVILY_*` environment variables directly.
 
 #### Storage Configuration
 

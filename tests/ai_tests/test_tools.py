@@ -1,19 +1,22 @@
 import unittest
 import unittest.mock
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from manolo_bot.ai.tools import (
     ReadDocumentTool,
     TimeResult,
+    WebContentTool,
+    YouTubeTranscriptTool,
+    _tavily_extract,
     ddgs_search,
     extract_youtube_video_id,
     get_current_time,
     get_search_instructions,
     get_tool,
-    get_website_content,
-    get_youtube_transcript,
+    get_tools,
     multiply,
 )
 
@@ -75,7 +78,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_loader_class.return_value = mock_loader
 
         # Act
-        result = await get_website_content.ainvoke({"url": "https://example.com"})
+        result = await WebContentTool().ainvoke({"url": "https://example.com"})
 
         # Assert
         mock_loader_class.assert_called_once_with(web_path="https://example.com")
@@ -99,7 +102,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_loader_class.return_value = mock_loader
 
         # Act
-        result = await get_website_content.ainvoke({"url": "https://example.com"})
+        result = await WebContentTool().ainvoke({"url": "https://example.com"})
 
         # Assert
         mock_logging.error.assert_called_with("Error connecting to web content for https://example.com")
@@ -118,7 +121,7 @@ class TestLlmBot(unittest.IsolatedAsyncioTestCase):
         mock_loader_class.return_value = mock_loader
 
         # Act
-        result = await get_website_content.ainvoke({"url": "https://example.com"})
+        result = await WebContentTool().ainvoke({"url": "https://example.com"})
 
         # Assert
         mock_logging.error.assert_called_with("Error connecting to web content for https://example.com")
@@ -467,7 +470,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         expected_result = "This is the first part of the transcript. This is the second part of the transcript. "
 
         # Act
-        result = await get_youtube_transcript.ainvoke({"url": url})
+        result = await YouTubeTranscriptTool().ainvoke({"url": url})
 
         # Assert
         mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
@@ -481,7 +484,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_transcript_api.return_value.list.return_value = []
 
         # Act
-        result = await get_youtube_transcript.ainvoke({"url": url})
+        result = await YouTubeTranscriptTool().ainvoke({"url": url})
 
         # Assert
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
@@ -496,7 +499,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_transcript_api.return_value.list.return_value = []
 
         # Act
-        result = await get_youtube_transcript.ainvoke({"url": url})
+        result = await YouTubeTranscriptTool().ainvoke({"url": url})
 
         # Assert
         mock_logging.error.assert_called_with(f"No transcript found for YouTube video: {url}")
@@ -509,7 +512,7 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         mock_extract_id.return_value = None
 
         # Act
-        result = await get_youtube_transcript.ainvoke({"url": url})
+        result = await YouTubeTranscriptTool().ainvoke({"url": url})
 
         # Assert
         self.assertIn("Could not extract a valid YouTube video ID", result)
@@ -535,3 +538,287 @@ class TestYouTubeTranscriptTool(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.assertLess(len(result), len(long_text))
         self.assertIn("[Transcript truncated due to length]", result)
+
+
+class TestTavilyExtractHelper(unittest.IsolatedAsyncioTestCase):
+    """Tests for the shared Tavily Extract helper."""
+
+    @patch("manolo_bot.ai.tools.TavilyExtract")
+    async def test_returns_content_from_first_result(self, mock_extract_cls):
+        mock_extract_cls.return_value.ainvoke = AsyncMock(
+            return_value={
+                "results": [{"url": "https://example.com/doc.pdf", "raw_content": "  extracted text  "}],
+                "failed_results": [],
+            }
+        )
+
+        content, reason = await _tavily_extract("https://example.com/doc.pdf", "test-key")
+
+        self.assertEqual(content, "extracted text")
+        self.assertEqual(reason, "")
+        mock_extract_cls.assert_called_once_with(tavily_api_key="test-key", format="text", extract_depth="basic")
+        mock_extract_cls.return_value.ainvoke.assert_awaited_once_with({"urls": ["https://example.com/doc.pdf"]})
+
+    @patch("manolo_bot.ai.tools.TavilyExtract")
+    async def test_returns_none_when_url_fails(self, mock_extract_cls):
+        mock_extract_cls.return_value.ainvoke = AsyncMock(
+            return_value={
+                "results": [],
+                "failed_results": [{"url": "https://example.com/gone", "error": "Failed to fetch url"}],
+            }
+        )
+
+        content, reason = await _tavily_extract("https://example.com/gone", "test-key")
+
+        self.assertIsNone(content)
+        self.assertIn("no results", reason)
+        self.assertNotIn("test-key", reason)
+
+    @patch("manolo_bot.ai.tools.TavilyExtract")
+    async def test_returns_none_on_error_payload(self, mock_extract_cls):
+        mock_extract_cls.return_value.ainvoke = AsyncMock(return_value={"error": TimeoutError("slow")})
+
+        content, reason = await _tavily_extract("https://example.com", "test-key")
+
+        self.assertIsNone(content)
+        self.assertIn("returned an error", reason)
+
+    @patch("manolo_bot.ai.tools.TavilyExtract")
+    async def test_returns_none_when_request_raises(self, mock_extract_cls):
+        mock_extract_cls.return_value.ainvoke = AsyncMock(side_effect=TimeoutError("timed out"))
+
+        content, reason = await _tavily_extract("https://example.com", "test-key")
+
+        self.assertIsNone(content)
+        self.assertIn("request failed", reason)
+        self.assertIn("TimeoutError", reason)
+
+
+class TestWebContentToolTavily(unittest.IsolatedAsyncioTestCase):
+    """Tavily-first behaviour of get_website_content."""
+
+    @staticmethod
+    def _async_iterator(items):
+        async def iterator():
+            for item in items:
+                yield item
+
+        return iterator()
+
+    def _direct_loader(self, content="Direct content"):
+        loader = MagicMock()
+        doc = MagicMock()
+        doc.page_content = content
+        loader.alazy_load.return_value = self._async_iterator([doc])
+        return loader
+
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_off_never_calls_tavily(self, mock_extract, mock_loader_class):
+        mock_loader_class.return_value = self._direct_loader()
+
+        tool = WebContentTool(use_tavily=False, tavily_api_key="test-key")
+        result = await tool._arun("https://example.com")
+
+        self.assertIn("Direct content", result)
+        mock_extract.assert_not_awaited()
+
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_uses_tavily_and_skips_loader(self, mock_extract, mock_loader_class):
+        mock_extract.return_value = ("Tavily content", "")
+
+        tool = WebContentTool(use_tavily=True, tavily_api_key="test-key")
+        result = await tool._arun("https://example.com/document.pdf")
+
+        self.assertEqual(result, "Tavily content")
+        mock_extract.assert_awaited_once_with("https://example.com/document.pdf", "test-key")
+        mock_loader_class.assert_not_called()
+
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_truncates_returned_content(self, mock_extract):
+        body = "x" * 500
+        mock_extract.return_value = (body, "")
+
+        tool = WebContentTool(use_tavily=True, tavily_api_key="test-key", context_max_tokens=10)
+        result = await tool._arun("https://example.com")
+
+        notice = "... [Content truncated due to length]"
+        self.assertEqual(len(result), 40 + len(notice))
+        self.assertTrue(result.startswith("x" * 40))
+        self.assertIn(notice, result)
+
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    async def test_direct_path_is_truncated_too(self, mock_loader_class):
+        mock_loader_class.return_value = self._direct_loader("y" * 500)
+
+        tool = WebContentTool(use_tavily=False, context_max_tokens=10)
+        result = await tool._arun("https://example.com")
+
+        notice = "... [Content truncated due to length]"
+        self.assertEqual(len(result), 40 + len(notice))
+        self.assertIn(notice, result)
+
+    def test_description_mentions_documents_only_when_tavily_can_serve_them(self):
+        tavily_tool = WebContentTool(use_tavily=True, tavily_api_key="test-key")
+        no_key_tool = WebContentTool(use_tavily=True, tavily_api_key="")
+        flag_off_tool = WebContentTool(use_tavily=False, tavily_api_key="test-key")
+
+        self.assertIn("PDFs", tavily_tool.description)
+        self.assertNotIn("PDFs", no_key_tool.description)
+        self.assertNotIn("PDFs", flag_off_tool.description)
+
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_falls_back_to_direct_path_on_failure(self, mock_extract, mock_loader_class):
+        mock_extract.return_value = (None, "tavily extract returned no results")
+        mock_loader_class.return_value = self._direct_loader("Fallback content")
+
+        tool = WebContentTool(use_tavily=True, tavily_api_key="test-key")
+        result = await tool.ainvoke({"url": "https://example.com"})
+
+        self.assertIn("Fallback content", result)
+        mock_extract.assert_awaited_once()
+        mock_loader_class.assert_called_once_with(web_path="https://example.com")
+
+    @patch("manolo_bot.ai.tools.WebBaseLoader")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_without_key_uses_direct_path(self, mock_extract, mock_loader_class):
+        mock_loader_class.return_value = self._direct_loader()
+
+        tool = WebContentTool(use_tavily=True, tavily_api_key="")
+        result = await tool._arun("https://example.com")
+
+        self.assertIn("Direct content", result)
+        mock_extract.assert_not_awaited()
+
+
+class TestYouTubeTranscriptToolTavily(unittest.IsolatedAsyncioTestCase):
+    """Tavily-first behaviour of get_youtube_transcript."""
+
+    URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_off_never_calls_tavily(self, mock_extract, mock_transcript_api):
+        transcript = unittest.mock.Mock()
+        transcript.fetch.return_value = [type("obj", (object,), {"text": "direct transcript"})]
+        mock_transcript_api.return_value.list.return_value = [transcript]
+
+        tool = YouTubeTranscriptTool(use_tavily=False, tavily_api_key="test-key")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("direct transcript", result)
+        mock_extract.assert_not_awaited()
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_uses_timestamped_extract(self, mock_extract, mock_transcript_api):
+        mock_extract.return_value = ("Title\n[00:00] intro\n[01:05] body", "")
+
+        tool = YouTubeTranscriptTool(use_tavily=True, tavily_api_key="test-key")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("[01:05] body", result)
+        mock_extract.assert_awaited_once_with(self.URL, "test-key")
+        mock_transcript_api.assert_not_called()
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_extract_without_timestamps_is_not_a_transcript(self, mock_extract, mock_transcript_api):
+        mock_extract.return_value = ("Title\nDescription only, the video has no captions", "")
+        mock_transcript_api.return_value.list.return_value = []
+
+        tool = YouTubeTranscriptTool(use_tavily=True, tavily_api_key="test-key")
+        result = await tool._arun(self.URL)
+
+        self.assertNotIn("Description only", result)
+        self.assertIn("No transcript is available", result)
+        mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
+
+    @patch("manolo_bot.ai.tools.YouTubeTranscriptApi")
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_falls_back_when_tavily_fails(self, mock_extract, mock_transcript_api):
+        mock_extract.return_value = (None, "tavily extract request failed")
+        transcript = unittest.mock.Mock()
+        transcript.fetch.return_value = [type("obj", (object,), {"text": "direct transcript"})]
+        mock_transcript_api.return_value.list.return_value = [transcript]
+
+        tool = YouTubeTranscriptTool(use_tavily=True, tavily_api_key="test-key")
+        result = await tool._arun(self.URL)
+
+        self.assertIn("direct transcript", result)
+        mock_transcript_api.return_value.list.assert_called_once_with("dQw4w9WgXcQ")
+
+    @patch("manolo_bot.ai.tools._tavily_extract", new_callable=AsyncMock)
+    async def test_flag_on_truncates_extract(self, mock_extract):
+        mock_extract.return_value = ("[00:00] " + "x" * 500, "")
+
+        tool = YouTubeTranscriptTool(use_tavily=True, tavily_api_key="test-key", context_max_tokens=10)
+        result = await tool._arun(self.URL)
+
+        self.assertIn("[Transcript truncated due to length]", result)
+        self.assertEqual(len(result), 40 + len("... [Transcript truncated due to length]"))
+
+
+class TestGetToolsTavilyWiring(unittest.TestCase):
+    """get_tools wires the resolved key and both opt-in flags onto the tools."""
+
+    @staticmethod
+    def _config(**overrides):
+        values = {
+            "can_use_tavily_search": False,
+            "can_use_tavily_extract": False,
+            "can_use_tavily_extract_for_youtube": False,
+            "tavily_api_key": "",
+            "context_max_tokens": 100,
+            "is_document_multimodal": False,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_wires_flags_and_shared_key(self):
+        config = self._config(
+            can_use_tavily_extract=True,
+            can_use_tavily_extract_for_youtube=True,
+            tavily_api_key="test-key",
+        )
+
+        tools = get_tools(config)
+
+        web_tool = next(t for t in tools if t.name == "get_website_content")
+        youtube_tool = next(t for t in tools if t.name == "get_youtube_transcript")
+        self.assertIsInstance(web_tool, WebContentTool)
+        self.assertIsInstance(youtube_tool, YouTubeTranscriptTool)
+        self.assertTrue(web_tool.use_tavily)
+        self.assertTrue(youtube_tool.use_tavily)
+        self.assertEqual(web_tool.tavily_api_key, "test-key")
+        self.assertEqual(youtube_tool.tavily_api_key, "test-key")
+
+    def test_warns_and_keeps_direct_tools_when_key_missing(self):
+        config = self._config(can_use_tavily_extract=True, can_use_tavily_extract_for_youtube=True)
+
+        with self.assertLogs(level="WARNING") as captured:
+            tools = get_tools(config)
+
+        self.assertTrue(any("Tavily Extract is enabled but no Tavily API key" in line for line in captured.output))
+        web_tool = next(t for t in tools if t.name == "get_website_content")
+        self.assertEqual(web_tool.tavily_api_key, "")
+
+    def test_unconfigured_get_tools_returns_direct_tools(self):
+        tools = get_tools()
+
+        web_tool = next(t for t in tools if t.name == "get_website_content")
+        youtube_tool = next(t for t in tools if t.name == "get_youtube_transcript")
+        self.assertIsInstance(web_tool, WebContentTool)
+        self.assertFalse(web_tool.use_tavily)
+        self.assertIsInstance(youtube_tool, YouTubeTranscriptTool)
+        self.assertFalse(youtube_tool.use_tavily)
+
+    @patch("manolo_bot.ai.tools.TavilySearch")
+    def test_tavily_search_uses_resolved_bot_config_key(self, mock_tavily_search):
+        config = self._config(can_use_tavily_search=True, tavily_api_key="test-key")
+
+        get_tools(config)
+
+        mock_tavily_search.assert_called_once_with(tavily_api_key="test-key", max_results=5)

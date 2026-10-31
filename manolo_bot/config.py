@@ -159,6 +159,13 @@ class Config(EnvModel):
     )
 
     use_tavily_search = BooleanField("USE_TAVILY_SEARCH", default=False)
+    # Tavily Extract: optional server-side fetching for web/URL-document content
+    # and YouTube transcripts. Both flags are independent and fall back to the
+    # direct implementations on failure or when no key is configured.
+    use_tavily_extract = BooleanField("USE_TAVILY_EXTRACT", default=False)
+    use_tavily_extract_for_youtube = BooleanField("USE_TAVILY_EXTRACT_FOR_YOUTUBE", default=False)
+    # One key for both Tavily features (search + extract).
+    tavily_api_key = StringField("TAVILY_API_KEY", default="")
 
     storage_type = StringField("STORAGE_TYPE", default="memory", allowed_values=["memory", "redis"])
     redis_url = StringField("REDIS_URL", default="redis://localhost:6379/0")

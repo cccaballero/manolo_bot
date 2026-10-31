@@ -227,7 +227,16 @@ Search Configuration
 The bot can search the web to answer your questions. By default, it uses DuckDuckGo (no API key required). For better results, you can enable **Tavily Search**:
 
 * `USE_TAVILY_SEARCH`: Set to `True` to use Tavily instead of DuckDuckGo.
-* `TAVILY_SEARCH_KEY`: Your Tavily API key (get one at `tavily.com <https://tavily.com/>`_).
+* `TAVILY_API_KEY`: Your Tavily API key (get one at `tavily.com <https://tavily.com/>`_), shared by search and extract.
+
+Tavily Extract (optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tavily Extract fetches content server-side. It allows the agent to read documents behind a URL (for example PDFs), which the HTML-only loader cannot handle, and keeps web and YouTube fetching working when the bot's IP is blocked. Both flags are opt-in and mean *prefer Tavily*: if extraction fails, times out or no API key is configured, the existing direct path runs instead and a warning is logged.
+
+* `USE_TAVILY_EXTRACT`: Use Tavily Extract for `get_website_content` (HTML pages and URL documents). Default is `False`.
+* `USE_TAVILY_EXTRACT_FOR_YOUTUBE`: Use Tavily Extract for `get_youtube_transcript`. Content without `[mm:ss]` markers is treated as "no transcript" and falls back to the direct API. Default is `False`.
+* `TAVILY_API_KEY`: Tavily API key shared by search and extract.
 
 Image and Voice
 ~~~~~~~~~~~~~~~
