@@ -59,6 +59,7 @@ class LLMBuilder:
     def _get_chat_google_generativeai(self) -> ChatGoogleGenerativeAI:
         return ChatGoogleGenerativeAI(
             model=self.llm_config.google_api_model,
+            api_key=self.llm_config.google_api_key,
             safety_settings={
                 HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
