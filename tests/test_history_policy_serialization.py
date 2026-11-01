@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from manolo_bot.storage.messages.base import (
     convert_json_to_message,
+    describe_messages,
     expand_tool_block,
     find_safe_drop_index,
 )
@@ -85,6 +86,29 @@ class TestToolBlockAtomicity(unittest.TestCase):
         self.assertEqual(find_safe_drop_index(messages, 99), 99)
         self.assertEqual(find_safe_drop_index([], 0), 0)
         self.assertEqual(expand_tool_block([], 0), (0, 0))
+
+
+class TestDescribeMessages(unittest.TestCase):
+    def test_describes_types_sizes_and_tool_metadata(self):
+        messages = [
+            HumanMessage(content="hi"),
+            _ai_tool_call(),
+            ToolMessage(content="result", tool_call_id="call_123", name="search"),
+            ToolMessage(content="boom", tool_call_id="call_123", name="search", status="error"),
+        ]
+
+        self.assertEqual(
+            describe_messages(messages),
+            [
+                "human:2",
+                "ai:0 calls=search#call_123",
+                "tool:6 id=call_123 name=search",
+                "tool:4 id=call_123 name=search error",
+            ],
+        )
+
+    def test_empty_list(self):
+        self.assertEqual(describe_messages([]), [])
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
 from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
 from manolo_bot.scheduler.base import SCHEDULED_TRIGGER_PREFIX
 from manolo_bot.storage.documents.base import BaseDocumentStorage
-from manolo_bot.storage.messages.base import BaseMessagesStorage
+from manolo_bot.storage.messages.base import BaseMessagesStorage, describe_messages
 
 if TYPE_CHECKING:
     from manolo_bot.ai.history_policy import BaseHistoryPolicy
@@ -105,6 +105,15 @@ class LLMAgent(LLMBot):
         """
         tail = full[sent_len:]
         selected = self.history_policy.select(tail)
+        logging.debug(
+            "history chat=%s policy=%s tail=%dmsgs/%dchars selected=%d [%s]",
+            self.messages_storage.chat_id,
+            type(self.history_policy).__name__,
+            len(tail),
+            sum(len(str(message.content or "")) for message in tail),
+            len(selected),
+            ", ".join(describe_messages(selected)),
+        )
         if not selected:
             return full[-1]
         for m in selected[:-1]:

@@ -8,8 +8,9 @@ flattening, and pair atomicity via ``expand_tool_block``.
 
 import os
 import unittest
+from unittest.mock import MagicMock
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.history_policy import (
@@ -18,8 +19,10 @@ from manolo_bot.ai.history_policy import (
     FinalOnlyPolicy,
     FullTracePolicy,
 )
+from manolo_bot.ai.llmagent import LLMAgent
 from manolo_bot.config import Config
 from manolo_bot.storage.messages.base import expand_tool_block
+from manolo_bot.storage.messages.memory_storage import MemoryMessagesStorage
 
 
 def _ai_tool_calls(*calls):
@@ -232,6 +235,42 @@ class TestCompactTracePolicy(unittest.TestCase):
             CompactTracePolicy(max_tail_chars=-1)
         with self.assertRaises(ValueError):
             CompactTracePolicy(per_tool_chars=3)
+
+
+class TestHistoryDecisionLogging(unittest.TestCase):
+    def test_stage_agent_trace_logs_policy_sizes_and_no_content(self):
+        storage = MemoryMessagesStorage(bot_uuid="test-bot", chat_id=424242)
+        llm = MagicMock()
+        llm.bind_tools.return_value = llm
+        bot_config = BotConfig(
+            bot_uuid="test-bot",
+            bot_name="TestBot",
+            bot_username="test_bot",
+            bot_token="123456:ABC",
+            user_id=0,
+        )
+        agent = LLMAgent(
+            llm,
+            bot_config,
+            [SystemMessage(content="sys")],
+            storage,
+            history_policy=CompactTracePolicy(max_tail_chars=1),
+        )
+        tail = [
+            _ai_tool_calls(("call_1", "search", {"q": "secret"})),
+            _tool_result("call_1", "sunny secret result"),
+            AIMessage(content="done"),
+        ]
+
+        with self.assertLogs(level="DEBUG") as captured:
+            final = agent._stage_agent_trace(tail, 0)
+
+        line = next(output for output in captured.output if "history chat=" in output)
+        self.assertIn("policy=CompactTracePolicy", line)
+        self.assertIn("tail=3msgs/", line)
+        self.assertIn("selected=2", line)
+        self.assertNotIn("sunny", line)
+        self.assertEqual(final.content, "done")
 
 
 class TestCompactTraceAdapterConfig(unittest.TestCase):

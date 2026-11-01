@@ -401,13 +401,18 @@ class LLMBot:
         the context under budget. Drop-oldest is only used as a last resort:
         when summarization is disabled, fails, or is exhausted.
         """
-        if self.count_tokens(self.messages_storage.messages) <= self._effective_token_limit:
+        token_limit = self._effective_token_limit
+        tokens_before = self.count_tokens(self.messages_storage.messages)
+        if tokens_before <= token_limit:
             return
 
         if not self.bot_config.context_summarization:
             self._drop_oldest_messages()
             return
 
+        # Updated when summarization succeeds; the fallback check below reuses
+        # it instead of recounting (a failed/no-op fold stays over budget).
+        tokens_after = tokens_before
         try:
             messages = self.messages_storage.messages
             summary = self.messages_storage.get_summary()
@@ -416,9 +421,7 @@ class LLMBot:
             # with a worst-case (capped) summary, so one summarization call
             # suffices instead of looping with repeated LLM invocations.
             while (
-                keep_n > 2
-                and self.count_tokens(messages[-keep_n:]) + self.bot_config.summary_max_tokens
-                > self._effective_token_limit
+                keep_n > 2 and self.count_tokens(messages[-keep_n:]) + self.bot_config.summary_max_tokens > token_limit
             ):
                 keep_n -= 1
             # The summary (if any) lives at the front; never fold it into itself.
@@ -456,7 +459,18 @@ class LLMBot:
                     for i in range(fold_end - 1, fold_start - 1, -1):
                         self.messages_storage.delete_message(i)
                     self.messages_storage.set_summary(text)
-                    logging.debug(f"Chat context summarized for chat {self.messages_storage.chat_id}")
+                    tokens_after = self.count_tokens(self.messages_storage.messages)
+                    logging.debug(
+                        "Chat context summarized for chat %s (tokens=%d->%d/%d, folded=%d msgs [%d:%d], keep_n=%d)",
+                        self.messages_storage.chat_id,
+                        tokens_before,
+                        tokens_after,
+                        token_limit,
+                        fold_end - fold_start,
+                        fold_start,
+                        fold_end,
+                        keep_n,
+                    )
         except Exception as e:
             logging.warning(
                 f"Context summarization failed for chat {self.messages_storage.chat_id}, "
@@ -469,10 +483,11 @@ class LLMBot:
         # summarization is disabled, failed, or was not enough (only the
         # summary and the kept recent messages are left and they still exceed
         # the limit). Never makes LLM calls.
-        if self.count_tokens(self.messages_storage.messages) > self._effective_token_limit:
+        if tokens_after > token_limit:
             logging.warning(
                 f"Context still over the token limit for chat "
-                f"{self.messages_storage.chat_id} after summarization; "
+                f"{self.messages_storage.chat_id} after summarization "
+                f"(tokens={tokens_after}/{token_limit}); "
                 f"dropping oldest messages as a last resort"
             )
             self._drop_oldest_messages()
@@ -486,7 +501,10 @@ class LLMBot:
         block is widened to the whole span (deleted highest-index-first) so a
         tool call is never orphaned from its results (provider 400s).
         """
-        while self.count_tokens(self.messages_storage.messages) > self._effective_token_limit:
+        token_limit = self._effective_token_limit
+        tokens_before = self.count_tokens(self.messages_storage.messages)
+        dropped = 0
+        while self.count_tokens(self.messages_storage.messages) > token_limit:
             messages = self.messages_storage.messages
             candidate = 1 if self.messages_storage.get_summary() is not None else 0
             if candidate >= len(messages):
@@ -504,7 +522,16 @@ class LLMBot:
             end = min(end, len(messages) - 1)
             for i in range(end, start - 1, -1):
                 self.messages_storage.delete_message(i)
-            logging.debug(f"Chat context truncated for chat {self.messages_storage.chat_id}")
+            dropped += end - start + 1
+        if dropped:
+            logging.debug(
+                "Chat context truncated for chat %s (dropped=%d msgs, tokens=%d->%d/%d)",
+                self.messages_storage.chat_id,
+                dropped,
+                tokens_before,
+                self.count_tokens(self.messages_storage.messages),
+                token_limit,
+            )
 
     def _build_summary_prompt(self, messages: list[BaseMessage], summary: str | None) -> str:
         """

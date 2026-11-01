@@ -129,6 +129,32 @@ def find_safe_drop_index(messages: list[BaseMessage], candidate: int) -> int:
     return start
 
 
+def describe_messages(messages: list[BaseMessage]) -> list[str]:
+    """Render one-line, content-free descriptors for history debugging.
+
+    Sizes use the same ``len(str(content))`` proxy as the history policies, so
+    they can be compared against ``AGENT_HISTORY_MAX_CHARS``. Tool metadata is
+    included to make AI->Tool pairing visible; message contents are not.
+    """
+    described: list[str] = []
+    for message in messages:
+        parts = [f"{message.type}:{len(str(message.content or ''))}"]
+        tool_calls = getattr(message, "tool_calls", None) or []
+        if tool_calls:
+            rendered = ",".join(f"{call.get('name')}#{call.get('id')}" for call in tool_calls)
+            parts.append(f"calls={rendered}")
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if tool_call_id:
+            parts.append(f"id={tool_call_id}")
+        name = getattr(message, "name", None)
+        if name:
+            parts.append(f"name={name}")
+        if getattr(message, "status", None) == "error":
+            parts.append("error")
+        described.append(" ".join(parts))
+    return described
+
+
 @dataclass
 class StorageMessage:
     message: BaseMessage
