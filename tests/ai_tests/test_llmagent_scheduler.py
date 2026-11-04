@@ -205,6 +205,34 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([type(m) for m in sent], [HumanMessage, AIMessage, HumanMessage])
         self.assertEqual(sent[-1].content, "Carlos: hello")
 
+    async def test_answer_scheduled_action_strips_echoed_trigger(self):
+        # Arrange: the model copied the internal marker into its answer.
+        agent = _make_agent()
+        agent.answer_message = AsyncMock(
+            return_value=AIMessage(content=f"{SCHEDULED_TRIGGER_PREFIX}id=abc123\n\nHere is the answer")
+        )
+
+        # Act
+        response = await agent.answer_scheduled_action(42, "Check the match", action_id="abc123")
+
+        # Assert
+        self.assertEqual(response.content, "Here is the answer")
+
+    async def test_answer_scheduled_action_strips_echoed_trigger_from_list_content(self):
+        # Arrange: Gemini-style list content.
+        agent = _make_agent()
+        agent.answer_message = AsyncMock(
+            return_value=AIMessage(
+                content=[{"type": "text", "text": f"{SCHEDULED_TRIGGER_PREFIX}id=abc123\n\nHere is the answer"}]
+            )
+        )
+
+        # Act
+        response = await agent.answer_scheduled_action(42, "Check the match", action_id="abc123")
+
+        # Assert
+        self.assertEqual(response.content[0]["text"], "Here is the answer")
+
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_initialize_async_resources_includes_scheduler_tools(self, mock_create_agent, mock_get_all_tools):
@@ -395,6 +423,7 @@ class TestSchedulerPrompting(unittest.TestCase):
         self.assertIn("NO_ANSWER", text)
         self.assertIn("live only when it is the last message", text)
         self.assertIn("do not execute it again", text)
+        self.assertIn("Never repeat the trigger marker", text)
         self.assertIn("survive `/flushcontext`", text)
         self.assertIn("Never claim", text)
         self.assertIn("one execution", text)

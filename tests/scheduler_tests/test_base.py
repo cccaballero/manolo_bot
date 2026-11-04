@@ -24,6 +24,7 @@ from manolo_bot.scheduler.base import (
     is_open,
     new_action_id,
     normalize_scope,
+    strip_trigger_marker,
 )
 
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
@@ -79,6 +80,26 @@ class TestScheduledAction(unittest.TestCase):
         self.assertEqual(len(set(BASE_SCHEDULER_TOOL_NAMES)), 3)
         self.assertTrue(SCHEDULED_TRIGGER_PREFIX.startswith("["))
         self.assertGreater(MAX_PROMPT_CHARS, 0)
+
+
+class TestStripTriggerMarker(unittest.TestCase):
+    def test_strips_marker_and_id_prefix(self) -> None:
+        text = f"{SCHEDULED_TRIGGER_PREFIX}id=abc123\n\nHere is the answer"
+        self.assertEqual(strip_trigger_marker(text), "Here is the answer")
+
+    def test_strips_marker_with_bare_id(self) -> None:
+        text = f"{SCHEDULED_TRIGGER_PREFIX}f61e726db6ed4fd28f9db92c0b4d5732\n\nHere is the answer"
+        self.assertEqual(strip_trigger_marker(text), "Here is the answer")
+
+    def test_is_case_insensitive(self) -> None:
+        self.assertEqual(strip_trigger_marker("[scheduled action triggered] id=abc123\n\nDone"), "Done")
+
+    def test_leaves_normal_text_unchanged(self) -> None:
+        self.assertEqual(strip_trigger_marker("Here is the answer"), "Here is the answer")
+
+    def test_only_strips_a_leading_marker(self) -> None:
+        text = f"Answer first.\n{SCHEDULED_TRIGGER_PREFIX}abc123"
+        self.assertEqual(strip_trigger_marker(text), text)
 
 
 class TestScheduledActionScope(unittest.TestCase):
