@@ -799,12 +799,13 @@ class LLMBot:
     ) -> dict | None:
         """
         Postprocess the response from the LLM.
+
         :param response: Response from the LLM
         :param message_text: Text of the user message
         :param chat_id: Chat or storage key
-        :param silent_on_no_answer: When True, a NO_ANSWER response returns None (no delivery) but is still
-            persisted as the assistant's closing message, so the turn is not left dangling
-        return: Final response data
+        :param silent_on_no_answer: When True, a NO_ANSWER response returns None (no delivery) but is
+            still persisted as the assistant's closing message, so the turn is not left dangling.
+        :return: Final response data
         """
 
         # response.content is sometimes a list instead of a string, TODO: find why this happens and fix it
