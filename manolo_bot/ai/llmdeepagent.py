@@ -270,7 +270,7 @@ class LLMDeepAgent(LLMAgent):
         tools = self._resolve_rag_tools(tools)
         tools = self._resolve_scheduler_tools(tools)
 
-        instructions_text = self._system_instructions[0].content if self._system_instructions else ""
+        instructions_text = self.system_instructions[0].content if self._system_instructions else ""
 
         middleware: list[Any] = [
             FilesystemMiddleware(backend=self._backend),
