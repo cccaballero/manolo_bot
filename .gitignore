@@ -222,3 +222,5 @@ __marimo__/
 # Project exclude paths
 .junie/
 .qodo/
+.opencode/
+opencode.json

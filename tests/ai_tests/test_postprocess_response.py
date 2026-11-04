@@ -26,11 +26,14 @@ class TestPostprocessSilentResponse(unittest.IsolatedAsyncioTestCase):
         self.assertIn(result["data"], PLACEHOLDERS)
         self.storage.add_message.assert_called_once()
 
-    async def test_silent_on_no_answer_returns_none_without_persisting(self) -> None:
+    async def test_silent_on_no_answer_returns_none_and_persists_closing_message(self) -> None:
         result = await self.bot.postprocess_response(AIMessage(content="NO_ANSWER"), "hi", 1, silent_on_no_answer=True)
 
         self.assertIsNone(result)
-        self.storage.add_message.assert_not_called()
+        self.storage.add_message.assert_called_once()
+        persisted = self.storage.add_message.call_args.args[0]
+        self.assertIsInstance(persisted, AIMessage)
+        self.assertEqual(persisted.content, "NO_ANSWER")
 
     async def test_silent_flag_does_not_suppress_real_answers(self) -> None:
         result = await self.bot.postprocess_response(
