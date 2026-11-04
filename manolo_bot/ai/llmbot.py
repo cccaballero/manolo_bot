@@ -802,7 +802,8 @@ class LLMBot:
         :param response: Response from the LLM
         :param message_text: Text of the user message
         :param chat_id: Chat or storage key
-        :param silent_on_no_answer: When True, a NO_ANSWER response returns None without persisting it
+        :param silent_on_no_answer: When True, a NO_ANSWER response returns None (no delivery) but is still
+            persisted as the assistant's closing message, so the turn is not left dangling
         return: Final response data
         """
 
@@ -845,8 +846,12 @@ class LLMBot:
             final_response = {"type": "text", "data": response_content}
         elif silent_on_no_answer:
             # Scheduled turn whose condition was not met: stay silent instead
-            # of posting the usual placeholder emoji.
+            # of posting the usual placeholder emoji. Persist the NO_ANSWER as
+            # the assistant's closing message so the scheduled trigger is not
+            # left as a dangling user turn that the next message would merge
+            # with; the non-silent path persists the same content below.
             logging.debug(f"NO_ANSWER response for chat {chat_id}; scheduled delivery suppressed")
+            self.messages_storage.add_message(AIMessage(content=response_content))
             return None
         else:
             logging.debug(f"NO_ANSWER response for chat {chat_id}")

@@ -8,7 +8,7 @@ import unittest
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
 from manolo_bot.ai.llmagent import LLMAgent
@@ -61,13 +61,28 @@ class FakeScheduler:
         return "\n\n## Active scheduled actions in this chat\n- id=fake"
 
 
-def _make_agent(scheduler=None, system_instructions=None, schedule_scope=None) -> LLMAgent:
+class RecordingStorage:
+    """Minimal messages storage that records added messages in order."""
+
+    def __init__(self, chat_id: int = 4242) -> None:
+        self.chat_id = chat_id
+        self._messages: list = []
+
+    @property
+    def messages(self) -> list:
+        return list(self._messages)
+
+    def add_message(self, message) -> None:
+        self._messages.append(message)
+
+
+def _make_agent(scheduler=None, system_instructions=None, schedule_scope=None, messages_storage=None) -> LLMAgent:
     """Build an LLMAgent with mocks (no network, no real config)."""
     mock_llm = MagicMock()
     mock_config = MagicMock(spec=Config)
     mock_config.enable_mcp = False
     mock_config.use_tools = False
-    mock_storage = MagicMock()
+    mock_storage = messages_storage if messages_storage is not None else MagicMock()
     mock_storage.chat_id = 4242
     if system_instructions is None:
         system_instructions = [SystemMessage(content="You are a helpful assistant")]
@@ -153,6 +168,42 @@ class TestLLMAgentSchedulerTools(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         agent.answer_message.assert_awaited_once_with(42, f"{SCHEDULED_TRIGGER_PREFIX}id=abc123 Water the plants")
+
+    async def test_silent_scheduled_turn_closes_the_trigger_in_history(self):
+        # Arrange: real storage, mocked agent loop returning NO_ANSWER.
+        storage = RecordingStorage()
+        agent = _make_agent(messages_storage=storage)
+        agent.truncate_chat_context = AsyncMock()
+        agent._base_messages = MagicMock(return_value=[])
+        agent.agent = MagicMock()
+
+        async def _silent_turn(payload, config=None):
+            return {"messages": [*payload["messages"], AIMessage(content="NO_ANSWER")]}
+
+        agent.agent.ainvoke = AsyncMock(side_effect=_silent_turn)
+
+        # Act: run the scheduled turn and suppress delivery.
+        response = await agent.answer_scheduled_action(42, "Check the match", action_id="abc123")
+        final_response = await agent.postprocess_response(response, "Check the match", 42, silent_on_no_answer=True)
+
+        # Assert: no delivery, but the event has an assistant closure.
+        self.assertIsNone(final_response)
+        self.assertEqual([type(m) for m in storage.messages], [HumanMessage, AIMessage])
+        self.assertTrue(storage.messages[0].content.startswith(SCHEDULED_TRIGGER_PREFIX))
+        self.assertIn("id=abc123", storage.messages[0].content)
+        self.assertEqual(storage.messages[1].content, "NO_ANSWER")
+
+        # Act: a real user message arrives next.
+        async def _next_turn(payload, config=None):
+            return {"messages": [*payload["messages"], AIMessage(content="Hi!")]}
+
+        agent.agent.ainvoke = AsyncMock(side_effect=_next_turn)
+        await agent.answer_message(42, "Carlos: hello")
+
+        # Assert: the trigger is completed history, not merged with the new user turn.
+        sent = agent.agent.ainvoke.await_args.args[0]["messages"]
+        self.assertEqual([type(m) for m in sent], [HumanMessage, AIMessage, HumanMessage])
+        self.assertEqual(sent[-1].content, "Carlos: hello")
 
     @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
     @patch("manolo_bot.ai.llmagent.create_agent")
@@ -342,6 +393,8 @@ class TestSchedulerPrompting(unittest.TestCase):
         self.assertIn("ISO-8601", text)
         self.assertIn(SCHEDULED_TRIGGER_PREFIX.strip(), text)
         self.assertIn("NO_ANSWER", text)
+        self.assertIn("live only when it is the last message", text)
+        self.assertIn("do not execute it again", text)
         self.assertIn("survive `/flushcontext`", text)
         self.assertIn("Never claim", text)
         self.assertIn("one execution", text)
