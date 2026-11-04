@@ -13,7 +13,7 @@ from langchain_core.tools import BaseTool
 from manolo_bot.ai.config import BotConfig
 from manolo_bot.ai.document_loaders import DocumentLoader, UnsupportedFileError
 from manolo_bot.ai.llmbot import FileTooLargeError, LLMBot
-from manolo_bot.scheduler.base import SCHEDULED_TRIGGER_PREFIX
+from manolo_bot.scheduler.base import SCHEDULED_TRIGGER_PREFIX, strip_trigger_marker
 from manolo_bot.storage.documents.base import BaseDocumentStorage
 from manolo_bot.storage.messages.base import BaseMessagesStorage
 
@@ -110,6 +110,41 @@ class LLMAgent(LLMBot):
         for m in selected[:-1]:
             self.messages_storage.add_message(m)
         return selected[-1]
+
+    @staticmethod
+    def _strip_scheduled_trigger_echo(response: BaseMessage) -> BaseMessage:
+        """Remove a leading trigger marker the model may have echoed.
+
+        The marker is an internal routing signal, not chat content. Models
+        occasionally copy it (and the action id) into the first line of their
+        answer; strip it before it reaches the chat or the stored history.
+        """
+        if not isinstance(response, AIMessage):
+            return response
+        content = response.content
+        if isinstance(content, str):
+            cleaned = strip_trigger_marker(content)
+            return response if cleaned == content else response.model_copy(update={"content": cleaned})
+        if isinstance(content, list):
+            blocks = []
+            stripped = False
+            for block in content:
+                if not stripped and isinstance(block, str):
+                    cleaned = strip_trigger_marker(block)
+                    stripped = cleaned != block
+                    blocks.append(cleaned if stripped else block)
+                elif not stripped and isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text", "")
+                    cleaned = strip_trigger_marker(text)
+                    if cleaned != text:
+                        block = {**block, "text": cleaned}
+                        stripped = True
+                    blocks.append(block)
+                else:
+                    blocks.append(block)
+            if stripped:
+                return response.model_copy(update={"content": blocks})
+        return response
 
     def _get_langchain_config(self, chat_id: str | int) -> RunnableConfig:
         """Add the opaque scheduler scope to the config metadata when set.
@@ -251,7 +286,8 @@ class LLMAgent(LLMBot):
         marker = SCHEDULED_TRIGGER_PREFIX
         if action_id:
             marker = f"{marker}id={action_id} "
-        return await self.answer_message(chat_id, f"{marker}{prompt}")
+        response = await self.answer_message(chat_id, f"{marker}{prompt}")
+        return self._strip_scheduled_trigger_echo(response)
 
     async def answer_image_message(self, chat_id: str | int, text: str, image: str) -> BaseMessage:
         """

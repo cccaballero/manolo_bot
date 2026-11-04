@@ -15,6 +15,7 @@ on claim/deliver/failure semantics.
 
 from __future__ import annotations
 
+import re
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -32,6 +33,22 @@ DELETE_SCHEDULED_ACTION_TOOL_NAME = "delete_scheduled_action"
 #: Prefix persisted before the prompt of an agent turn started by the
 #: scheduler. The system prompt explains its meaning to the model.
 SCHEDULED_TRIGGER_PREFIX = "[SCHEDULED ACTION TRIGGERED] "
+
+_TRIGGER_ECHO_RE = re.compile(
+    rf"^\s*{re.escape(SCHEDULED_TRIGGER_PREFIX.strip())}\s*(?:id=\S+\s*|[0-9a-f]{{32}}\s*)?",
+    re.IGNORECASE,
+)
+
+
+def strip_trigger_marker(text: str) -> str:
+    """Remove a leading scheduled-trigger marker echoed by the model.
+
+    The marker (and the action id that follows it) is an internal routing
+    signal, not chat content. Models occasionally repeat it at the start of
+    their answer; strip it before it reaches the chat or stored history.
+    """
+    return _TRIGGER_ECHO_RE.sub("", text, count=1)
+
 
 #: Action lifecycle. ``firing`` is transient: it is written before the agent
 #: turn runs, so a crash skips that run instead of duplicating it.
@@ -404,6 +421,7 @@ __all__ = [
     "is_open",
     "new_action_id",
     "normalize_scope",
+    "strip_trigger_marker",
 ]
 
 #: Convenience tuple for clash detection / wiring tests.
