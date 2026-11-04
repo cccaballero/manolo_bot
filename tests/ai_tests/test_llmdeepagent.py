@@ -86,6 +86,34 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("store", call_kwargs)
         self.assertEqual(agent.agent, mock_agent)
 
+    @patch("manolo_bot.ai.tools.get_all_tools", new_callable=AsyncMock)
+    @patch("manolo_bot.ai.llmagent.create_agent")
+    @patch("manolo_bot.ai.llmdeepagent.create_deep_agent")
+    async def test_deep_agent_applies_system_instruction_mapping(
+        self, mock_create_deep_agent, mock_create_agent, mock_get_all_tools
+    ):
+        # Arrange
+        bot_config = _make_config()
+        mock_get_all_tools.return_value = []
+        mock_create_deep_agent.return_value = MagicMock()
+        system_instructions = [SystemMessage(content="The current datetime is: [datetime]")]
+        mapping = {"[datetime]": lambda bot: "2026-11-04 01:28:26 UTC"}
+
+        # Act
+        agent = LLMDeepAgent(
+            MagicMock(),
+            bot_config,
+            system_instructions,
+            MagicMock(),
+            system_instructions_mapping=mapping,
+        )
+        await agent.initialize_async_resources()
+
+        # Assert: the deep agent's system_prompt gets the substituted value.
+        system_prompt = mock_create_deep_agent.call_args.kwargs["system_prompt"]
+        self.assertIn("2026-11-04 01:28:26 UTC", system_prompt)
+        self.assertNotIn("[datetime]", system_prompt)
+
     @patch("manolo_bot.ai.llmagent.create_agent")
     async def test_deep_agent_can_receive_custom_backend(self, mock_create_agent):
         """Verify backend injection works."""
