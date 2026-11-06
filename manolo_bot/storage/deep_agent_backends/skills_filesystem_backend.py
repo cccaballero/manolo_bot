@@ -3,8 +3,8 @@
 Skills are operator-provided, versioned, auditable capability bundles described
 by ``SKILL.md`` files. They are *global* (shared across all chats and bot
 instances in the same process) and must never be cleared by ``clean_context``
-— clearing a filesystem-backed skills store would delete operator content
-when a user runs ``/flushcontext``.
+— clearing a filesystem-backed skills store would delete operator content on
+a context reset.
 
 Unlike :class:`FilesystemDeepAgentBackend`, this class is intentionally
 **not** scoped by ``(bot_uuid, chat_id)``. It wraps ``FilesystemBackend``
@@ -92,7 +92,7 @@ class SkillsFilesystemDeepAgentBackend(BaseSkillsBackend):
 
         Skills are operator-provided, not per-chat state. They are intentionally
         not cleared by ``LLMDeepAgent.clean_context()`` — wiping operator content
-        when a user runs ``/flushcontext`` would be destructive and surprising.
+        during a context reset would be destructive and surprising.
         If a caller really wants to drop skills, they can replace the singleton
         with a fresh instance.
         """

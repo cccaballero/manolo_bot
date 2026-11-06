@@ -29,7 +29,7 @@ def build_active_schedules_block(actions: Sequence[ScheduledAction]) -> str:
 
     Returns an empty string when the chat has no actions, so chats without
     schedules pay neither tokens nor prompt noise. The snapshot is what keeps
-    the agent aware of schedules after ``/flushcontext`` wipes the messages
+    the agent aware of schedules after a context reset wipes the messages
     that originally created them.
     """
     if not actions:

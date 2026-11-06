@@ -125,10 +125,14 @@ class LLMDeepAgent(LLMAgent):
     ``MemoryMiddleware`` (adds an Anthropic prompt-cache breakpoint on
     the memory block; no-op on other models).
 
-    Memory is per-chat state: each chat gets its own independent, seeded
-    ``AGENTS.md`` file (no cross-chat leakage), and :meth:`clean_context`
-    clears it along with the chat workspace — ``/flushcontext`` wipes
-    both. The agent writes new knowledge back to memory via ``edit_file``.
+    Memory is per-chat, durable state: each chat gets its own independent,
+    seeded ``AGENTS.md`` file (no cross-chat leakage). It is intentionally
+    **not** cleared by :meth:`clean_context` — that method resets ephemeral
+    conversation state (messages, documents, workspace) and is also the
+    recovery path after a failed turn, so wiping durable knowledge there
+    would destroy it on a transient provider error. Use :meth:`clean_memory`
+    to delete it explicitly. The agent writes new knowledge back to memory
+    via ``edit_file``.
 
     Memory files are fully loaded into the system prompt on every turn,
     so keep them concise — unlike skills, they cost tokens on every
@@ -336,13 +340,28 @@ class LLMDeepAgent(LLMAgent):
         return []
 
     async def clean_context(self) -> None:
+        """Reset ephemeral conversation state: messages, documents, workspace.
+
+        It is also the recovery path after a failed turn (the message handler
+        calls it on any exception), so it must never touch durable state.
+        Two backends are deliberately left alone:
+
+        * skills are operator-provided (global, not per-chat);
+        * memory is per-chat but durable — use :meth:`clean_memory` explicitly.
+        """
         await super().clean_context()
-        # Skills are operator-provided, not per-chat state — do not clear the
-        # skills backend here. The main workspace backend and the per-chat
-        # memory backend ARE chat state: /flushcontext wipes both, using the
-        # same guarded-wrapper mechanism (the memory backend's clear() deletes
-        # the chat's memory directory).
+        # The workspace is scratch state scoped to the conversation, so a
+        # context reset wipes it through the same guarded-wrapper mechanism as
+        # the main backend.
         if self._backend_wrapper:
             await self._backend_wrapper.clear()
+
+    async def clean_memory(self) -> None:
+        """Delete the chat's durable long-term memory (``AGENTS.md``).
+
+        Destructive and never called by :meth:`clean_context`: memory is
+        learned across conversations and cannot be recovered from message
+        history, so deleting it is an explicit operator/library decision.
+        """
         if self._memory_backend:
             await self._memory_backend.clear()
