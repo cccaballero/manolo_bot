@@ -204,7 +204,7 @@ The deep agent loads Agent Skills (capability bundles described by ``SKILL.md`` 
 
 When ``skills_paths`` is not set, no ``SkillsMiddleware`` is added and behavior is identical to a deep-agent instance without skills. Configuration (e.g. the ``DEEP_AGENT_SKILLS_PATHS`` env var) flows in through the caller, which reads it and passes it explicitly — ``LLMDeepAgent`` does not read configuration itself.
 
-Skills are operator-provided, not per-chat state. They are intentionally **not** cleared by ``clean_context()`` — wiping operator content when a user runs ``/flushcontext`` would be destructive. ``SkillsMiddleware`` owns its own per-session lifecycle via the ``before_agent`` hook, so a fresh chat context simply re-reads skill metadata on the next session.
+Skills are operator-provided, not per-chat state. They are intentionally **not** cleared by ``clean_context()`` — wiping operator content on a context reset would be destructive. ``SkillsMiddleware`` owns its own per-session lifecycle via the ``before_agent`` hook, so a fresh chat context simply re-reads skill metadata on the next session.
 
 The skills backend
 ++++++++++++++++++
@@ -395,7 +395,7 @@ For a standalone bot, construct one instance per chat (typically inside ``instan
        memory_add_cache_control=True,
    )
 
-For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMemoryBackend` with a per-chat constructor contract ``(bot_uuid, chat_id, ...)`` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach the memory file — see `Skill/memory-file routing for the agent's runtime tools`_ below) and an async ``.clear()``. Add a ``.store`` property (a langgraph ``BaseStore`` or ``None``) when your backend needs persistent agent state. ``clear()`` semantics are implementation-defined: the filesystem implementation deletes the chat's memory directory (``/flushcontext`` wipes chat memory along with the workspace):
+For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMemoryBackend` with a per-chat constructor contract ``(bot_uuid, chat_id, ...)`` and implement ``.backend`` (a ``BackendProtocol``), ``.routes(sources)`` (CompositeBackend route entries so the agent's runtime tools can reach the memory file — see `Skill/memory-file routing for the agent's runtime tools`_ below) and an async ``.clear()``. Add a ``.store`` property (a langgraph ``BaseStore`` or ``None``) when your backend needs persistent agent state. ``clear()`` semantics are implementation-defined: the filesystem implementation deletes the chat's memory directory. It is only invoked by ``LLMDeepAgent.clean_memory()`` — never by ``clean_context()``:
 
 .. code-block:: python
 
@@ -429,7 +429,7 @@ For a custom backend (e.g. Redis-backed, S3, in-memory), subclass :class:`BaseMe
            # Per-chat state: drop this chat's memory keys.
            ...
 
-Memory is per-chat state and is cleared by ``clean_context()`` — ``/flushcontext`` wipes the chat's memory along with its workspace.
+Memory is per-chat but **durable**, so it is deliberately **not** cleared by ``clean_context()`` — that method is also the recovery path after a failed turn, and wiping learned knowledge there would destroy it on a transient provider error. Use ``clean_memory()`` to delete it explicitly.
 
 Memory files are also routed into the agent's main backend ``CompositeBackend`` (see `Skill/memory-file routing for the agent's runtime tools`_ above): the memory backend wrapper's ``routes()`` factory maps the chat memory directory to a real ``FilesystemBackend`` route, so the agent's runtime ``read_file`` / ``write_file`` / ``edit_file`` tools reach the actual file on disk. This is what makes durable write-back work — learnings the agent saves via ``edit_file`` persist to the same seeded ``AGENTS.md`` file ``MemoryMiddleware`` loads every turn. Token-cost behavior is unchanged from the notes above.
 

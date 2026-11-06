@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 # excluding ``/``, ``.``, and everything else that could escape the chat
 # directory under the configured root. ``bot_uuid`` is operator-provided via
 # ``BOT_UUID`` — a typo or attacker-controlled env var must not be able to
-# trick ``/flushcontext`` (which calls ``clear()`` → ``shutil.rmtree``) into
-# deleting directories outside the configured root.
+# trick a context reset (``clean_context()`` → ``clear()`` → ``shutil.rmtree``)
+# into deleting directories outside the configured root.
 _BOT_UUID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -111,8 +111,8 @@ class BaseSkillsBackend(abc.ABC):
         """Clear the backend state.
 
         Skills are operator-provided, not per-chat state. Implementations
-        should typically be a no-op — wiping operator content when a user
-        runs ``/flushcontext`` would be destructive and surprising.
+        should typically be a no-op — wiping operator content on a context
+        reset would be destructive and surprising.
         """
         ...
 
@@ -131,8 +131,10 @@ class BaseMemoryBackend(abc.ABC):
     Subclasses provide the per-chat backend instance; the constructor
     contract is ``(bot_uuid, chat_id, ...)`` like :class:`BaseDeepAgentBackend`.
     ``clear()`` semantics are implementation-defined: the filesystem
-    implementation deletes the chat's memory directory (``/flushcontext``
-    wipes chat memory along with the workspace).
+    implementation deletes the chat's memory directory. It is invoked only by
+    :meth:`LLMDeepAgent.clean_memory` — never by
+    :meth:`LLMDeepAgent.clean_context` — so durable memory survives a context
+    reset and the post-failure recovery path.
 
     Library users may subclass this to provide custom storage (Redis, S3,
     in-memory, etc.) — same extension model as :class:`BaseDeepAgentBackend`.

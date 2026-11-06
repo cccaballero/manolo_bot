@@ -863,10 +863,10 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(memory_mw2._add_cache_control)
 
-    async def test_deep_agent_clean_context_clears_memory_backend(self):
-        """clean_context clears the per-chat memory backend (mirroring the main
-        backend wrapper) so /flushcontext wipes chat memory along with the
-        workspace."""
+    async def test_deep_agent_clean_context_preserves_memory_backend(self):
+        """clean_context must never delete durable memory: it is also the
+        failed-turn recovery path, and AGENTS.md cannot be rebuilt from
+        message history."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -890,7 +890,49 @@ class TestLLMDeepAgent(unittest.IsolatedAsyncioTestCase):
 
             await agent.clean_context()
 
+            self.assertTrue(os.path.exists(memory_backend.source))
+            mock_messages_storage.clear_messages.assert_awaited_once()
+
+    async def test_deep_agent_clean_memory_deletes_memory_and_preserves_workspace(self):
+        """clean_memory is the explicit, destructive counterpart: it deletes
+        AGENTS.md but leaves the workspace alone."""
+        import tempfile
+
+        from manolo_bot.storage.deep_agent_backends.filesystem_backend import (
+            FilesystemDeepAgentBackend,
+        )
+
+        with tempfile.TemporaryDirectory() as workspace_tmp, tempfile.TemporaryDirectory() as memory_tmp:
+            bot_config = _make_config()
+            mock_messages_storage = MagicMock()
+            mock_messages_storage.chat_id = 123
+            mock_messages_storage.clear_messages = AsyncMock()
+            mock_llm = MagicMock()
+            system_instructions = [SystemMessage(content="Test")]
+
+            workspace_backend = FilesystemDeepAgentBackend("b", 1, workspace_tmp)
+            os.makedirs(workspace_backend.backend.cwd, exist_ok=True)
+            workspace_file = os.path.join(workspace_backend.backend.cwd, "note.md")
+            with open(workspace_file, "w", encoding="utf-8") as handle:
+                handle.write("scratch")
+
+            memory_backend = MemoryFilesystemDeepAgentBackend(bot_uuid="b", chat_id=1, memory_root=memory_tmp)
+            agent = LLMDeepAgent(
+                mock_llm,
+                bot_config,
+                system_instructions,
+                mock_messages_storage,
+                backend=workspace_backend,
+                memory_backend=memory_backend,
+            )
+            agent.documents_storage = None
+            self.assertTrue(os.path.exists(memory_backend.source))
+
+            await agent.clean_memory()
+
             self.assertFalse(os.path.exists(memory_backend.source))
+            self.assertTrue(os.path.exists(workspace_file))
+            mock_messages_storage.clear_messages.assert_not_awaited()
 
     def test_deep_agent_memory_before_agent_loads_real_file(self):
         """REGRESSION: MemoryMiddleware fed the wrapper's backend + absolute

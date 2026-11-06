@@ -236,10 +236,10 @@ class MemoryFilesystemDeepAgentBackend(BaseMemoryBackend):
     async def clear(self) -> None:
         """Delete the chat's memory directory (destructive).
 
-        Memory is per-chat state — ``/flushcontext`` wipes the chat's memory
-        along with its workspace. Layer 2 containment check runs first so a
-        tampered ``_memory_root`` or a symlink escape can never delete
-        directories outside the configured root.
+        Only called through ``LLMDeepAgent.clean_memory()`` — ``clean_context()``
+        and the failed-turn recovery path preserve memory. Layer 2 containment
+        check runs first so a tampered ``_memory_root`` or a symlink escape can
+        never delete directories outside the configured root.
         """
         memory_path = self._safe_memory_path()
         if os.path.exists(memory_path):
