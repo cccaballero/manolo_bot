@@ -532,6 +532,45 @@ async def flush_context_command(message: Message):
         await message.reply(success_message)
 
 
+@dp.message(Command("flushmemory"))
+async def flush_memory_command(message: Message):
+    """Reset this chat's durable long-term memory (/flushmemory, deep_agent only)."""
+    logging.debug(f"Received flushmemory command from user {message.from_user.id} in chat {message.chat.id}")
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    message_text = get_message_text(message)
+
+    if not (
+        f"@{config.bot_username}" in message_text
+        or config.bot_name.lower() in message_text.lower()
+        or is_bot_reply(config.bot_username, message)
+    ):
+        logging.debug(f"Bot not mentioned in flushmemory command from user {user_id}, ignoring")
+        return
+
+    if config.effective_ai_mode != "deep_agent":
+        await message.reply("Long-term memory is only used in deep_agent mode.")
+        return
+
+    if message.chat.type in ["group", "supergroup", "channel"] and not await user_is_admin(bot, user_id, chat_id):
+        logging.debug(f"User {user_id} is not an admin in chat {chat_id}, ignoring command")
+        await message.reply("⚠️ You need to be an admin to use this command in a group chat.")
+        return
+
+    async with _chat_lock(chat_id):
+        llm_bot = await instance_llm_bot(chat_id)
+        if not isinstance(llm_bot, LLMDeepAgent):
+            await message.reply("Long-term memory is only used in deep_agent mode.")
+            return
+        await llm_bot.clean_memory()
+
+    logging.debug(f"Chat {chat_id} memory reset")
+    # Static reply on purpose: after a destructive operation the user must get
+    # deterministic feedback even if the LLM provider is failing.
+    await message.reply("🧠 Memory for this chat has been reset to its initial state.")
+
+
 @dp.message(Command("flushschedules"))
 async def flush_schedules_command(message: Message):
     """Remove every scheduled action for this chat (/flushschedules)."""

@@ -105,7 +105,7 @@ The `in_memory` backend keeps the virtual filesystem in process memory, scoped p
 
 `DEEP_AGENT_SKILLS_PATHS`: Comma-separated list of skill source paths for the `deep_agent` mode; skills are loaded into the agent's system prompt via progressive disclosure.
 
-`DEEP_AGENT_MEMORY_PATH`: Root directory for per-chat long-term memory in the `deep_agent` mode; each chat gets its own independent, seeded `AGENTS.md` file at `DEEP_AGENT_MEMORY_PATH/bot_uuid/chat_id/AGENTS.md` (no cross-chat leakage). Memory files are fully loaded into the agent's system prompt on every turn (keep them concise — they cost tokens on every message, unlike skills). The bot constructs a per-chat `MemoryFilesystemDeepAgentBackend` with a default process-local `InMemoryStore`. Memory is durable: `/flushcontext` clears the conversation context and workspace but preserves `AGENTS.md` (as does the automatic reset after a failed turn); library consumers can call `LLMDeepAgent.clean_memory()` directly.
+`DEEP_AGENT_MEMORY_PATH`: Root directory for per-chat long-term memory in the `deep_agent` mode; each chat gets its own independent, seeded `AGENTS.md` file at `DEEP_AGENT_MEMORY_PATH/bot_uuid/chat_id/AGENTS.md` (no cross-chat leakage). Memory files are fully loaded into the agent's system prompt on every turn (keep them concise — they cost tokens on every message, unlike skills). The bot constructs a per-chat `MemoryFilesystemDeepAgentBackend` with a default process-local `InMemoryStore`. Memory is durable: `/flushcontext` clears the conversation context and workspace but preserves `AGENTS.md` (as does the automatic reset after a failed turn). `/flushmemory` resets it to its initial seeded state; library consumers can call `LLMDeepAgent.clean_memory()` directly.
 
 `DEEP_AGENT_MEMORY_ADD_CACHE_CONTROL`: Add an Anthropic prompt-cache breakpoint on the memory block (default `False`; no-op on non-Anthropic models). Fed to `LLMDeepAgent(memory_add_cache_control=...)` at agent construction.
 
@@ -492,6 +492,9 @@ The bot supports the following commands:
 
 - `/flushcontext` - Clears the conversation context for the current chat. In group chats, only admins can use this
   command. The bot will respond with a confirmation message in the configured language.
+- `/flushmemory` - Resets this chat's durable long-term memory (`AGENTS.md`, `deep_agent` mode only) to its initial
+  seeded state. In group chats, only admins can use this command. Conversation history, documents and the agent
+  workspace are unaffected.
 - `/flushschedules` - Removes every scheduled action for the current chat (active and failed). In group chats, only
   admins can use this command. Conversation history and `/flushcontext` are unaffected.
 
